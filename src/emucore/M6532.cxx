@@ -383,6 +383,7 @@ bool M6532::save(Serializer& out) const
     out.putLong(mySetTimerCycle);
   #ifdef DEBUGGER_SUPPORT
     out.putInt(myTimReadCycles);
+    out.putLong(myBusyRateTimReadCycles);
   #endif
 
     out.putByte(myDDRA);
@@ -418,6 +419,7 @@ bool M6532::load(Serializer& in)
     mySetTimerCycle = in.getLong();
   #ifdef DEBUGGER_SUPPORT
     myTimReadCycles = in.getInt();
+    myBusyRateTimReadCycles = in.getLong();
   #endif
 
     myDDRA = in.getByte();
