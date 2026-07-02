@@ -35,7 +35,6 @@
 #include "OptionsDialog.hxx"
 #include "Launcher.hxx"
 #include "Settings.hxx"
-#include "OptionsMenu.hxx"
 
 #ifdef CHEATCODE_SUPPORT
   #include "CheatCodeDialog.hxx"
@@ -67,7 +66,7 @@ OptionsDialog::OptionsDialog(OSystem& osystem, DialogContainer& parent,
   WidgetArray wid;
   ButtonWidget* b{nullptr};
 
-  if (minSettings)
+  if(minSettings)
   {
     auto* bw = new ButtonWidget(this, _font, xoffset, yoffset,
         _w - HBORDER * 2, buttonHeight, "Use Basic Settings", kBasSetCmd);
@@ -76,7 +75,7 @@ OptionsDialog::OptionsDialog(OSystem& osystem, DialogContainer& parent,
     _h += rowHeight + VGAP * 2;
   }
 
-  const auto ADD_OD_BUTTON = [&](string_view label, int cmd, string_view toolTip = EmptyString())
+  const auto ADD_OD_BUTTON = [&](string_view label, int cmd, string_view toolTip = {})
   {
     auto* bw = new ButtonWidget(this, _font, xoffset, yoffset,
                                 buttonWidth, buttonHeight, label, cmd);
@@ -107,7 +106,6 @@ OptionsDialog::OptionsDialog(OSystem& osystem, DialogContainer& parent,
     "Define snapshot save location, format" + ELLIPSIS);
   wid.push_back(b);
 
-  //yoffset += rowHeight;
   b = ADD_OD_BUTTON("Developer" + ELLIPSIS, kDevelopCmd,
     "Change options which support programming Atari 2600 games.");
   wid.push_back(b);
@@ -166,9 +164,7 @@ OptionsDialog::OptionsDialog(OSystem& osystem, DialogContainer& parent,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-OptionsDialog::~OptionsDialog()  // NOLINT (we need an empty d'tor)
-{
-}
+OptionsDialog::~OptionsDialog() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void OptionsDialog::loadConfig()
@@ -201,7 +197,7 @@ void OptionsDialog::handleCommand(CommandSender* sender, int cmd,
     case kBasSetCmd:
       // enable basic settings
       instance().settings().setValue("basic_settings", true);
-      if (myMode != AppMode::emulator)
+      if(myMode != AppMode::emulator)
         close();
       else
         instance().eventHandler().leaveMenuMode();

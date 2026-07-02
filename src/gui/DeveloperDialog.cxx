@@ -294,6 +294,8 @@ void DeveloperDialog::addTiaTab(const GUI::Font& font)
   VarList::push_back(items, "Glitched Indy 500 menu", "indy500");
   VarList::push_back(items, "Glitched He-Man title", "heman");
   VarList::push_back(items, "Shifted flashcart menu", "flashmenu");
+  VarList::push_back(items, "Glitched Light Sixer", "lightsixer");
+  VarList::push_back(items, "Glitched Jr. missiles", "juniorbug");
   VarList::push_back(items, "Custom", "custom");
   myTIATypeWidget = new PopUpWidget(myTab, font, HBORDER + INDENT, ypos - 1,
                                     pwidth, lineHeight, items, "Chip type ", 0, kTIAType);
@@ -340,6 +342,24 @@ void DeveloperDialog::addTiaTab(const GUI::Font& font)
   wid.push_back(myBlLateHMoveWidget);
   ypos += lineHeight + VGAP * 1;
 
+  myLateRespxLabel = new StaticTextWidget(myTab, font, HBORDER + INDENT * 2, ypos + 1,
+                                          "Late RESPx for");
+  myLateRespxLabel->setToolTip("RESP/RESM/RESBL strobed during HBLANK at HMOVE start shifts object 1 pixel right");
+  wid.push_back(myLateRespxLabel);
+  ypos += lineHeight + VGAP * 1;
+
+  myPlLateRespxWidget = new CheckboxWidget(myTab, font, HBORDER + INDENT * 3, ypos + 1, "Players");
+  wid.push_back(myPlLateRespxWidget);
+
+  myMsLateRespxWidget = new CheckboxWidget(myTab, font, myPlLateRespxWidget->getRight() + fontWidth() * 2.5,
+                                           ypos + 1, "Missiles");
+  wid.push_back(myMsLateRespxWidget);
+
+  myBlLateRespxWidget = new CheckboxWidget(myTab, font, myMsLateRespxWidget->getRight() + fontWidth() * 2.5,
+                                           ypos + 1, "Ball");
+  wid.push_back(myBlLateRespxWidget);
+  ypos += lineHeight + VGAP * 1;
+
   myPlayfieldLabel = new StaticTextWidget(myTab, font, HBORDER + INDENT * 2, ypos + 1,
                                          "Delayed playfield");
   myPlayfieldLabel->setToolTip("Playfield reacts one color clock slower to updates.");
@@ -369,9 +389,8 @@ void DeveloperDialog::addTiaTab(const GUI::Font& font)
   wid.push_back(myBKColorWidget);
   ypos += lineHeight + VGAP * 1;
 
-  std::ostringstream ss;
-  ss << "Delayed VDEL" << ELLIPSIS << " swap for";
-  mySwapLabel = new StaticTextWidget(myTab, font, HBORDER + INDENT * 2, ypos + 1, ss.view());
+  mySwapLabel = new StaticTextWidget(myTab, font, HBORDER + INDENT * 2, ypos + 1,
+    std::format("Delayed VDEL{} swap for", ELLIPSIS));
   mySwapLabel->setToolTip("VDELed objects react one color clock slower to updates.");
   wid.push_back(mySwapLabel);
   ypos += lineHeight + VGAP * 1;
@@ -516,7 +535,7 @@ void DeveloperDialog::addVideoTab(const GUI::Font& font)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
 {
-  const std::array<string, NUM_INTERVALS> INTERVALS = {
+  static constexpr std::array<string_view, RewindManager::NUM_INTERVALS> INTERVALS = {
     " 1 frame",
     " 3 frames",
     "10 frames",
@@ -525,16 +544,7 @@ void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
     " 3 seconds",
     "10 seconds"
   };
-  const std::array<string, NUM_INTERVALS> INT_SETTINGS = {
-    "1f",
-    "3f",
-    "10f",
-    "30f",
-    "1s",
-    "3s",
-    "10s"
-  };
-  const std::array<string, NUM_HORIZONS> HORIZONS = {
+  static constexpr std::array<string_view, RewindManager::NUM_HORIZONS> HORIZONS = {
     " 3 seconds",
     "10 seconds",
     "30 seconds",
@@ -543,16 +553,6 @@ void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
     "10 minutes",
     "30 minutes",
     "60 minutes"
-  };
-  const std::array<string, NUM_HORIZONS> HOR_SETTINGS = {
-    "3s",
-    "10s",
-    "30s",
-    "1m",
-    "3m",
-    "10m",
-    "30m",
-    "60m"
   };
   const int lineHeight = Dialog::lineHeight(),
             fontHeight = Dialog::fontHeight(),
@@ -593,8 +593,8 @@ void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
   const int swidth = fontWidth * 12 + 5; // width of PopUpWidgets below
   myStateSizeWidget = new SliderWidget(myTab, font, xpos,  ypos - 1, swidth, lineHeight,
                                        "Buffer size (*)   ", 0, kSizeChanged, lwidth, " states");
-  myStateSizeWidget->setMinValue(20);
-  myStateSizeWidget->setMaxValue(1000);
+  myStateSizeWidget->setMinValue(RewindManager::MIN_BUF_SIZE);
+  myStateSizeWidget->setMaxValue(RewindManager::MAX_BUF_SIZE);
   myStateSizeWidget->setStepValue(20);
   myStateSizeWidget->setTickmarkIntervals(5);
   myStateSizeWidget->setToolTip("Define the total Time Machine buffer size.");
@@ -604,7 +604,7 @@ void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
   myUncompressedWidget = new SliderWidget(myTab, font, xpos, ypos - 1, swidth, lineHeight,
                                           "Uncompressed size ", 0, kUncompressedChanged, lwidth, " states");
   myUncompressedWidget->setMinValue(0);
-  myUncompressedWidget->setMaxValue(1000);
+  myUncompressedWidget->setMaxValue(RewindManager::MAX_BUF_SIZE);
   myUncompressedWidget->setStepValue(20);
   myUncompressedWidget->setTickmarkIntervals(5);
   myUncompressedWidget->setToolTip("Define the number of completely kept states.\n"
@@ -614,8 +614,8 @@ void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
   ypos += lineHeight + VGAP;
 
   items.clear();
-  for(int i = 0; i < NUM_INTERVALS; ++i)
-    VarList::push_back(items, INTERVALS[i], INT_SETTINGS[i]);
+  for(int i = 0; i < RewindManager::NUM_INTERVALS; ++i)
+    VarList::push_back(items, INTERVALS[i], RewindManager::INT_SETTINGS[i]);
   const int pwidth = font.getStringWidth("10 seconds");
   myStateIntervalWidget = new PopUpWidget(myTab, font, xpos, ypos, pwidth,
                                           lineHeight, items, "Interval          ", 0, kIntervalChanged);
@@ -624,8 +624,8 @@ void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
   ypos += lineHeight + VGAP;
 
   items.clear();
-  for(int i = 0; i < NUM_HORIZONS; ++i)
-    VarList::push_back(items, HORIZONS[i], HOR_SETTINGS[i]);
+  for(int i = 0; i < RewindManager::NUM_HORIZONS; ++i)
+    VarList::push_back(items, HORIZONS[i], RewindManager::HOR_SETTINGS[i]);
   myStateHorizonWidget = new PopUpWidget(myTab, font, xpos, ypos, pwidth,
                                          lineHeight, items, "Horizon         ~ ", 0, kHorizonChanged);
   myStateHorizonWidget->setToolTip("Define how far the Time Machine\n"
@@ -659,7 +659,8 @@ void DeveloperDialog::addDebuggerTab(const GUI::Font& font)
             HBORDER    = Dialog::hBorder(),
             VGAP       = Dialog::vGap();
   VariantList items;
-  const Common::Size& ds = instance().frameBuffer().desktopSize(BufferType::Debugger);
+  const Common::Size& ds = instance().frameBuffer().desktopSize();
+
   const int xpos = HBORDER;
   int ypos = VBORDER;
 
@@ -753,11 +754,10 @@ void DeveloperDialog::getWidgetStates(SettingsSet set)
   myRandomizeTIA[set] = myRandomizeTIAWidget->getState();
   myRandomizeRAM[set] = myRandomizeRAMWidget->getState();
   string cpurandom;
-  const std::array<string, 5> cpuregs = {"S", "A", "X", "Y", "P"};
 
   for(int i = 0; i < 5; ++i)
     if(myRandomizeCPUWidget[i]->getState())
-      cpurandom += cpuregs[i];
+      cpurandom += ourCPURegs[i];
   myRandomizeCPU[set] = cpurandom;
   // Random hotspot peeks
   myRandomHotspots[set] = myRandomHotspotsWidget->getState();
@@ -780,6 +780,9 @@ void DeveloperDialog::getWidgetStates(SettingsSet set)
   myPlLateHMove[set] = myPlLateHMoveWidget->getState();
   myMsLateHMove[set] = myMsLateHMoveWidget->getState();
   myBlLateHMove[set] = myBlLateHMoveWidget->getState();
+  myPlLateRespx[set] = myPlLateRespxWidget->getState();
+  myMsLateRespx[set] = myMsLateRespxWidget->getState();
+  myBlLateRespx[set] = myBlLateRespxWidget->getState();
   myPFBits[set] = myPFBitsWidget->getState();
   myPFColor[set] = myPFColorWidget->getState();
   myPFScore[set] = myPFScoreWidget->getState();
@@ -819,10 +822,9 @@ void DeveloperDialog::setWidgetStates(SettingsSet set)
   myRandomizeRAMWidget->setState(myRandomizeRAM[set]);
 
   const string_view cpurandom = myRandomizeCPU[set];
-  const std::array<string, 5> cpuregs = {"S", "A", "X", "Y", "P"};
 
   for(int i = 0; i < 5; ++i)
-    myRandomizeCPUWidget[i]->setState(BSPF::containsIgnoreCase(cpurandom, cpuregs[i]));
+    myRandomizeCPUWidget[i]->setState(BSPF::containsIgnoreCase(cpurandom, ourCPURegs[i]));
   // Random hotspot peeks
   myRandomHotspotsWidget->setState(myRandomHotspots[set]);
   // Undriven TIA pins
@@ -965,7 +967,7 @@ void DeveloperDialog::setDefaults()
       myDetectedInfo[set] = devSettings;
       // AtariVox/SaveKey/PlusROM access
       myExternAccess[set] = devSettings;
-      myConsole[set] = 0;
+      myConsole[set] = false;
       myPlusROM[set] = true;
       // Randomization
       myRandomBank[set] = devSettings;
@@ -1201,7 +1203,8 @@ void DeveloperDialog::handleConsole()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DeveloperDialog::handleTia()
 {
-  const bool enable = BSPF::equalsIgnoreCase("custom", myTIATypeWidget->getSelectedTag().toString());
+  const string tiaType = myTIATypeWidget->getSelectedTag().toString();
+  const bool enable = BSPF::equalsIgnoreCase("custom", tiaType);
 
   myTIATypeWidget->setEnabled(mySettings);
   myInvPhaseLabel->setEnabled(enable);
@@ -1212,6 +1215,10 @@ void DeveloperDialog::handleTia()
   myPlLateHMoveWidget->setEnabled(enable);
   myMsLateHMoveWidget->setEnabled(enable);
   myBlLateHMoveWidget->setEnabled(enable);
+  myLateRespxLabel->setEnabled(enable);
+  myPlLateRespxWidget->setEnabled(enable);
+  myMsLateRespxWidget->setEnabled(enable);
+  myBlLateRespxWidget->setEnabled(enable);
   myPlayfieldLabel->setEnabled(enable);
   myBackgroundLabel->setEnabled(enable);
   myPFBitsWidget->setEnabled(enable);
@@ -1222,7 +1229,7 @@ void DeveloperDialog::handleTia()
   myPlSwapWidget->setEnabled(enable);
   myBlSwapWidget->setEnabled(enable);
 
-  if(BSPF::equalsIgnoreCase("custom", myTIATypeWidget->getSelectedTag().toString()))
+  if(BSPF::equalsIgnoreCase("custom", tiaType))
   {
     const SettingsSet set = SettingsSet::developer;
 
@@ -1232,6 +1239,9 @@ void DeveloperDialog::handleTia()
     myPlLateHMoveWidget->setState(myPlLateHMove[set]);
     myMsLateHMoveWidget->setState(myMsLateHMove[set]);
     myBlLateHMoveWidget->setState(myBlLateHMove[set]);
+    myPlLateRespxWidget->setState(myPlLateRespx[set]);
+    myMsLateRespxWidget->setState(myMsLateRespx[set]);
+    myBlLateRespxWidget->setState(myBlLateRespx[set]);
     myPFBitsWidget->setState(myPFBits[set]);
     myPFColorWidget->setState(myPFColor[set]);
     myPFScoreWidget->setState(myPFScore[set]);
@@ -1241,17 +1251,21 @@ void DeveloperDialog::handleTia()
   }
   else
   {
-    myPlInvPhaseWidget->setState(BSPF::equalsIgnoreCase("koolaidman", myTIATypeWidget->getSelectedTag().toString()));
-    myMsInvPhaseWidget->setState(BSPF::equalsIgnoreCase("cosmicark", myTIATypeWidget->getSelectedTag().toString()));
+    myPlInvPhaseWidget->setState(BSPF::equalsIgnoreCase("koolaidman", tiaType));
+    myMsInvPhaseWidget->setState(BSPF::equalsIgnoreCase("cosmicark", tiaType));
     myBlInvPhaseWidget->setState(false);
-    myPlLateHMoveWidget->setState(BSPF::equalsIgnoreCase("flashmenu", myTIATypeWidget->getSelectedTag().toString()));
+    myPlLateHMoveWidget->setState(BSPF::equalsIgnoreCase("flashmenu", tiaType));
     myMsLateHMoveWidget->setState(false);
     myBlLateHMoveWidget->setState(false);
-    myPFBitsWidget->setState(BSPF::equalsIgnoreCase("pesco", myTIATypeWidget->getSelectedTag().toString()));
-    myPFColorWidget->setState(BSPF::equalsIgnoreCase("quickstep", myTIATypeWidget->getSelectedTag().toString()));
-    myPFScoreWidget->setState(BSPF::equalsIgnoreCase("matchie", myTIATypeWidget->getSelectedTag().toString()));
-    myBKColorWidget->setState(BSPF::equalsIgnoreCase("indy500", myTIATypeWidget->getSelectedTag().toString()));
-    myPlSwapWidget->setState(BSPF::equalsIgnoreCase("heman", myTIATypeWidget->getSelectedTag().toString()));
+    myPlLateRespxWidget->setState(BSPF::equalsIgnoreCase("lightsixer", tiaType));
+    myMsLateRespxWidget->setState(BSPF::equalsIgnoreCase("lightsixer", tiaType) ||
+                                  BSPF::equalsIgnoreCase("juniorbug", tiaType));
+    myBlLateRespxWidget->setState(BSPF::equalsIgnoreCase("lightsixer", tiaType));
+    myPFBitsWidget->setState(BSPF::equalsIgnoreCase("pesco", tiaType));
+    myPFColorWidget->setState(BSPF::equalsIgnoreCase("quickstep", tiaType));
+    myPFScoreWidget->setState(BSPF::equalsIgnoreCase("matchie", tiaType));
+    myBKColorWidget->setState(BSPF::equalsIgnoreCase("indy500", tiaType));
+    myPlSwapWidget->setState(BSPF::equalsIgnoreCase("heman", tiaType));
     myBlSwapWidget->setState(false);
   }
 }
@@ -1290,7 +1304,7 @@ void DeveloperDialog::handleSize()
   // adapt horizon and interval
   do
   {
-    for(i = horizon; i < NUM_HORIZONS; ++i)
+    for(i = horizon; i < RewindManager::NUM_HORIZONS; ++i)
     {
       if(static_cast<uInt64>(size) * RewindManager::INTERVAL_CYCLES[interval]
          <= RewindManager::HORIZON_CYCLES[i])
@@ -1340,7 +1354,7 @@ void DeveloperDialog::handleInterval()
   // adapt horizon and size
   do
   {
-    for(i = horizon; i < NUM_HORIZONS; ++i)
+    for(i = horizon; i < RewindManager::NUM_HORIZONS; ++i)
     {
       if(static_cast<uInt64>(size) * RewindManager::INTERVAL_CYCLES[interval]
          <= RewindManager::HORIZON_CYCLES[i])

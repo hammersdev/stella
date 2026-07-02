@@ -45,7 +45,7 @@ class CpuDebug : public DebuggerSystem
     const DebuggerState& getOldState() override { return myOldState; }
 
     void saveOldState() override;
-    string toString() override { return EmptyString(); } // Not needed, since CPU stuff is always visible
+    string toString() override { return string{}; } // Not needed, since CPU stuff is always visible
 
     int pc() const;
     int sp() const;
@@ -104,4 +104,4 @@ class CpuDebug : public DebuggerSystem
     CpuDebug& operator=(CpuDebug&&) = delete;
 };
 
-#endif
+#endif  // CPU_DEBUG_HXX

@@ -68,13 +68,13 @@ class AtariNTSC
 
     // Video format presets
     static constexpr Setup TV_Composite = { // color bleeding + artifacts
-      0.0F, 0.15F, 0.0F, 0.0F, 0.0F
+      0.F, 0.15F, 0.F, 0.F, 0.F
     };
     static constexpr Setup TV_SVideo = {    // color bleeding only
-      0.0F, 0.45F, -1.0F, -1.0F, 0.0F
+      0.F, 0.45F, -1.F, -1.F, 0.F
     };
     static constexpr Setup TV_RGB = {       // crisp image
-      0.2F, 0.70F, -1.0F, -1.0F, -1.0F
+      0.2F, 0.7F, -1.F, -1.F, -1.F
     };
     static constexpr Setup TV_Bad = {       // badly adjusted TV
       0.2F, 0.1F, 0.5F, 0.5F, 0.5F
@@ -148,10 +148,10 @@ class AtariNTSC
     static constexpr float
       artifacts_mid = 1.5F,
       artifacts_max = 2.5F,
-      fringing_mid  = 1.0F,
-      fringing_max  = 2.0F,
+      fringing_mid  = 1.F,
+      fringing_max  = 2.F,
       rgb_offset    = (rgb_unit * 2 + 0.5F),
-      luma_cutoff   = 0.20F
+      luma_cutoff   = 0.2F
     ;
 
     std::array<uInt8, palette_size * 3L> myRGBPalette{};
@@ -169,11 +169,6 @@ class AtariNTSC
       float fringing{0.F};
       std::array<float, static_cast<size_t>
                  (rescale_out * kernel_size * 2)> kernel{0.F};
-
-      init_t() {
-        to_rgb.fill(0.0);
-        kernel.fill(0.0);
-      }
     };
     init_t myImpl;
 
@@ -185,7 +180,7 @@ class AtariNTSC
         (kernel_size * 2 * ((scaled + rescale_out * 10) % rescale_out)));
     }
     static constexpr float PIXEL_OFFSET2( int ntsc ) {
-      return 1.0F - ((ntsc + 100) & 2);
+      return 1.F - ((ntsc + 100) & 2);
     }
 
     struct pixel_info_t
@@ -194,14 +189,14 @@ class AtariNTSC
       float negate{0.F};
       std::array<float, 4> kernel{};
     };
-    // NOLINTNEXTLINE: seems we can't do constexpr on std::array inside another
+    // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
     static inline const std::array<pixel_info_t, alignment_count> atari_ntsc_pixels = {{
       { PIXEL_OFFSET1(-4, -9), PIXEL_OFFSET2(-4), { 1, 1, 1, 1            } },
       { PIXEL_OFFSET1( 0, -5), PIXEL_OFFSET2( 0), {            1, 1, 1, 1 } }
     }};
 
     static constexpr std::array<float, 6> default_decoder = {
-      0.9563F, 0.6210F, -0.2721F, -0.6474F, -1.1070F, 1.7046F
+      0.9563F, 0.621F, -0.2721F, -0.6474F, -1.107F, 1.7046F
     };
 
     static void init(init_t& impl, const Setup& setup);
@@ -209,7 +204,7 @@ class AtariNTSC
     // Generate pixel at all burst phases and column alignments
     static void genKernel(init_t& impl, float y, float i, float q, uInt32* out);
 
-    // NOLINTBEGIN: leave as macro's for now
+    // NOLINTBEGIN(cppcoreguidelines-macro-usage) : leave as macro's for now
     // Begins outputting row and starts two pixels. First pixel will be cut
     // off a bit.  Use atari_ntsc_black for unused pixels.
     #define ATARI_NTSC_BEGIN_ROW( pixel0, pixel1 ) \
@@ -236,7 +231,7 @@ class AtariNTSC
       ATARI_NTSC_CLAMP( raw_, 0 );\
       (rgb_out) = (raw_>>5 & 0x00FF0000)|(raw_>>3 & 0x0000FF00)|(raw_>>1 & 0x000000FF);\
     }
-    // NOLINTEND
+    // NOLINTEND(cppcoreguidelines-macro-usage)
 
     // Common ntsc macros
     static constexpr void ATARI_NTSC_CLAMP( uInt32& io, uInt32 shift ) {
@@ -300,4 +295,4 @@ class AtariNTSC
   #endif
 };
 
-#endif
+#endif  // ATARI_NTSC_HXX

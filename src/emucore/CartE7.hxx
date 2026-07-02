@@ -71,13 +71,11 @@ class CartridgeE7 : public Cartridge
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
     */
-    CartridgeE7(const ByteBuffer& image, size_t size, string_view md5,
-                const Settings& settings);
+    CartridgeE7(ByteSpan image, string_view md5, const Settings& settings);
     ~CartridgeE7() override = default;
 
   public:
@@ -140,10 +138,9 @@ class CartridgeE7 : public Cartridge
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span to the internal ROM image data
     */
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     /**
       Save the current state of this cart to the given Serializer.
@@ -226,7 +223,7 @@ class CartridgeE7 : public Cartridge
     /**
       Class initialization
     */
-    void initialize(const ByteBuffer& image, size_t size);
+    void initialize(ByteSpan image);
 
     /**
       Install pages for the specified 256 byte bank of RAM
@@ -259,11 +256,8 @@ class CartridgeE7 : public Cartridge
                    System::PageAccessType type, uInt16 addrMask = 0);
 
   private:
-    // Pointer to a dynamically allocated ROM image of the cartridge
-    ByteBuffer myImage;
-
-    // Size of the ROM image
-    size_t mySize{0};
+    // The ROM image of the cartridge
+    ByteArray myImage;
 
     // The 2K of RAM
     std::array<uInt8, RAM_SIZE> myRAM{};
@@ -289,4 +283,4 @@ class CartridgeE7 : public Cartridge
     CartridgeE7& operator=(CartridgeE7&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_E7_HXX

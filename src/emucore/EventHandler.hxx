@@ -15,14 +15,13 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef EVENTHANDLER_HXX
-#define EVENTHANDLER_HXX
-
-#include <map>
+#ifndef EVENT_HANDLER_HXX
+#define EVENT_HANDLER_HXX
 
 class Console;
 class OSystem;
 class MouseControl;
+class Dialog;
 class DialogContainer;
 class PhysicalJoystick;
 class Variant;
@@ -32,8 +31,12 @@ namespace GUI {
   class Font;
 }  // namespace GUI
 
+#ifdef GUI_SUPPORT
+  #include "BrowserDialog.hxx"
+#endif
 #include "Event.hxx"
 #include "EventHandlerConstants.hxx"
+#include "FSNode.hxx"
 #include "Control.hxx"
 #include "PKeyboardHandler.hxx"
 #include "PJoystickHandler.hxx"
@@ -68,6 +71,23 @@ class EventHandler
       @return The event object
     */
     const Event& event() const { return myEvent; }
+
+    /**
+      Drain hardware input into a fresh input window: opens the window, calls
+      pollEvent(), then spreads the recorded transitions across it.  This is
+      the input portion of poll(); poll() calls it before its per-frame
+      emulation housekeeping.  Ports that do their own housekeeping (e.g.
+      libretro) call this directly instead of poll(), so controller reads see
+      the input window there too.
+    */
+    void pollInput() {
+      // The input window is measured on the system clock; pass the current
+      // cycle (0 when no console is loaded, e.g. in the launcher, where no
+      // controller reads occur)
+      myEvent.beginInputWindow(currentSystemCycles());
+      pollEvent();
+      myEvent.finalizeInputWindow();
+    }
 
     /**
       Initialize state of this eventhandler.
@@ -156,6 +176,14 @@ class EventHandler
 
     void enterMenuMode(EventHandlerState state);
     void leaveMenuMode();
+    void openDialog(Dialog* dialog);
+  #ifdef GUI_SUPPORT
+    void openBrowserDialog(string_view title, string_view startpath,
+                           BrowserDialog::Mode mode,
+                           const BrowserDialog::Command& command,
+                           const FSNode::NameFilter& namefilter = {
+                            [](const FSNode&) { return true; } });
+  #endif
     bool enterDebugMode();
     void leaveDebugMode();
     void enterTimeMachineMenuMode(uInt32 numWinds, bool unwind);
@@ -342,7 +370,7 @@ class EventHandler
     /**
       Return a simple list of all physical joysticks currently in the internal database
     */
-    PhysicalJoystickHandler::MinStrickInfoList physicalJoystickList() const {
+    PhysicalJoystickHandler::MinStickInfoList physicalJoystickList() const {
       return myPJoyHandler->minStickList();
     }
 
@@ -374,6 +402,7 @@ class EventHandler
     */
     virtual void copyText(const string& text) const = 0;
     virtual string pasteText(string& text) const = 0;
+    virtual bool hasClipboardText() const = 0;
   #endif
 
     /**
@@ -418,7 +447,7 @@ class EventHandler
     void handleJoyAxisEvent(int stick, int axis, int value) {
       myPJoyHandler->handleAxisEvent(stick, axis, value);
     }
-    void handleJoyHatEvent(int stick, int hat, int value) {
+    void handleJoyHatEvent(int stick, int hat, JoyHatMask value) {
       myPJoyHandler->handleHatEvent(stick, hat, value);
     }
 
@@ -441,9 +470,11 @@ class EventHandler
       WINDOW_LEAVE,
       WINDOW_FOCUS_GAINED,
       WINDOW_FOCUS_LOST,
-      THEME_CHANGED
+      THEME_CHANGED,
+      DROP_FILE
     };
     void handleSystemEvent(SystemEvent e, int data1 = 0, int data2 = 0);
+    void handleDropfileEvent(string_view file);
 
     /**
       Add the given joystick to the list of physical joysticks available to
@@ -452,7 +483,7 @@ class EventHandler
     void addPhysicalJoystick(const PhysicalJoystickPtr& joy);
 
     /**
-      Remove physical joystick with the givem id.
+      Remove physical joystick with the given id.
     */
     void removePhysicalJoystick(int id);
 
@@ -471,12 +502,18 @@ class EventHandler
     static const Event::EventSet DebugEvents;
 
     /**
+      The current System::cycles(), or 0 when no console is loaded.  Used by
+      pollInput() to stamp the input window on the system clock.
+    */
+    uInt64 currentSystemCycles() const;
+
+    /**
       The following methods take care of assigning action mappings.
     */
     void setActionMappings(EventMode mode);
     void setDefaultKeymap(Event::Type, EventMode mode);
     void setDefaultJoymap(Event::Type, EventMode mode);
-    static nlohmann::json convertLegacyComboMapping(string lst);
+    static nlohmann::json convertLegacyComboMapping(string_view lst);
     void saveComboMapping();
 
     static StringList getActionList(EventMode mode);
@@ -530,6 +567,10 @@ class EventHandler
     // of the 7800 (for now, only the switches are notified)
     bool myIs7800{false};
 
+    // Keep track of when text events are enabled, and don't send such
+    // events when we shouldn't
+    bool myTextEventsEnabled{false};
+
     // These constants are not meant to be used elsewhere; they are only used
     // here to make it easier for the reader to correctly size the list(s)
     static constexpr Int32
@@ -558,6 +599,7 @@ class EventHandler
     using MenuActionList = std::array<ActionList, MENU_ACTIONLIST_SIZE>;
     static MenuActionList ourMenuActionList;
 
+  private:
     // Following constructors and assignment operators not supported
     EventHandler() = delete;
     EventHandler(const EventHandler&) = delete;
@@ -566,4 +608,4 @@ class EventHandler
     EventHandler& operator=(EventHandler&&) = delete;
 };
 
-#endif
+#endif  // EVENT_HANDLER_HXX

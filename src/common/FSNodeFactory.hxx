@@ -15,10 +15,12 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef FSNODE_FACTORY_HXX
-#define FSNODE_FACTORY_HXX
+#ifndef FS_NODE_FACTORY_HXX
+#define FS_NODE_FACTORY_HXX
 
 class AbstractFSNode;
+
+#include <cassert>
 
 #ifdef ZIP_SUPPORT
   #include "FSNodeZIP.hxx"
@@ -41,41 +43,34 @@ class AbstractFSNode;
 class FSNodeFactory
 {
   public:
+    FSNodeFactory() = delete;
+
     enum class Type: uInt8 { SYSTEM, ZIP };
 
   public:
-    static unique_ptr<AbstractFSNode> create(string_view path, Type type)
+    static AbstractFSNodePtr create(string_view path, Type type)
     {
       switch(type)
       {
         case Type::SYSTEM:
         #if defined(BSPF_UNIX) || defined(BSPF_MACOS)
-          return std::make_unique<FSNodePOSIX>(path);
+          return std::make_shared<FSNodePOSIX>(path);
         #elif defined(BSPF_WINDOWS)
-          return std::make_unique<FSNodeWINDOWS>(path);
+          return std::make_shared<FSNodeWINDOWS>(path);
         #elif defined(__LIB_RETRO__)
-          return std::make_unique<FSNodeLIBRETRO>(path);
+          return std::make_shared<FSNodeLIBRETRO>(path);
         #endif
-          break;
         case Type::ZIP:
         #ifdef ZIP_SUPPORT
-          return std::make_unique<FSNodeZIP>(path);
+          return std::make_shared<FSNodeZIP>(path);
+        #else
+          throw std::runtime_error("ZIP support not compiled in");
         #endif
-          break;
         default:
-          break;
+          assert(false);  // all Type values handled above
       }
       return nullptr;  // satisfy compiler
     }
-
-  private:
-    // Following constructors and assignment operators not supported
-    FSNodeFactory() = delete;
-    ~FSNodeFactory() = delete;
-    FSNodeFactory(const FSNodeFactory&) = delete;
-    FSNodeFactory(FSNodeFactory&&) = delete;
-    FSNodeFactory& operator=(const FSNodeFactory&) = delete;
-    FSNodeFactory& operator=(FSNodeFactory&&) = delete;
 };
 
-#endif
+#endif  // FS_NODE_FACTORY_HXX

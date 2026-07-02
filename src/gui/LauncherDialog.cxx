@@ -100,10 +100,8 @@ void LauncherDialog::addTitleWidget(int &ypos)
   const int fontHeight   = Dialog::fontHeight(),
             VGAP         = Dialog::vGap();
   // App information
-  std::ostringstream ver;
-  ver << "Stella " << STELLA_VERSION;
   new StaticTextWidget(this, _font, 1, ypos, _w - 2, fontHeight,
-                       ver.view(), TextAlign::Center);
+                       std::format("Stella {}", STELLA_VERSION), TextAlign::Center);
   ypos += fontHeight + VGAP;
 }
 
@@ -142,7 +140,7 @@ void LauncherDialog::addFilteringWidgets(int& ypos)
     const int bwSettings = iconButtonWidth + lwSettings + btnGap * 2 + 1;   // Button width for Options button
 
     // Setup some variables for handling the Filter label + field
-    const string& lblFilter = "Filter";
+    string_view lblFilter = "Filter";
     int lwFilter = _font.getStringWidth(lblFilter);
 
     string lblFound = "12345 items found";
@@ -219,7 +217,7 @@ void LauncherDialog::addFilteringWidgets(int& ypos)
     mySettingsButton = new ButtonWidget(this, _font, xpos, ypos - btnYOfs,
                                         iconWidth, buttonHeight, settingsIcon,
                                         iconGap, lblSettings, kOptionsCmd);
-    mySettingsButton-> setToolTip("Open Options dialog (Ctrl+O)");
+    mySettingsButton->setToolTip("Open Options dialog (Ctrl+O)");
     wid.push_back(mySettingsButton);
 
     ypos = mySettingsButton->getBottom() + Dialog::vGap();
@@ -272,8 +270,8 @@ void LauncherDialog::addPathWidgets(int& ypos)
     xpos = _w - HBORDER - (buttonWidth + BTN_GAP - 2);
     myHelpButton = new ButtonWidget(this, _font, xpos, ypos - btnYOfs,
                                     buttonWidth, buttonHeight, helpIcon, kHelpCmd);
-    const string key = instance().eventHandler().getMappingDesc(Event::UIHelp, EventMode::kMenuMode);
-    myHelpButton->setToolTip("Click for help. (" + key + ")");
+    myHelpButton->setToolTip(std::format("Click for help. ({})",
+      instance().eventHandler().getMappingDesc(Event::UIHelp, EventMode::kMenuMode)));
     myHelpButton->setEnabled(true);
     wid.push_back(myHelpButton);
   }
@@ -423,10 +421,11 @@ const string& LauncherDialog::selectedRomMD5()
     myMD5List.clear();
 
   // Lookup MD5, and if not present, cache it
-  if(!myMD5List.contains(currentNode().getPath()))
-    myMD5List[currentNode().getPath()] = OSystem::getROMMD5(currentNode());
-
-  return myMD5List[currentNode().getPath()];
+  const auto [it, _] = myMD5List.try_emplace(
+    currentNode().getPath(), "");
+  if(it->second.empty())
+    it->second = OSystem::getROMMD5(currentNode());
+  return it->second;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -507,7 +506,7 @@ void LauncherDialog::loadConfig()
     if(!myList->isDirectory(node))
       node = FSNode("~");
 
-    myList->setDirectory(node, settings.getString("lastrom"));
+    myList->setInitialDirectory(node, settings.getString("lastrom"));
     updateUI();
   }
   Dialog::setFocus(getFocusList()[mySelectedItem]);
@@ -543,10 +542,9 @@ void LauncherDialog::updateUI()
   myNavigationBar->updateUI();
 
   // Indicate how many files were found
-  std::ostringstream buf;
-  buf << (myList->getList().size() - (currentDir().hasParent() ? 1 : 0))
-    << (myShortCount ? " items" : " items found");
-  myRomCount->setLabel(buf.view());
+  myRomCount->setLabel(std::format("{} {}",
+    myList->getList().size() - (currentDir().hasParent() ? 1 : 0),
+    myShortCount ? "items" : "items found"));
 
   loadRomInfo();
 }
@@ -557,7 +555,7 @@ string LauncherDialog::getRomDir()
   const Settings& settings = instance().settings();
   const string& tmpromdir = settings.getString("tmpromdir");
 
-  return tmpromdir != EmptyString() ? tmpromdir : settings.getString("romdir");
+  return !tmpromdir.empty() ? tmpromdir : settings.getString("romdir");
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -677,25 +675,29 @@ void LauncherDialog::loadRomInfo()
   myPendingRomInfo = true;
 
   const string& md5 = selectedRomMD5();
+  Properties properties;
   if(!md5.empty())
   {
-    // The properties for the currently selected ROM
-    Properties properties;
-
     // Make sure to load a per-ROM properties entry, if one exists
     instance().propSet().loadPerROM(currentNode(), md5);
 
     // And now get the properties for this ROM
     instance().propSet().getMD5(md5, properties);
-
-    myRomImageWidget->setProperties(currentNode(), properties, false);
-    myRomInfoWidget->setProperties(currentNode(), properties, false);
   }
   else
   {
-    myRomImageWidget->clearProperties();
-    myRomInfoWidget->clearProperties();
+    const Bankswitch::Type type = Bankswitch::typeFromExtension(currentNode());
+    if(type == Bankswitch::Type::AUTO)
+    {
+      myRomImageWidget->clearProperties();
+      myRomInfoWidget->clearProperties();
+      return;
+    }
+    properties.set(PropType::Cart_Name, currentNode().getBaseName());
+    properties.set(PropType::Cart_Type, Bankswitch::typeToName(type));
   }
+  myRomImageWidget->setProperties(currentNode(), properties, false);
+  myRomInfoWidget->setProperties(currentNode(), properties, false);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -707,25 +709,31 @@ void LauncherDialog::loadPendingRomInfo()
     return;
 
   const string& md5 = selectedRomMD5();
-  if(md5 != EmptyString())
+  Properties properties;
+  if(!md5.empty())
   {
-    // The properties for the currently selected ROM
-    Properties properties;
-
     // Make sure to load a per-ROM properties entry, if one exists
     instance().propSet().loadPerROM(currentNode(), md5);
 
     // And now get the properties for this ROM
     instance().propSet().getMD5(md5, properties);
-    myRomImageWidget->setProperties(currentNode(), properties);
-    myRomInfoWidget->setProperties(currentNode(), properties);
   }
+  else
+  {
+    const Bankswitch::Type type = Bankswitch::typeFromExtension(currentNode());
+    if(type == Bankswitch::Type::AUTO)
+      return;
+    properties.set(PropType::Cart_Name, currentNode().getBaseName());
+    properties.set(PropType::Cart_Type, Bankswitch::typeToName(type));
+  }
+  myRomImageWidget->setProperties(currentNode(), properties);
+  myRomInfoWidget->setProperties(currentNode(), properties);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void LauncherDialog::handleFavoritesChanged()
 {
-  if (instance().settings().getBool("favorites"))
+  if(instance().settings().getBool("favorites"))
   {
     myList->loadFavorites();
   }
@@ -802,44 +810,44 @@ void LauncherDialog::handleKeyDown(StellaKey key, StellaMod mod, bool repeated)
       handled = true;
       switch(key)
       {
-        case KBDK_D:
+        case StellaKey::D:
           sendCommand(kSubDirsCmd, 0, 0);
           break;
 
-        case KBDK_E:
+        case StellaKey::E:
           toggleExtensions();
           break;
 
-        case KBDK_F:
+        case StellaKey::F:
           myList->toggleUserFavorite();
           break;
 
-        case KBDK_G:
+        case StellaKey::G:
           openGameProperties();
           break;
 
-        case KBDK_H:
+        case StellaKey::H:
           if(instance().highScores().enabled())
             openHighScores();
           break;
 
-        case KBDK_O:
+        case StellaKey::O:
           openSettings();
           break;
 
-        case KBDK_P:
+        case StellaKey::P:
           openGlobalProps();
           break;
 
-        case KBDK_R:
+        case StellaKey::R:
           reload();
           break;
 
-        case KBDK_S:
+        case StellaKey::S:
           toggleSorting();
           break;
 
-        case KBDK_X:
+        case StellaKey::X:
           myList->removeFavorite();
           reload();
           break;
@@ -849,7 +857,7 @@ void LauncherDialog::handleKeyDown(StellaKey key, StellaMod mod, bool repeated)
           break;
       }
     }
-    else if(StellaModTest::isAlt(mod) && key == KBDK_R)
+    else if(StellaModTest::isAlt(mod) && key == StellaKey::R)
     {
       loadRandomRom();
       handled = true;
@@ -1033,7 +1041,7 @@ void LauncherDialog::handleCommand(CommandSender* sender, int cmd,
 
     case kRomDirChosenCmd:
     {
-      const string romDir = instance().settings().getString("romdir");
+      string_view romDir = instance().settings().getString("romdir");
 
       if(myList->currentDir().getPath() != romDir)
       {
@@ -1042,7 +1050,7 @@ void LauncherDialog::handleCommand(CommandSender* sender, int cmd,
         if(!myList->isDirectory(node))
           node = FSNode("~");
 
-        myList->setDirectory(node);
+        myList->setInitialDirectory(node);
       }
       if(romDir != instance().settings().getString("startromdir"))
       {
@@ -1083,7 +1091,7 @@ void LauncherDialog::handleCommand(CommandSender* sender, int cmd,
     {
       const string& url = myRomInfoWidget->getUrl();
 
-      if(url != EmptyString())
+      if(!url.empty())
         MediaFactory::openURL(url);
       break;
     }
@@ -1102,12 +1110,12 @@ void LauncherDialog::loadRom()
   saveConfig();
 
   const string& result = instance().createConsole(currentNode(), selectedRomMD5());
-  if(result == EmptyString())
+  if(result.empty())
   {
     instance().settings().setValue("lastrom", myList->getSelectedString());
 
     // If romdir has never been set, set it now based on the selected rom
-    if(instance().settings().getString("romdir") == EmptyString())
+    if(instance().settings().getString("romdir").empty())
       instance().settings().setValue("romdir", currentNode().getParent().getShortPath());
   }
   else
@@ -1190,10 +1198,6 @@ void LauncherDialog::openContextMenu(int x, int y)
       items.emplace_back(instance().settings().getBool("altsorting")
         ? "Normal sorting"
         : "Alternative sorting", "Ctrl+S", "sorting");
-    //if(!instance().settings().getBool("launcherbuttons"))
-    //{
-    //  items.emplace_back("Options" + ELLIPSIS, "Ctrl+O", "options");
-    //}
   }
   if(addCancel)
     items.emplace_back("Cancel", ""); // closes the context menu and does nothing
@@ -1239,7 +1243,7 @@ void LauncherDialog::openSettings()
   saveConfig();
 
   // Create an options dialog, similar to the in-game one
-  if (instance().settings().getBool("basic_settings"))
+  if(instance().settings().getBool("basic_settings"))
     myDialog = std::make_unique<StellaSettingsDialog>(instance(), parent(),
                                                  _w, _h, AppMode::launcher);
   else
@@ -1359,12 +1363,13 @@ void LauncherDialog::removeAll(string_view name)
   StringList msg;
 
   msg.emplace_back("This will remove ALL ROMs from");
-  msg.emplace_back("your '" + string{name} + "' list!");
+  msg.emplace_back(std::format("your '{}' list!", name));
   msg.emplace_back("");
   msg.emplace_back("Are you sure?");
-  myConfirmMsg = std::make_unique<GUI::MessageBox>
-    (this, _font, msg, _w, _h, kRmAllPop,
-      "Yes", "No", "Remove all " + string{name}, false);
+
+  myConfirmMsg = std::make_unique<GUI::MessageBox>(
+    this, _font, msg, _w, _h, kRmAllPop,
+    "Yes", "No", std::format("Remove all {}", name), false);
   myConfirmMsg->show();
 }
 

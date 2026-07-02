@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef FBSURFACE_SDL_HXX
-#define FBSURFACE_SDL_HXX
+#ifndef FB_SURFACE_SDL_HXX
+#define FB_SURFACE_SDL_HXX
 
 #include "bspf.hxx"
 #include "FBSurface.hxx"
@@ -34,6 +34,8 @@ class FBSurfaceSDL : public FBSurface
   public:
     FBSurfaceSDL(FBBackendSDL& backend, uInt32 width, uInt32 height,
                  ScalingInterpolation inter, const uInt32* staticData);
+    FBSurfaceSDL(FBBackendSDL& backend, SDL_Surface* surface,
+                 ScalingInterpolation inter);
     ~FBSurfaceSDL() override;
 
     // Most of the surface drawing primitives are implemented in FBSurface;
@@ -131,4 +133,4 @@ class FBSurfaceSDL : public FBSurface
     Common::Rect mySrcGUIR, myDstGUIR;
 };
 
-#endif
+#endif  // FB_SURFACE_SDL_HXX

@@ -15,13 +15,12 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef STELLA_OPTIONS_DIALOG_HXX
-#define STELLA_OPTIONS_DIALOG_HXX
+#ifndef STELLA_SETTINGS_DIALOG_HXX
+#define STELLA_SETTINGS_DIALOG_HXX
 
 class PopUpWidget;
 
 #include "Props.hxx"
-#include "OptionsMenu.hxx"
 #include "Dialog.hxx"
 
 #include "HelpDialog.hxx"
@@ -122,4 +121,4 @@ class StellaSettingsDialog : public Dialog
     StellaSettingsDialog& operator=(StellaSettingsDialog&&) = delete;
 };
 
-#endif
+#endif  // STELLA_SETTINGS_DIALOG_HXX

@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEEFF_HXX
-#define CARTRIDGEEFF_HXX
+#ifndef CARTRIDGE_EFF_HXX
+#define CARTRIDGE_EFF_HXX
 
 class System;
 
@@ -28,10 +28,13 @@ class System;
 #endif
 
 /**
-   Based on EF, the EFF cartridge adds strobe addresses for i2c access to
-   an EEPROM, like an on-cartridge SaveKey interface.
+  EFF is EF (16 banks, 64K, hotspots $1FE0-$1FEF) extended with an on-board
+  24LC16B EEPROM accessed via I2C.  Two additional strobe addresses in the
+  cartridge space drive the I2C SDA and SCL lines, providing non-volatile
+  storage equivalent to the external SaveKey or AtariVox peripherals but wired
+  permanently onto the PCB.  The banking mechanism is otherwise identical to EF.
 
-   @author Stephen Anthony, Thomas Jentzsch, Bruce-Robert Pocock
+  @author Stephen Anthony, Thomas Jentzsch, Bruce-Robert Pocock
 */
 class CartridgeEFF : public CartridgeEF
 {
@@ -41,13 +44,12 @@ class CartridgeEFF : public CartridgeEF
     /**
        Create a new cartridge using the specified image
 
-       @param image     Pointer to the ROM image
-       @param size      The size of the ROM image
+       @param image     Span of the ROM image
        @param md5       The md5sum of the ROM image
        @param settings  A reference to the various settings (read-only)
        @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeEFF(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeEFF(ByteSpan image, string_view md5,
                  const Settings& settings, size_t bsSize = 64_KB);
     ~CartridgeEFF() override = default;
 
@@ -99,4 +101,4 @@ class CartridgeEFF : public CartridgeEF
     CartridgeEFF& operator=(CartridgeEFF&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_EFF_HXX

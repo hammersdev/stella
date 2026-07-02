@@ -37,7 +37,7 @@ class CheckListWidget : public ListWidget
     ~CheckListWidget() override = default;
 
     void setList(const StringList& list, const BoolArray& state);
-    void setLine(int line, string_view str, const bool& state);
+    void setLine(int line, string_view str, bool state);
 
     bool getState(int line) const;
     bool getSelectedState() const { return getState(_selectedItem); }
@@ -63,4 +63,4 @@ class CheckListWidget : public ListWidget
     CheckListWidget& operator=(CheckListWidget&&) = delete;
 };
 
-#endif
+#endif  // CHECK_LIST_WIDGET_HXX

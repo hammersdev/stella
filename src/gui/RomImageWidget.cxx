@@ -51,7 +51,7 @@ void RomImageWidget::setProperties(const FSNode& node,
   myProperties = properties;
 
   // Decide whether the information should be shown immediately
-  if(instance().eventHandler().state() == EventHandlerState::LAUNCHER)
+  if(instance().eventHandler().state() == EventHandlerState::LAUNCHER) [[likely]]
     parseProperties(node, full);
 #ifdef DEBUGGER_SUPPORT
   else
@@ -70,7 +70,7 @@ void RomImageWidget::clearProperties()
     mySurface->setVisible(false);
 
   // Decide whether the information should be shown immediately
-  if(instance().eventHandler().state() == EventHandlerState::LAUNCHER)
+  if(instance().eventHandler().state() == EventHandlerState::LAUNCHER) [[likely]]
     setDirty();
 #ifdef DEBUGGER_SUPPORT
   else
@@ -142,7 +142,7 @@ void RomImageWidget::parseProperties(const FSNode& node, bool full)
     const string& path = instance().snapshotLoadDir().getPath();
 
     // 1. Try to load first snapshot by property name
-    string fileName = path + myProperties.get(PropType::Cart_Name);
+    string fileName = std::format("{}{}", path, myProperties.get(PropType::Cart_Name));
     tryImageFormats(fileName);
     if(!mySurfaceIsValid)
     {
@@ -162,11 +162,11 @@ void RomImageWidget::parseProperties(const FSNode& node, bool full)
   else
   {
     const string oldFileName = !myImageList.empty()
-        ? myImageList[0].getPath() : EmptyString();
+        ? myImageList[0].getPath() : string{};
 
     // Try to find all snapshots by property and ROM file name
     myImageList.clear();
-    getImageList(myProperties.get(PropType::Cart_Name), node.getNameWithExt(),
+    getImageList(string{myProperties.get(PropType::Cart_Name)}, node.getBaseName(),
       oldFileName);
 
     // The first file found before must not be the first file now, if files by
@@ -242,13 +242,12 @@ bool RomImageWidget::getImageList(const string& propName, const string& romName,
     (const FSNode& node1, const FSNode& node2)
     {
       const int compare = BSPF::compareIgnoreCase(
-        node1.getNameWithExt(), node2.getNameWithExt());
+        node1.getBaseName(), node2.getBaseName());
       return
         compare < 0 ||
         // PNGs first!
         (compare == 0 &&
-          node1.getName().substr(node1.getName().find_last_of('.') + 1) >
-          node2.getName().substr(node2.getName().find_last_of('.') + 1)) ||
+          node2.getName().ends_with(".png") && !node1.getName().ends_with(".png")) ||
         // Make sure that first image found in initial load is first image now too
         node1.getName() == oldFileName;
     }
@@ -277,9 +276,7 @@ bool RomImageWidget::loadImage(const string& fileName)
 {
   mySurfaceErrorMsg.clear();
 
-  const string::size_type idx = fileName.find_last_of('.');
-
-  if(idx != string::npos && fileName.substr(idx + 1) == "png")
+  if(fileName.ends_with(".png"))
     mySurfaceIsValid = loadPng(fileName);
   else
     mySurfaceIsValid = loadJpg(fileName);
@@ -293,7 +290,7 @@ bool RomImageWidget::loadImage(const string& fileName)
   if(mySurface)
     mySurface->setVisible(mySurfaceIsValid);
 
-  if (!myZoomMode)
+  if(!myZoomMode)
     myZoomTimer = 0;
   setDirty();
   return mySurfaceIsValid;
@@ -305,7 +302,7 @@ bool RomImageWidget::loadPng(const string& fileName)
   try
   {
     VariantList metaData;
-    instance().png().loadImage(fileName, *mySurface, metaData);
+    PNGLibrary::loadImage(fileName, *mySurface, metaData);
 
     // Retrieve label for loaded image
     myLabel.clear();
@@ -499,7 +496,7 @@ void RomImageWidget::handleMouseMoved(int x, int y)
 {
   const Area oldArea = myMouseArea;
 
-  myMousePos = Common::Point(x, y);
+  myMousePos = Common::Point{x, y};
 
   if(myZoomRect.contains(x, y))
     myMouseArea = Area::ZOOM;
@@ -530,7 +527,7 @@ void RomImageWidget::tick()
 
   Widget::tick();
 }
-#endif // IMAGE_SUPPORT
+#endif  // IMAGE_SUPPORT
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void RomImageWidget::drawWidget(bool hilite)
@@ -565,16 +562,15 @@ void RomImageWidget::drawWidget(bool hilite)
     }
 
   // Draw the image label and counter
-  std::ostringstream buf;
-  buf << myImageIdx + 1 << "/" << myImageList.size();
+  const string buf = std::format("{}/{}", myImageIdx + 1, myImageList.size());
+  const int wText = _font.getStringWidth(buf) + 8;
   const int yText = _y + _h - _font.getFontHeight() * 10 / 8;
-  const int wText = _font.getStringWidth(buf.view()) + 8;
 
   s.fillRect(_x, yText, _w, _font.getFontHeight(), _bgcolor);
   if(!myLabel.empty())
     s.drawString(_font, myLabel, _x + 8, yText, _w - wText - 16 - _font.getMaxCharWidth() * 2, _textcolor);
   if(!myImageList.empty())
-    s.drawString(_font, buf.view(), _x + _w - wText, yText, wText, _textcolor);
+    s.drawString(_font, buf, _x + _w - wText, yText, wText, _textcolor);
 
   // Draw the navigation icons
   myNavSurface->invalidate();

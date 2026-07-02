@@ -15,10 +15,13 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef EVENTHANDLER_CONSTANTS_HXX
-#define EVENTHANDLER_CONSTANTS_HXX
+#ifndef EVENT_HANDLER_CONSTANTS_HXX
+#define EVENT_HANDLER_CONSTANTS_HXX
 
 #include <string>
+
+#include "BitmaskEnum.hxx"
+#include "bspf.hxx"
 
 // Enumeration representing the different states of operation
 enum class EventHandlerState: uInt8 {
@@ -32,6 +35,7 @@ enum class EventHandlerState: uInt8 {
   HIGHSCORESMENU,
   MESSAGEMENU,
   PLUSROMSMENU,
+  OVERLAYMENU,
   DEBUGGER,
   NONE
 };
@@ -45,25 +49,25 @@ enum class MouseButton: uInt8 {
   NONE
 };
 
-static constexpr int JOY_CTRL_NONE = -1;
+static constexpr int JOY_CTRL_NONE = 0x7FFFFFFF;
 
-enum class JoyAxis: Int8 {
-  X = 0,    // make sure these are set correctly,
-  Y = 1,    // since they'll be used as array indices
-  Z = 2,
-  A3 = 3,
-  A4 = 4,
-  A5 = 5,
-  A6 = 6,
-  A7 = 7,
-  NONE = JOY_CTRL_NONE
+enum class JoyAxis: uInt8 {
+  X    = 0,    // make sure these are set correctly,
+  Y    = 1,    // since they'll be used as array indices
+  Z    = 2,
+  A3   = 3,
+  A4   = 4,
+  A5   = 5,
+  A6   = 6,
+  A7   = 7,
+  NONE = 0xFF
 };
 
-enum class JoyDir: Int8 {
-  NEG = -1,
-  POS = 1,
-  NONE = 0,
-  ANALOG = 2
+enum class JoyDir: uInt8 {
+  NONE   = 0,
+  NEG    = 1,
+  POS    = 2,
+  ANALOG = 3
 };
 
 enum class JoyHatDir: uInt8 {
@@ -74,13 +78,15 @@ enum class JoyHatDir: uInt8 {
   CENTER = 4
 };
 
-enum JoyHatMask: uInt8 {      // NOLINT / TODO masks can't be 'enum class'
-  EVENT_HATUP_M     = 1<<0,
-  EVENT_HATDOWN_M   = 1<<1,
-  EVENT_HATLEFT_M   = 1<<2,
-  EVENT_HATRIGHT_M  = 1<<3,
-  EVENT_HATCENTER_M = 1<<4
+enum class JoyHatMask: uInt8 {
+  NONE   = 0,
+  UP     = 1 << 0,
+  DOWN   = 1 << 1,
+  LEFT   = 1 << 2,
+  RIGHT  = 1 << 3,
+  CENTER = 1 << 4
 };
+template<> inline constexpr bool Bitmask::is_enum_v<JoyHatMask> = true;
 
 enum class EventMode: uInt8 {
   kEmulationMode, // active mapping used for emulation
@@ -97,19 +103,19 @@ enum class EventMode: uInt8 {
 };
 
 namespace GUI {
-  static constexpr std::string_view SELECT = "Select";
-  static constexpr std::string_view LEFT_DIFFICULTY = "Left difficulty";
-  static constexpr std::string_view LEFT_DIFFICULTY_A = "Left difficulty A";
-  static constexpr std::string_view LEFT_DIFFICULTY_B = "Left difficulty B";
-  static constexpr std::string_view RIGHT_DIFFICULTY = "Right difficulty";
-  static constexpr std::string_view RIGHT_DIFFICULTY_A = "Right difficulty A";
-  static constexpr std::string_view RIGHT_DIFFICULTY_B = "Right difficulty B";
-  static constexpr std::string_view LEFT_DIFF = "Left Diff";
-  static constexpr std::string_view LEFT_DIFF_A = "Left Diff A";
-  static constexpr std::string_view LEFT_DIFF_B = "Left Diff B";
-  static constexpr std::string_view RIGHT_DIFF = "Right Diff";
-  static constexpr std::string_view RIGHT_DIFF_A = "Right Diff A";
-  static constexpr std::string_view RIGHT_DIFF_B = "Right Diff B";
+  static constexpr string_view SELECT = "Select";
+  static constexpr string_view LEFT_DIFFICULTY = "Left difficulty";
+  static constexpr string_view LEFT_DIFFICULTY_A = "Left difficulty A";
+  static constexpr string_view LEFT_DIFFICULTY_B = "Left difficulty B";
+  static constexpr string_view RIGHT_DIFFICULTY = "Right difficulty";
+  static constexpr string_view RIGHT_DIFFICULTY_A = "Right difficulty A";
+  static constexpr string_view RIGHT_DIFFICULTY_B = "Right difficulty B";
+  static constexpr string_view LEFT_DIFF = "Left Diff";
+  static constexpr string_view LEFT_DIFF_A = "Left Diff A";
+  static constexpr string_view LEFT_DIFF_B = "Left Diff B";
+  static constexpr string_view RIGHT_DIFF = "Right Diff";
+  static constexpr string_view RIGHT_DIFF_A = "Right Diff A";
+  static constexpr string_view RIGHT_DIFF_B = "Right Diff B";
 }  // namespace GUI
 
-#endif // EVENTHANDLER_CONSTANTS_HXX
+#endif  // EVENT_HANDLER_CONSTANTS_HXX

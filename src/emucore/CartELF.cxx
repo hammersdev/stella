@@ -15,9 +15,10 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
+#include <iomanip>
 #include <sstream>
-#include <fstream>
 
+#include "FSNode.hxx"
 #include "System.hxx"
 #include "ElfLinker.hxx"
 #include "ElfEnvironment.hxx"
@@ -32,8 +33,6 @@
 #endif
 
 #include "CartELF.hxx"
-
-// NOLINTBEGIN(bugprone-unchecked-optional-access)
 
 using namespace elfEnvironment;
 
@@ -73,6 +72,7 @@ namespace {
     }
   }
 
+  // NOLINTBEGIN(bugprone-unchecked-optional-access)
   void dumpLinkage(const ElfParser& parser, const ElfLinker& linker, std::ostream& stream)
   {
     stream << std::hex << std::setfill('0');
@@ -153,27 +153,25 @@ namespace {
 
     stream << std::dec;
   }
+  // NOLINTEND(bugprone-unchecked-optional-access)
 
   void writeDebugBinary(const ElfLinker& linker)
   {
     constexpr size_t IMAGE_SIZE = 4L * 0x00100000;
-    static const char* IMAGE_FILE_NAME = "elf_executable_image.bin";
+    static constexpr string_view IMAGE_FILE_NAME = "elf_executable_image.bin";
 
     auto binary = std::make_unique<uInt8[]>(IMAGE_SIZE);
-    std::memset(binary.get(), 0, IMAGE_SIZE);
+    std::fill_n(binary.get(), IMAGE_SIZE, uInt8{0});
 
-    for (auto segment: {ElfLinker::SegmentType::text, ElfLinker::SegmentType::data, ElfLinker::SegmentType::rodata})
-      std::memcpy(
-        binary.get() + linker.getSegmentBase(segment),
-        linker.getSegmentData(segment),
-        linker.getSegmentSize(segment)
-      );
+    for (auto segment: {ElfLinker::SegmentType::text, ElfLinker::SegmentType::data,
+                        ElfLinker::SegmentType::rodata})
+      std::copy_n(linker.getSegmentData(segment),
+                  linker.getSegmentSize(segment),
+                  binary.get() + linker.getSegmentBase(segment));
 
     {
-      std::ofstream binaryFile;
-
-      binaryFile.open(IMAGE_FILE_NAME);
-      binaryFile.write(reinterpret_cast<const char*>(binary.get()), 4L * 0x00100000);
+      auto binaryFile = FSNode(IMAGE_FILE_NAME).openOFStream();
+      binaryFile.write(reinterpret_cast<const char*>(binary.get()), IMAGE_SIZE);
     }
 
     cout << "wrote executable image to " << IMAGE_FILE_NAME << '\n';
@@ -183,7 +181,7 @@ namespace {
   {
     if (!props) return SystemType::ntsc;
 
-    const string& displayFormat = props->get(PropType::Display_Format);
+    string_view displayFormat = props->get(PropType::Display_Format);
 
     if(displayFormat == "PAL" || displayFormat == "SECAM") return SystemType::pal;
     if(displayFormat == "PAL60") return SystemType::pal60;
@@ -224,18 +222,16 @@ namespace {
 }  // namespace
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CartridgeELF::CartridgeELF(const ByteBuffer& image, size_t size, string_view md5,
+CartridgeELF::CartridgeELF(ByteSpan image, string_view md5,
                            const Settings& settings)
   : Cartridge(settings, md5),
-    myImageSize{size},
     myTransactionQueue{TRANSACTION_QUEUE_CAPACITY},
     myVcsLib{myTransactionQueue}
 {
-  myImage = std::make_unique<uInt8[]>(size);
-  std::memcpy(myImage.get(), image.get(), size);
+  myImage.assign(image.size(), 0);
+  std::copy_n(image.data(), image.size(), myImage.data());
 
-  myLastPeekResult = std::make_unique<uInt8[]>(0x1000);
-  std::fill_n(myLastPeekResult.get(), 0x1000, 0);
+  myLastPeekResult.assign(0x1000, 0);
 
   createRomAccessArrays(0x1000);
 
@@ -246,6 +242,8 @@ CartridgeELF::CartridgeELF(const ByteBuffer& image, size_t size, string_view md5
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeELF::reset()
 {
+  Cartridge::reset();
+
   setupConfig();
   resetWithConfig();
 }
@@ -279,7 +277,7 @@ bool CartridgeELF::save(Serializer& out) const
     out.putInt(myInitFunctionIndex);
     out.putByte(static_cast<uInt8>(myConsoleTiming));
 
-    out.putByteArray(std::span{myLastPeekResult.get(), 0x1000});
+    out.putByteArray(myLastPeekResult);
 
     if (!myTransactionQueue.save(out)) return false;
     if (!myCortexEmu.save(out)) return false;
@@ -312,7 +310,7 @@ bool CartridgeELF::load(Serializer& in)
     myInitFunctionIndex = in.getInt();
     myConsoleTiming = static_cast<ConsoleTiming>(in.getByte());
 
-    in.getByteArray(std::span{myLastPeekResult.get(), 0x1000});
+    in.getByteArray(ByteMSpan{myLastPeekResult});
 
     if (!myTransactionQueue.load(in)) return false;
     if (!myCortexEmu.load(in)) return false;
@@ -354,9 +352,8 @@ void CartridgeELF::consoleChanged(ConsoleTiming timing)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-const ByteBuffer& CartridgeELF::getImage(size_t& size) const
+ByteSpan CartridgeELF::getImage() const
 {
-  size = myImageSize;
   return myImage;
 }
 
@@ -413,20 +410,18 @@ string CartridgeELF::getDebugLog() const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-std::pair<unique_ptr<uInt8[]>, size_t> CartridgeELF::getArmImage() const
+ByteArray CartridgeELF::getArmImage() const
 {
   constexpr size_t imageSize = ADDR_TABLES_BASE + TABLES_SIZE;
-  unique_ptr<uInt8[]> image = std::make_unique<uInt8[]>(imageSize);
+  ByteArray image(imageSize, 0);
 
-  memset(image.get(), 0, imageSize);
+  std::copy_n(mySectionStack.data(),  STACK_SIZE,  image.data() + ADDR_STACK_BASE);
+  std::copy_n(mySectionText.data(),   TEXT_SIZE,   image.data() + ADDR_TEXT_BASE);
+  std::copy_n(mySectionData.data(),   DATA_SIZE,   image.data() + ADDR_DATA_BASE);
+  std::copy_n(mySectionRodata.data(), RODATA_SIZE, image.data() + ADDR_RODATA_BASE);
+  std::copy_n(mySectionTables.data(), TABLES_SIZE, image.data() + ADDR_TABLES_BASE);
 
-  memcpy(image.get() + ADDR_STACK_BASE, mySectionStack.get(), STACK_SIZE);
-  memcpy(image.get() + ADDR_TEXT_BASE, mySectionText.get(), TEXT_SIZE);
-  memcpy(image.get() + ADDR_DATA_BASE, mySectionData.get(), DATA_SIZE);
-  memcpy(image.get() + ADDR_RODATA_BASE, mySectionRodata.get(), RODATA_SIZE);
-  memcpy(image.get() + ADDR_TABLES_BASE, mySectionTables.get(), TABLES_SIZE);
-
-  return {std::move(image), imageSize};
+  return image;
 }
 #endif
 
@@ -461,7 +456,7 @@ void CartridgeELF::parseAndLinkElf()
   const bool dump = mySettings.getBool("elf.dump");
 
   try {
-    myElfParser.parse(myImage.get(), myImageSize);
+    myElfParser.parse(myImage.data(), myImage.size());
   } catch (const ElfParser::ElfParseError& e) {
     throw std::runtime_error("failed to initialize ELF: " + string(e.what()));
   }
@@ -475,13 +470,13 @@ void CartridgeELF::parseAndLinkElf()
   try {
     myLinker->link(externalSymbols(SystemType::ntsc));
   } catch (const ElfLinker::ElfLinkError& e) {
-    throw std::runtime_error("failed to link ELF: " + string(e.what()));
+    throw std::runtime_error(std::format("failed to initialize ELF: {}", e.what()));
   }
 
   try {
     myArmEntrypoint = myLinker->findRelocatedSymbol("elf_main").value;
   } catch (const ElfLinker::ElfSymbolResolutionError& e) {
-    throw std::runtime_error("failed to resolve ARM entrypoint" + string(e.what()));
+    throw std::runtime_error(std::format("failed to resolve ARM entrypoint: {}", e.what()));
   }
 
   if (myLinker->getSegmentSize(ElfLinker::SegmentType::text) > TEXT_SIZE)
@@ -508,11 +503,11 @@ void CartridgeELF::parseAndLinkElf()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeELF::allocationSections()
 {
-  mySectionStack = std::make_unique<uInt8[]>(STACK_SIZE);
-  mySectionText = std::make_unique<uInt8[]>(TEXT_SIZE);
-  mySectionData = std::make_unique<uInt8[]>(DATA_SIZE);
-  mySectionRodata = std::make_unique<uInt8[]>(RODATA_SIZE);
-  mySectionTables = std::make_unique<uInt8[]>(TABLES_SIZE);
+  mySectionStack.assign(STACK_SIZE, 0);
+  mySectionText.assign(TEXT_SIZE, 0);
+  mySectionData.assign(DATA_SIZE, 0);
+  mySectionRodata.assign(RODATA_SIZE, 0);
+  mySectionTables.assign(TABLES_SIZE, 0);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -521,15 +516,15 @@ void CartridgeELF::setupMemoryMap(bool strictMode)
   myCortexEmu
     .resetMappings()
     .mapRegionData(ADDR_STACK_BASE / CortexM0::PAGE_SIZE,
-                   STACK_SIZE / CortexM0::PAGE_SIZE, false, mySectionStack.get())
+                   STACK_SIZE / CortexM0::PAGE_SIZE, false, mySectionStack.data())
     .mapRegionCode(ADDR_TEXT_BASE / CortexM0::PAGE_SIZE,
-                   TEXT_SIZE / CortexM0::PAGE_SIZE, strictMode, mySectionText.get())
+                   TEXT_SIZE / CortexM0::PAGE_SIZE, strictMode, mySectionText.data())
     .mapRegionData(ADDR_DATA_BASE / CortexM0::PAGE_SIZE,
-                   DATA_SIZE / CortexM0::PAGE_SIZE, false, mySectionData.get())
+                   DATA_SIZE / CortexM0::PAGE_SIZE, false, mySectionData.data())
     .mapRegionData(ADDR_RODATA_BASE / CortexM0::PAGE_SIZE,
-                   RODATA_SIZE / CortexM0::PAGE_SIZE, strictMode, mySectionRodata.get())
+                   RODATA_SIZE / CortexM0::PAGE_SIZE, strictMode, mySectionRodata.data())
     .mapRegionData(ADDR_TABLES_BASE / CortexM0::PAGE_SIZE,
-                   TABLES_SIZE / CortexM0::PAGE_SIZE, strictMode, mySectionTables.get())
+                   TABLES_SIZE / CortexM0::PAGE_SIZE, strictMode, mySectionTables.data())
     .mapRegionDelegate(ADDR_STUB_BASE / CortexM0::PAGE_SIZE,
                        STUB_SIZE / CortexM0::PAGE_SIZE, true, &myVcsLib)
     .mapDefault(&myFallbackDelegate);
@@ -632,14 +627,10 @@ void CartridgeELF::runArm()
     }
 
     if (CortexM0::getErrCustom(err) != ERR_STOP_EXECUTION) {
-      std::ostringstream s;
-
-      s
-        << "error executing ARM code (PC = 0x"
-        << std::hex << std::setw(8) << std::setfill('0') << myCortexEmu.getRegister(15)
-        << "): " << CortexM0::describeError(err);
-
-      FatalEmulationError::raise(s.str());
+      FatalEmulationError::raise(std::format(
+        "error executing ARM code (PC = 0x{:08x}): {}",
+        myCortexEmu.getRegister(15),
+        CortexM0::describeError(err)));
     }
   }
 }
@@ -702,16 +693,9 @@ CortexM0::err_t CartridgeELF::BusFallbackDelegate::handleError(
 ) const {
   if (myErrorsAreFatal) return CortexM0::errIntrinsic(err, address);
 
-  std::ostringstream s;
-
-  s
-    << "invalid " << accessType << " access to 0x"
-    << std::hex << std::setw(8) << std::setfill('0') << address
-    << " (PC = 0x"
-    << std::hex << std::setw(8) << std::setfill('0') << cortex.getRegister(15)
-    << ")";
-
-  Logger::error(s.str());
+  Logger::error(std::format(
+    "invalid {} access to 0x{:08x} (PC = 0x{:08x})",
+    accessType, address, cortex.getRegister(15)));
 
   return CortexM0::ERR_NONE;
 }
@@ -729,7 +713,7 @@ void CartridgeELF::setupConfig()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeELF::resetWithConfig()
 {
-  std::fill_n(myLastPeekResult.get(), 0x1000, 0);
+  std::fill_n(myLastPeekResult.data(), 0x1000, 0);
   myIsBusDriven = false;
   myDriveBusValue = 0;
   myArmCyclesOffset = 0;
@@ -737,27 +721,30 @@ void CartridgeELF::resetWithConfig()
 
   myLinker->relink(externalSymbols(myConfigSystemType));
 
-  std::memset(mySectionStack.get(), 0, STACK_SIZE);
-  std::memset(mySectionText.get(), 0, TEXT_SIZE);
-  std::memset(mySectionData.get(), 0, DATA_SIZE);
-  std::memset(mySectionRodata.get(), 0, RODATA_SIZE);
-  std::memset(mySectionTables.get(), 0, TABLES_SIZE);
+  std::fill_n(mySectionStack.data(), STACK_SIZE, 0);
+  std::fill_n(mySectionText.data(), TEXT_SIZE, 0);
+  std::fill_n(mySectionData.data(), DATA_SIZE, 0);
+  std::fill_n(mySectionRodata.data(), RODATA_SIZE, 0);
+  std::fill_n(mySectionTables.data(), TABLES_SIZE, 0);
 
-  std::memcpy(mySectionText.get(), myLinker->getSegmentData(ElfLinker::SegmentType::text),
-                                   myLinker->getSegmentSize(ElfLinker::SegmentType::text));
-  std::memcpy(mySectionData.get(), myLinker->getSegmentData(ElfLinker::SegmentType::data),
-                                   myLinker->getSegmentSize(ElfLinker::SegmentType::data));
-  std::memcpy(mySectionRodata.get(), myLinker->getSegmentData(ElfLinker::SegmentType::rodata),
-                                     myLinker->getSegmentSize(ElfLinker::SegmentType::rodata));
-  std::memcpy(mySectionTables.get(), LOOKUP_TABLES, sizeof(LOOKUP_TABLES));
+  std::copy_n(myLinker->getSegmentData(ElfLinker::SegmentType::text),
+              myLinker->getSegmentSize(ElfLinker::SegmentType::text),
+              mySectionText.data());
+  std::copy_n(myLinker->getSegmentData(ElfLinker::SegmentType::data),
+              myLinker->getSegmentSize(ElfLinker::SegmentType::data),
+              mySectionData.data());
+  std::copy_n(myLinker->getSegmentData(ElfLinker::SegmentType::rodata),
+              myLinker->getSegmentSize(ElfLinker::SegmentType::rodata),
+              mySectionRodata.data());
+  std::copy_n(LOOKUP_TABLES, sizeof(LOOKUP_TABLES), mySectionTables.data());
 
   setupMemoryMap(myConfigStrictMode);
   myCortexEmu.reset();
 
   myTransactionQueue
     .reset()
-	  .injectROMAt(0x00, 0x1ffc)
-	  .injectROM(0x10)
+    .injectROMAt(0x00, 0x1ffc)
+    .injectROM(0x10)
     .setNextInjectAddress(0x1000);
 
   myVcsLib.reset();
@@ -772,5 +759,3 @@ void CartridgeELF::resetWithConfig()
 
   switchExecutionStage();
 }
-
-// NOLINTEND(bugprone-unchecked-optional-access)

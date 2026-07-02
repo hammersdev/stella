@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTWF8_HXX
-#define CARTWF8_HXX
+#ifndef CARTRIDGE_WF8_HXX
+#define CARTRIDGE_WF8_HXX
 
 #include "CartEnhanced.hxx"
 #ifdef DEBUGGER_SUPPORT
@@ -24,8 +24,12 @@
 #endif
 
 /**
-  Cartridge class used for certain Coleco 8K bankswitched games.  There are two
-  4K banks, banks are selected by D3 of the value written to $1FF8.
+  Cartridge class used for certain Coleco 8K bankswitched games.  WF8 is a
+  variant of F8: it reuses the $1FF8 hotspot address but selects the bank
+  based on bit D3 of the written value rather than by which of two addresses
+  was accessed.  A written value with D3=0 ($00-$07) selects bank 0; D3=1
+  ($08-$0F) selects bank 1.  There is only one hotspot address; $1FF9 is not
+  used.
 
   @author  Thomas Jentzsch
 */
@@ -37,13 +41,12 @@ class CartridgeWF8 : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeWF8(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeWF8(ByteSpan image, string_view md5,
                  const Settings& settings, size_t bsSize = 8_KB);
     ~CartridgeWF8() override = default;
 
@@ -68,6 +71,7 @@ class CartridgeWF8 : public CartridgeEnhanced
   #endif
 
     uInt16 hotspot() const override { return 0x1FF8; }
+    bool supportsSaveDisassembly() const override { return true; }
 
   private:
     bool checkSwitchBank(uInt16 address, uInt8 value) override;
@@ -81,4 +85,4 @@ class CartridgeWF8 : public CartridgeEnhanced
     CartridgeWF8& operator=(CartridgeWF8&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_WF8_HXX

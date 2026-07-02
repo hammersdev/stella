@@ -15,10 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef PLUSROM_HXX
-#define PLUSROM_HXX
-
-#include <deque>
+#ifndef PLUS_ROM_HXX
+#define PLUS_ROM_HXX
 
 #include "bspf.hxx"
 #include "Serializable.hxx"
@@ -61,12 +59,11 @@ class PlusROM : public Serializable
       and initialize all state variables it will use.  This includes
       whether there is a valid hostname and path embedded in the ROM.
 
-      @param image  Pointer to the ROM image
-      @param size   The size of the ROM image
+      @param image  Span of the ROM image
 
       @return  Whether this is actually a valid PlusROM cart
     */
-    bool initialize(const ByteBuffer& image, size_t size);
+    bool initialize(ByteSpan image);
 
     /**
       Answer whether this is a PlusROM cart.  Note that until the
@@ -151,6 +148,7 @@ class PlusROM : public Serializable
       @return The send data
     */
     ByteArray getSend() const;
+
     /**
       Retrieve receive data.
 
@@ -188,6 +186,7 @@ class PlusROM : public Serializable
     bool myIsEnabled{true};
     string myHost;
     string myPath;
+    string myRequestPath;  // myPath prefixed with '/', built once in initialize()
 
     std::array<uInt8, 256> myRxBuffer{}, myTxBuffer{};
     uInt8 myRxReadPos{0}, myRxWritePos{0}, myTxPos{0};
@@ -206,4 +205,4 @@ class PlusROM : public Serializable
     PlusROM& operator=(PlusROM&&) = delete;
 };
 
-#endif
+#endif  // PLUS_ROM_HXX

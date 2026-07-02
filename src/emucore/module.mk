@@ -25,6 +25,7 @@ MODULE_OBJS := \
 	src/emucore/CartCM.o \
 	src/emucore/CartCTY.o \
 	src/emucore/CartCV.o \
+	src/emucore/CartDevCard.o \
 	src/emucore/CartDPC.o \
 	src/emucore/CartDPCPlus.o \
 	src/emucore/CartE0.o \
@@ -59,6 +60,7 @@ MODULE_OBJS := \
 	src/emucore/CartWF8.o \
 	src/emucore/CartX07.o \
 	src/emucore/CompuMate.o \
+	src/emucore/CompuMateCassette.o \
 	src/emucore/Console.o \
 	src/emucore/Control.o \
 	src/emucore/ControllerDetector.o \
@@ -69,6 +71,7 @@ MODULE_OBJS := \
 	src/emucore/EmulationTiming.o \
 	src/emucore/EmulationWorker.o \
 	src/emucore/FrameBuffer.o \
+	src/emucore/FBMessageHandler.o \
 	src/emucore/FBSurface.o \
 	src/emucore/FSNode.o \
 	src/emucore/Genesis.o \

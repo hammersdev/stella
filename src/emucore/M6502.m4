@@ -24,10 +24,6 @@
   @author  Bradford W. Mott and Stephen Anthony
 */
 
-#ifndef NOTSAMEPAGE
-  #define NOTSAMEPAGE(_addr1, _addr2) (((_addr1) ^ (_addr2)) & 0xff00)
-#endif
-
 #ifndef SET_LAST_PEEK
   #ifdef DEBUGGER_SUPPORT
     #define SET_LAST_PEEK(_addr1, _addr2) _addr1 = _addr2;
@@ -93,7 +89,7 @@ define(M6502_ABSOLUTEX_READ, `{
   const uInt16 low = peek(PC++, DISASM_CODE);
   const uInt16 high = (static_cast<uInt16>(peek(PC++, DISASM_CODE)) << 8);
   intermediateAddress = high | static_cast<uInt8>(low + X);
-  if((low + X) > 0xFF)
+  if((low + X) > 0xFF) [[unlikely]]
   {
     peek(intermediateAddress, DISASM_NONE);
     intermediateAddress = (high | low) + X;
@@ -109,7 +105,7 @@ define(M6502_ABSOLUTEX_READ_DISCARD_OPERAND, `{
   const uInt16 low = peek(PC++, DISASM_CODE);
   const uInt16 high = (static_cast<uInt16>(peek(PC++, DISASM_CODE)) << 8);
   intermediateAddress = high | static_cast<uInt8>(low + X);
-  if((low + X) > 0xFF)
+  if((low + X) > 0xFF) [[unlikely]]
   {
     peek(intermediateAddress, DISASM_NONE);
     intermediateAddress = (high | low) + X;
@@ -141,7 +137,7 @@ define(M6502_ABSOLUTEY_READ, `{
   const uInt16 low = peek(PC++, DISASM_CODE);
   const uInt16 high = (static_cast<uInt16>(peek(PC++, DISASM_CODE)) << 8);
   intermediateAddress = high | static_cast<uInt8>(low + Y);
-  if((low + Y) > 0xFF)
+  if((low + Y) > 0xFF) [[unlikely]]
   {
     peek(intermediateAddress, DISASM_NONE);
     intermediateAddress = (high | low) + Y;
@@ -281,7 +277,7 @@ define(M6502_INDIRECTY_READ, `{
   const uInt16 low = peek(pointer++, DISASM_DATA);
   const uInt16 high = (static_cast<uInt16>(peek(pointer, DISASM_DATA)) << 8);
   intermediateAddress = high | static_cast<uInt8>(low + Y);
-  if((low + Y) > 0xFF)
+  if((low + Y) > 0xFF) [[unlikely]]
   {
     peek(intermediateAddress, DISASM_NONE);
     intermediateAddress = (high | low) + Y;
@@ -316,7 +312,7 @@ define(M6502_BCC, `{
   {
     peek(PC, DISASM_NONE);
     const uInt16 address = PC + static_cast<Int8>(operand);
-    if(NOTSAMEPAGE(PC, address))
+    if(NOTSAMEPAGE(PC, address)) [[unlikely]]
       peek((PC & 0xFF00) | (address & 0x00FF), DISASM_NONE);
     PC = address;
   }
@@ -327,7 +323,7 @@ define(M6502_BCS, `{
   {
     peek(PC, DISASM_NONE);
     const uInt16 address = PC + static_cast<Int8>(operand);
-    if(NOTSAMEPAGE(PC, address))
+    if(NOTSAMEPAGE(PC, address)) [[unlikely]]
       peek((PC & 0xFF00) | (address & 0x00FF), DISASM_NONE);
     PC = address;
   }
@@ -338,7 +334,7 @@ define(M6502_BEQ, `{
   {
     peek(PC, DISASM_NONE);
     const uInt16 address = PC + static_cast<Int8>(operand);
-    if(NOTSAMEPAGE(PC, address))
+    if(NOTSAMEPAGE(PC, address)) [[unlikely]]
       peek((PC & 0xFF00) | (address & 0x00FF), DISASM_NONE);
     PC = address;
   }
@@ -349,7 +345,7 @@ define(M6502_BMI, `{
   {
     peek(PC, DISASM_NONE);
     const uInt16 address = PC + static_cast<Int8>(operand);
-    if(NOTSAMEPAGE(PC, address))
+    if(NOTSAMEPAGE(PC, address)) [[unlikely]]
       peek((PC & 0xFF00) | (address & 0x00FF), DISASM_NONE);
     PC = address;
   }
@@ -360,7 +356,7 @@ define(M6502_BNE, `{
   {
     peek(PC, DISASM_NONE);
     const uInt16 address = PC + static_cast<Int8>(operand);
-    if(NOTSAMEPAGE(PC, address))
+    if(NOTSAMEPAGE(PC, address)) [[unlikely]]
       peek((PC & 0xFF00) | (address & 0x00FF), DISASM_NONE);
     PC = address;
   }
@@ -371,7 +367,7 @@ define(M6502_BPL, `{
   {
     peek(PC, DISASM_NONE);
     const uInt16 address = PC + static_cast<Int8>(operand);
-    if(NOTSAMEPAGE(PC, address))
+    if(NOTSAMEPAGE(PC, address)) [[unlikely]]
       peek((PC & 0xFF00) | (address & 0x00FF), DISASM_NONE);
     PC = address;
   }
@@ -382,7 +378,7 @@ define(M6502_BVC, `{
   {
     peek(PC, DISASM_NONE);
     const uInt16 address = PC + static_cast<Int8>(operand);
-    if(NOTSAMEPAGE(PC, address))
+    if(NOTSAMEPAGE(PC, address)) [[unlikely]]
       peek((PC & 0xFF00) | (address & 0x00FF), DISASM_NONE);
     PC = address;
   }
@@ -393,16 +389,16 @@ define(M6502_BVS, `{
   {
     peek(PC, DISASM_NONE);
     const uInt16 address = PC + static_cast<Int8>(operand);
-    if(NOTSAMEPAGE(PC, address))
+    if(NOTSAMEPAGE(PC, address)) [[unlikely]]
       peek((PC & 0xFF00) | (address & 0x00FF), DISASM_NONE);
     PC = address;
   }
 }')
 
 define(M6502_ADC, `{
-  if(!D)
+  if(!D) [[likely]]
   {
-    const Int32 sum = A + operand + (C ? 1 : 0);
+    const Int32 sum = A + operand + static_cast<uInt8>(C);
     N = sum & 0x80;
     V = ~(A ^ operand) & (A ^ sum) & 0x80;
     notZ = sum & 0xff;
@@ -412,7 +408,7 @@ define(M6502_ADC, `{
   }
   else
   {
-    Int32 lo = (A & 0x0f) + (operand & 0x0f) + (C ? 1 : 0);
+    Int32 lo = (A & 0x0f) + (operand & 0x0f) + static_cast<uInt8>(C);
     Int32 hi = (A & 0xf0) + (operand & 0xf0);
     notZ = (lo+hi) & 0xff;
     if(lo > 0x09)
@@ -456,10 +452,10 @@ define(M6502_ARR, `{
   // NOTE: The implementation of this instruction is based on
   // information from the 64doc.txt file.  There are mixed
   // reports on its operation!
-  if(!D)
+  if(!D) [[likely]]
   {
     A &= operand;
-    A = ((A >> 1) & 0x7f) | (C ? 0x80 : 0x00);
+    A = ((A >> 1) & 0x7f) | (static_cast<uInt8>(C) << 7);
 
     C = A & 0x40;
     V = (A & 0x40) ^ ((A & 0x20) << 1);
@@ -471,7 +467,7 @@ define(M6502_ARR, `{
   {
     const uInt8 value = A & operand;
 
-    A = ((value >> 1) & 0x7f) | (C ? 0x80 : 0x00);
+    A = ((value >> 1) & 0x7f) | (static_cast<uInt8>(C) << 7);
     N = C;
     notZ = A;
     V = (value ^ A) & 0x40;
@@ -651,18 +647,18 @@ define(M6502_ISB, `{
   poke(operandAddress, operand, DISASM_WRITE);
 
   // N, V, Z, C flags are the same in either mode (C calculated at the end)
-  const Int32 sum = A - operand - (C ? 0 : 1);
+  const Int32 sum = A - operand - static_cast<uInt8>(!C);
   N = sum & 0x80;
   V = (A ^ operand) & (A ^ sum) & 0x80;
   notZ = sum & 0xff;
 
-  if(!D)
+  if(!D) [[likely]]
   {
     A = static_cast<uInt8>(sum);
   }
   else
   {
-    Int32 lo = (A & 0x0f) - (operand & 0x0f) - (C ? 0 : 1);
+    Int32 lo = (A & 0x0f) - (operand & 0x0f) - static_cast<uInt8>(!C);
     Int32 hi = (A & 0xf0) - (operand & 0xf0);
     if(lo & 0x10)
     {
@@ -785,7 +781,7 @@ define(M6502_PLP, `{
 }')
 
 define(M6502_RLA, `{
-  const uInt8 value = (operand << 1) | (C ? 1 : 0);
+  const uInt8 value = (operand << 1) | static_cast<uInt8>(C);
   poke(operandAddress, value, DISASM_WRITE);
 
   A &= value;
@@ -800,7 +796,7 @@ define(M6502_ROL, `{
   // Set carry flag according to the left-most bit in operand
   C = operand & 0x80;
 
-  operand = (operand << 1) | (oldC ? 1 : 0);
+  operand = (operand << 1) | static_cast<uInt8>(oldC);
   poke(operandAddress, operand, DISASM_WRITE);
 
   notZ = operand;
@@ -813,7 +809,7 @@ define(M6502_ROLA, `{
   // Set carry flag according to the left-most bit
   C = A & 0x80;
 
-  A = (A << 1) | (oldC ? 1 : 0);
+  A = (A << 1) | static_cast<uInt8>(oldC);
 
   notZ = A;
   N = A & 0x80;
@@ -825,7 +821,7 @@ define(M6502_ROR, `{
   // Set carry flag according to the right-most bit
   C = operand & 0x01;
 
-  operand = ((operand >> 1) & 0x7f) | (oldC ? 0x80 : 0x00);
+  operand = ((operand >> 1) & 0x7f) | (static_cast<uInt8>(oldC) << 7);
   poke(operandAddress, operand, DISASM_WRITE);
 
   notZ = operand;
@@ -838,7 +834,7 @@ define(M6502_RORA, `{
   // Set carry flag according to the right-most bit
   C = A & 0x01;
 
-  A = ((A >> 1) & 0x7f) | (oldC ? 0x80 : 0x00);
+  A = ((A >> 1) & 0x7f) | (static_cast<uInt8>(oldC) << 7);
 
   notZ = A;
   N = A & 0x80;
@@ -850,12 +846,12 @@ define(M6502_RRA, `{
   // Set carry flag according to the right-most bit
   C = operand & 0x01;
 
-  operand = ((operand >> 1) & 0x7f) | (oldC ? 0x80 : 0x00);
+  operand = ((operand >> 1) & 0x7f) | (static_cast<uInt8>(oldC) << 7);
   poke(operandAddress, operand, DISASM_WRITE);
 
-  if(!D)
+  if(!D) [[likely]]
   {
-    const Int32 sum = A + operand + (C ? 1 : 0);
+    const Int32 sum = A + operand + static_cast<uInt8>(C);
     N = sum & 0x80;
     V = ~(A ^ operand) & (A ^ sum) & 0x80;
     notZ = sum & 0xff;
@@ -865,7 +861,7 @@ define(M6502_RRA, `{
   }
   else
   {
-    Int32 lo = (A & 0x0f) + (operand & 0x0f) + (C ? 1 : 0);
+    Int32 lo = (A & 0x0f) + (operand & 0x0f) + static_cast<uInt8>(C);
     Int32 hi = (A & 0xf0) + (operand & 0xf0);
     notZ = (lo+hi) & 0xff;
     if(lo > 0x09)
@@ -903,18 +899,18 @@ define(M6502_SAX, `{
 
 define(M6502_SBC, `{
   // N, V, Z, C flags are the same in either mode (C calculated at the end)
-  const Int32 sum = A - operand - (C ? 0 : 1);
+  const Int32 sum = A - operand - static_cast<uInt8>(!C);
   N = sum & 0x80;
   V = (A ^ operand) & (A ^ sum) & 0x80;
   notZ = sum & 0xff;
 
-  if(!D)
+  if(!D) [[likely]]
   {
     A = static_cast<uInt8>(sum);
   }
   else
   {
-    Int32 lo = (A & 0x0f) - (operand & 0x0f) - (C ? 0 : 1);
+    Int32 lo = (A & 0x0f) - (operand & 0x0f) - static_cast<uInt8>(!C);
     Int32 hi = (A & 0xf0) - (operand & 0xf0);
     if(lo & 0x10)
     {
@@ -1049,41 +1045,49 @@ define(M6502_TYA, `{
 // ADC
 case 0x69:
 M6502_IMMEDIATE_READ
+CLEAR_LAST_PEEK(myLastSrcAddressA)
 M6502_ADC
 break;
 
 case 0x65:
 M6502_ZERO_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_ADC
 break;
 
 case 0x75:
 M6502_ZEROX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_ADC
 break;
 
 case 0x6d:
 M6502_ABSOLUTE_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_ADC
 break;
 
 case 0x7d:
 M6502_ABSOLUTEX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_ADC
 break;
 
 case 0x79:
 M6502_ABSOLUTEY_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_ADC
 break;
 
 case 0x61:
 M6502_INDIRECTX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_ADC
 break;
 
 case 0x71:
 M6502_INDIRECTY_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_ADC
 break;
 
@@ -1106,41 +1110,49 @@ break;
 // AND
 case 0x29:
 M6502_IMMEDIATE_READ
+CLEAR_LAST_PEEK(myLastSrcAddressA)
 M6502_AND
 break;
 
 case 0x25:
 M6502_ZERO_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_AND
 break;
 
 case 0x35:
 M6502_ZEROX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_AND
 break;
 
 case 0x2d:
 M6502_ABSOLUTE_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_AND
 break;
 
 case 0x3d:
 M6502_ABSOLUTEX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_AND
 break;
 
 case 0x39:
 M6502_ABSOLUTEY_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_AND
 break;
 
 case 0x21:
 M6502_INDIRECTX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_AND
 break;
 
 case 0x31:
 M6502_INDIRECTY_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_AND
 break;
 
@@ -1433,41 +1445,49 @@ break;
 // EOR
 case 0x49:
 M6502_IMMEDIATE_READ
+CLEAR_LAST_PEEK(myLastSrcAddressA)
 M6502_EOR
 break;
 
 case 0x45:
 M6502_ZERO_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_EOR
 break;
 
 case 0x55:
 M6502_ZEROX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_EOR
 break;
 
 case 0x4d:
 M6502_ABSOLUTE_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_EOR
 break;
 
 case 0x5d:
 M6502_ABSOLUTEX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_EOR
 break;
 
 case 0x59:
 M6502_ABSOLUTEY_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_EOR
 break;
 
 case 0x41:
 M6502_INDIRECTX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_EOR
 break;
 
 case 0x51:
 M6502_INDIRECTY_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_EOR
 break;
 
@@ -1566,6 +1586,9 @@ break;
 // LAS
 case 0xbb:
 M6502_ABSOLUTEY_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
+SET_LAST_PEEK(myLastSrcAddressX, intermediateAddress)
+SET_LAST_PEEK(myLastSrcAddressS, intermediateAddress)
 M6502_LAS
 break;
 
@@ -1595,7 +1618,7 @@ break;
 
 case 0xb7:
 M6502_ZEROY_READ
-SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)  // TODO - check this
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 SET_LAST_PEEK(myLastSrcAddressX, intermediateAddress)
 M6502_LAX
 break;
@@ -1603,14 +1626,14 @@ break;
 case 0xa3:
 M6502_INDIRECTX_READ
 SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
-SET_LAST_PEEK(myLastSrcAddressX, intermediateAddress)  // TODO - check this
+SET_LAST_PEEK(myLastSrcAddressX, intermediateAddress)
 M6502_LAX
 break;
 
 case 0xb3:
 M6502_INDIRECTY_READ
 SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
-SET_LAST_PEEK(myLastSrcAddressX, intermediateAddress)  // TODO - check this
+SET_LAST_PEEK(myLastSrcAddressX, intermediateAddress)
 M6502_LAX
 break;
 //////////////////////////////////////////////////
@@ -1891,7 +1914,6 @@ break;
 // PHP
 case 0x08:
 M6502_IMPLIED
-// TODO - add tracking for this opcode
 M6502_PHP
 break;
 
@@ -1899,15 +1921,14 @@ break;
 // PLA
 case 0x68:
 M6502_IMPLIED
-// TODO - add tracking for this opcode
 M6502_PLA
+SET_LAST_PEEK(myLastSrcAddressA, 0x0100 + SP)
 break;
 
 //////////////////////////////////////////////////
 // PLP
 case 0x28:
 M6502_IMPLIED
-// TODO - add tracking for this opcode
 M6502_PLP
 break;
 
@@ -2080,41 +2101,49 @@ break;
 case 0xe9:
 case 0xeb:
 M6502_IMMEDIATE_READ
+CLEAR_LAST_PEEK(myLastSrcAddressA)
 M6502_SBC
 break;
 
 case 0xe5:
 M6502_ZERO_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_SBC
 break;
 
 case 0xf5:
 M6502_ZEROX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_SBC
 break;
 
 case 0xed:
 M6502_ABSOLUTE_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_SBC
 break;
 
 case 0xfd:
 M6502_ABSOLUTEX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_SBC
 break;
 
 case 0xf9:
 M6502_ABSOLUTEY_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_SBC
 break;
 
 case 0xe1:
 M6502_INDIRECTX_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_SBC
 break;
 
 case 0xf1:
 M6502_INDIRECTY_READ
+SET_LAST_PEEK(myLastSrcAddressA, intermediateAddress)
 M6502_SBC
 break;
 
@@ -2264,6 +2293,7 @@ break;
 
 case 0x95:
 M6502_ZEROX_WRITE
+SET_LAST_POKE(myLastSrcAddressA)
 M6502_STA
 break;
 
@@ -2275,21 +2305,25 @@ break;
 
 case 0x9d:
 M6502_ABSOLUTEX_WRITE
+SET_LAST_POKE(myLastSrcAddressA)
 M6502_STA
 break;
 
 case 0x99:
 M6502_ABSOLUTEY_WRITE
+SET_LAST_POKE(myLastSrcAddressA)
 M6502_STA
 break;
 
 case 0x81:
 M6502_INDIRECTX_WRITE
+SET_LAST_POKE(myLastSrcAddressA)
 M6502_STA
 break;
 
 case 0x91:
 M6502_INDIRECTY_WRITE
+SET_LAST_POKE(myLastSrcAddressA)
 M6502_STA
 break;
 //////////////////////////////////////////////////
@@ -2305,6 +2339,7 @@ break;
 
 case 0x96:
 M6502_ZEROY_WRITE
+SET_LAST_POKE(myLastSrcAddressX)
 M6502_STX
 break;
 
@@ -2326,6 +2361,7 @@ break;
 
 case 0x94:
 M6502_ZEROX_WRITE
+SET_LAST_POKE(myLastSrcAddressY)
 M6502_STY
 break;
 

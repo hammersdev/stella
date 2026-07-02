@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEUA_HXX
-#define CARTRIDGEUA_HXX
+#ifndef CARTRIDGE_UA_HXX
+#define CARTRIDGE_UA_HXX
 
 #include "bspf.hxx"
 #include "CartEnhanced.hxx"
@@ -26,10 +26,13 @@
 #endif
 
 /**
-  Cartridge class used for UA Limited's 8K bankswitched games.  There
-  are two 4K banks, which are switched by accessing $0220 (bank 0) and
-  $0240 (bank 1).  Similar addresses are used by Brazilian carts, e.g.
-  $02A0 and $02C0.  The code accepts further potential hotspot addresses.
+  Cartridge class used for UA Limited's 8K bankswitched games.  Like the
+  0840 and SB schemes, UA places its hotspots below $1000 rather than near
+  $1FF0: $0220 selects bank 0 and $0240 selects bank 1.  Brazilian licensed
+  hardware used shifted addresses ($02A0/$02C0); additional aliases are also
+  accepted.  A swapHotspots flag reverses which address maps to which bank,
+  accommodating images that were dumped with banks in reversed order.  Known
+  titles: Funky Fish, Pleiades.
 
   @author  Bradford W. Mott, Thomas Jentzsch
 */
@@ -41,13 +44,12 @@ class CartridgeUA : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image         Pointer to the ROM image
-      @param size          The size of the ROM image
+      @param image         Span of the ROM image
       @param md5           The md5sum of the ROM image
       @param settings      A reference to the various settings (read-only)
       @param swapHotspots  Swap hotspots
     */
-    CartridgeUA(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeUA(ByteSpan image, string_view md5,
                 const Settings& settings, bool swapHotspots = false);
     ~CartridgeUA() override = default;
 
@@ -119,4 +121,4 @@ class CartridgeUA : public CartridgeEnhanced
     CartridgeUA& operator=(CartridgeUA&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_UA_HXX

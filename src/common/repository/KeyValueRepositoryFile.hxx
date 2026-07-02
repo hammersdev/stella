@@ -37,8 +37,7 @@ class KeyValueRepositoryFile : public KeyValueRepository {
     friend T;
 
   protected:
-
-    const FSNode& myNode;  // NOLINT: we want a reference here
+    const FSNode& myNode;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -84,7 +83,7 @@ bool KeyValueRepositoryFile<T>::save(const KVRMap& values)
 
   try {
     T::save(out, values);
-    myNode.write(out);
+    myNode.write(out.view());
 
     return true;
   }
@@ -99,4 +98,4 @@ bool KeyValueRepositoryFile<T>::save(const KVRMap& values)
   }
 }
 
-#endif // KEY_VALUE_REPOSITORY_FILE
+#endif  // KEY_VALUE_REPOSITORY_FILE_HXX

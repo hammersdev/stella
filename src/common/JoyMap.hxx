@@ -15,14 +15,12 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CONTROLLERMAP_HXX
-#define CONTROLLERMAP_HXX
-
-#include <unordered_map>
+#ifndef JOY_MAP_HXX
+#define JOY_MAP_HXX
 
 #include "Event.hxx"
 #include "EventHandlerConstants.hxx"
-#include "json_lib.hxx"
+#include "json/json_lib.hxx"
 
 /**
   This class handles controller mappings in Stella.
@@ -34,46 +32,26 @@ class JoyMap
   public:
     struct JoyMapping
     {
-      EventMode mode{EventMode(0)};
-      int button{0};                // button number
-      JoyAxis axis{JoyAxis(0)};     // horizontal/vertical
-      JoyDir adir{JoyDir(0)};       // axis direction (neg/pos)
-      int hat{0};                   // hat number
-      JoyHatDir hdir{JoyHatDir(0)}; // hat direction (left/right/up/down)
+      EventMode mode{};
+      int button{JOY_CTRL_NONE};         // button number
+      JoyAxis axis{JoyAxis::NONE};       // horizontal/vertical
+      JoyDir adir{JoyDir::NONE};         // axis direction (neg/pos)
+      int hat{JOY_CTRL_NONE};            // hat number
+      JoyHatDir hdir{JoyHatDir::CENTER}; // hat direction (left/right/up/down)
 
       explicit JoyMapping(EventMode c_mode, int c_button,
                           JoyAxis c_axis, JoyDir c_adir,
                           int c_hat, JoyHatDir c_hdir)
-        : mode{c_mode}, button{c_button},
-          axis{c_axis}, adir{c_adir},
+        : mode{c_mode}, button{c_button}, axis{c_axis}, adir{c_adir},
           hat{c_hat}, hdir{c_hdir} { }
       explicit JoyMapping(EventMode c_mode, int c_button,
                           JoyAxis c_axis, JoyDir c_adir)
-        : mode{c_mode}, button{c_button},
-          axis{c_axis}, adir{c_adir},
-          hat{JOY_CTRL_NONE}, hdir{JoyHatDir::CENTER} { }
+        : mode{c_mode}, button{c_button}, axis{c_axis}, adir{c_adir} { }
       explicit JoyMapping(EventMode c_mode, int c_button,
                           int c_hat, JoyHatDir c_hdir)
-        : mode{c_mode}, button{c_button},
-          axis{JoyAxis::NONE}, adir{JoyDir::NONE},
-          hat{c_hat}, hdir{c_hdir} { }
+        : mode{c_mode}, button{c_button}, hat{c_hat}, hdir{c_hdir} { }
 
-      ~JoyMapping() = default;
-      JoyMapping(const JoyMapping&) = default;
-      JoyMapping& operator=(const JoyMapping&) = default;
-      JoyMapping(JoyMapping&&) = default;
-      JoyMapping& operator=(JoyMapping&&) = default;
-
-      bool operator==(const JoyMapping& other) const
-      {
-        return (mode == other.mode
-          && button == other.button
-          && axis == other.axis
-          && adir == other.adir
-          && hat == other.hat
-          && hdir == other.hdir
-        );
-      }
+      auto operator<=>(const JoyMapping&) const = default;
     };
     using JoyMappingArray = std::vector<JoyMapping>;
 
@@ -112,7 +90,7 @@ class JoyMap
     nlohmann::json saveMapping(EventMode mode) const;
     int loadMapping(const nlohmann::json& eventMappings, EventMode mode);
 
-    static nlohmann::json convertLegacyMapping(string lst);
+    static nlohmann::json convertLegacyMapping(string_view lst);
 
     /** Erase all mappings for given mode */
     void eraseMode(EventMode mode);
@@ -125,20 +103,10 @@ class JoyMap
   private:
     static string getDesc(Event::Type event, const JoyMapping& mapping);
 
-    struct JoyHash {
-      size_t operator()(const JoyMapping& m)const {
-        return std::hash<uInt64>()((static_cast<uInt64>(m.mode)) // 3 bits
-          + ((static_cast<uInt64>(m.button)) * 7)  // 3 bits
-          + (((static_cast<uInt64>(m.axis)) << 0)  // 3 bits
-           | ((static_cast<uInt64>(m.adir)) << 3)  // 2 bits
-           | ((static_cast<uInt64>(m.hat )) << 5)  // 1 bit
-           | ((static_cast<uInt64>(m.hdir)) << 6)  // 2 bits
-            ) * 61
-        );
-      }
-    };
-
-    std::unordered_map<JoyMapping, Event::Type, JoyHash> myMap;
+    using MapEntry = std::pair<JoyMapping, Event::Type>;
+    // IMPORTANT: myMap must always be kept sorted by JoyMapping::operator<.
+    // All access must go through add/erase/get which maintain sort order.
+    std::vector<MapEntry> myMap;
 
     // Following constructors and assignment operators not supported
     JoyMap(const JoyMap&) = delete;
@@ -147,4 +115,4 @@ class JoyMap
     JoyMap& operator=(JoyMap&&) = delete;
 };
 
-#endif
+#endif  // JOY_MAP_HXX

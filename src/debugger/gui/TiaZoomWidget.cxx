@@ -49,8 +49,10 @@ TiaZoomWidget::TiaZoomWidget(GuiObject* boss, const GUI::Font& font,
   addFocusWidget(this);
 
   // Initialize positions
-  myNumCols = (_w - 4) / myZoomLevel;  // NOLINT: must initialize after _w
-  myNumRows = (_h - 4) / myZoomLevel;  // NOLINT: must initialize after _h
+  // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
+  myNumCols = (_w - 4) / myZoomLevel;  // must initialize after _w
+  myNumRows = (_h - 4) / myZoomLevel;  // must initialize after _h
+  // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
 
   // Create context menu for zoom levels
   VariantList l;
@@ -150,12 +152,12 @@ void TiaZoomWidget::handleMouseWheel(int x, int y, int direction)
 
   if(direction > 0)
   {
-    if (myZoomLevel > 1)
+    if(myZoomLevel > 1)
       zoom(myZoomLevel - 1);
   }
   else
   {
-    if (myZoomLevel < 8)
+    if(myZoomLevel < 8)
       zoom(myZoomLevel + 1);
   }
 }
@@ -249,24 +251,22 @@ void TiaZoomWidget::handleCommand(CommandSender* sender, int cmd, int data, int 
 
     if(rmb == "scanline")
     {
-      std::ostringstream command;
       int lines = myClickY / myZoomLevel + myOffY + startLine - instance().console().tia().scanlines();
 
-      if (lines < 0)
+      if(lines < 0)
         lines += instance().console().tia().scanlinesLastFrame();
       if(lines > 0)
       {
-        command << "scanline #" << lines;
-        const string& message = instance().debugger().parser().run(command.view());
+        const string message = instance().debugger().parser().run(
+          std::format("scanline #{}", lines));
         instance().frameBuffer().showTextMessage(message);
       }
     }
     else if(rmb == "bp")
     {
-      std::ostringstream command;
       const int scanline = myClickY / myZoomLevel + myOffY + startLine;
-      command << "breakif _scan==#" << scanline;
-      const string& message = instance().debugger().parser().run(command.view());
+      const string message = instance().debugger().parser().run(
+        std::format("breakif _scan==#{}", scanline));
       instance().frameBuffer().showTextMessage(message);
     }
     else
@@ -298,19 +298,17 @@ string TiaZoomWidget::getToolTip(const Common::Point& pos) const
   const Common::Point& idx = getToolTipIndex(pos);
 
   if(idx.x < 0)
-    return EmptyString();
+    return string{};
 
   const Int32 i = idx.x + idx.y * instance().console().tia().width();
   const uInt32 startLine = instance().console().tia().startLine();
   const uInt8* tiaOutputBuffer = instance().console().tia().outputBuffer();
-  std::ostringstream buf;
 
-  buf << _toolTipText
-    << "X: #" << idx.x
-    << "\nY: #" << idx.y + startLine
-    << "\nC: $" << Common::Base::toString(tiaOutputBuffer[i], Common::Base::Fmt::_16);
-
-  return buf.str();
+  return std::format("{}X: #{}\nY: #{}\nC: ${}",
+    _toolTipText,
+    idx.x,
+    idx.y + startLine,
+    Common::Base::toString(tiaOutputBuffer[i], Common::Base::Fmt::_16));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -323,7 +321,6 @@ bool TiaZoomWidget::changedToolTip(const Common::Point& oldPos,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void TiaZoomWidget::drawWidget(bool hilite)
 {
-//cerr << "TiaZoomWidget::drawWidget\n";
   FBSurface& s = dialog().surface();
 
   s.fillRect(_x+1, _y+1, _w-2, _h-2, kBGColor);
@@ -347,7 +344,7 @@ void TiaZoomWidget::drawWidget(bool hilite)
   {
     for(int x = myOffX >> 1, col = 0; x < (myNumCols+myOffX) >> 1; ++x, col += wzoom)
     {
-      const uInt32 idx = y*width + x;
+      const uInt32 idx = std::max(y * width + x, 0);
       const auto color = static_cast<ColorId>(currentFrame[idx] | (idx > scanoffset ? 1 : 0));
       s.fillRect(_x + col + 1, _y + row + 1, wzoom, hzoom, color);
     }

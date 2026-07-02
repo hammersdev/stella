@@ -1636,8 +1636,7 @@ CartridgeMVC::CartridgeMVC(string_view path, size_t size,
                            string_view md5, const Settings& settings,
                            size_t bsSize)
   : Cartridge(settings, md5),
-    myImage{std::make_unique<uInt8[]>(bsSize)},  // not used
-    mySize{bsSize},
+    myImage(bsSize, 0),  // not used
     myMovie{std::make_unique<MovieCart>()},
     myPath{path}
 {
@@ -1645,9 +1644,7 @@ CartridgeMVC::CartridgeMVC(string_view path, size_t size,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CartridgeMVC::~CartridgeMVC()  // NOLINT (we need an empty d'tor)
-{
-}
+CartridgeMVC::~CartridgeMVC() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeMVC::install(System& system)
@@ -1663,6 +1660,8 @@ void CartridgeMVC::install(System& system)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeMVC::reset()
 {
+  Cartridge::reset();
+
   myMovie->init(myPath);
 }
 
@@ -1673,10 +1672,9 @@ void CartridgeMVC::consoleChanged(ConsoleTiming timing)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-const ByteBuffer& CartridgeMVC::getImage(size_t& size) const
+ByteSpan CartridgeMVC::getImage() const
 {
   // not used
-  size = mySize;
   return myImage;
 }
 

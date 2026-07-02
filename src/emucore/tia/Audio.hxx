@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef TIA_AUDIO_HXX
-#define TIA_AUDIO_HXX
+#ifndef AUDIO_HXX
+#define AUDIO_HXX
 
 class AudioQueue;
 
@@ -24,31 +24,50 @@ class AudioQueue;
 #include "AudioChannel.hxx"
 #include "Serializable.hxx"
 
+/**
+  TIA audio subsystem. Drives the two-phase audio clock at the correct
+  points in each scanline, accumulates per-clock channel volumes for
+  downsampling, and pushes mixed 16-bit samples to the host audio layer
+  via an AudioQueue.
+
+  @author  Christian Speckner (DirtyHairy)
+*/
 class Audio : public Serializable
 {
   public:
     Audio();
     ~Audio() override = default;
 
+    /**
+      Reset to initial state.
+     */
     void reset();
 
+    /**
+      Set the audio output queue used to pass samples to the host audio system.
+     */
     void setAudioQueue(const shared_ptr<AudioQueue>& queue);
 
     /**
       Enable/disable pushing audio samples. These are required for TimeMachine
       playback with sound.
     */
-    void setAudioRewindMode(bool enable)
-    {
-    #ifdef GUI_SUPPORT
-      myRewindMode = enable;
-    #endif
-    }
+    void setAudioRewindMode(bool enable) { myRewindMode = enable; }
 
+    /**
+      Tick one color clock: accumulate channel volumes and drive the two-phase
+      audio clock at the appropriate points in the scanline.
+     */
     FORCE_INLINE void tick();
 
+    /**
+      Access audio channel 0.
+     */
     AudioChannel& channel0() { return myChannel0; }
 
+    /**
+      Access audio channel 1.
+     */
     AudioChannel& channel1() { return myChannel1; }
 
     /**
@@ -57,33 +76,60 @@ class Audio : public Serializable
     bool save(Serializer& out) const override;
     bool load(Serializer& in) override;
 
+    /**
+      Save/load the accumulated audio samples used for TimeMachine playback
+      with sound. Unlike the core device state, these are only meaningful for
+      rewind playback, so they travel with the (rewind-only) display state
+      rather than every save state; this keeps normal save states a fixed size.
+    */
+    bool saveSamples(Serializer& out) const;
+    bool loadSamples(Serializer& in);
+
   private:
+    /**
+      Build and push the next audio sample from the accumulated channel sums.
+     */
     void createSample();
+
+    /**
+      Mix sample0 and sample1 via the precomputed lookup table and append to
+      the current audio fragment.
+     */
     void addSample(uInt8 sample0, uInt8 sample1);
 
   private:
+    // Output queue shared with the host audio layer
     shared_ptr<AudioQueue> myAudioQueue;
 
+    // Color clock position (0-227); drives the two-phase audio clock
     uInt8 myCounter{0};
 
+    // Left and right audio channels
     AudioChannel myChannel0;
     AudioChannel myChannel1;
 
+    // Accumulated volume samples for channel 0 (for downsampling)
     uInt32 mySumChannel0{0};
+    // Accumulated volume samples for channel 1 (for downsampling)
     uInt32 mySumChannel1{0};
+    // Number of samples in the current accumulation window
     uInt32 mySumCt{0};
 
+    // Precomputed output levels for combined channel sums (indices 0-30)
     std::array<Int16, 0x1e + 1> myMixingTableSum{};
+    // Precomputed output levels for a single channel (indices 0-15)
     std::array<Int16, 0x0f + 1> myMixingTableIndividual{};
 
+    // Pointer to the audio output fragment currently being filled
     Int16* myCurrentFragment{nullptr};
+    // Write index within the current fragment
     uInt32 mySampleIndex{0};
-  #ifdef GUI_SUPPORT
+
     bool myRewindMode{false};
     mutable ByteArray mySamples;
-  #endif
 
   private:
+    // Following constructors and assignment operators not supported
     Audio(const Audio&) = delete;
     Audio(Audio&&) = delete;
     Audio& operator=(const Audio&) = delete;
@@ -103,25 +149,28 @@ void Audio::tick()
   mySumChannel1 += static_cast<uInt32>(myChannel1.actualVolume());
   mySumCt++;
 
+  // Phase clocks fire at only 4 of 228 positions per line (~1.8%); hint the
+  // optimizer that the default (no-op) path is overwhelmingly common
   switch (myCounter) {
-    case 9:
-    case 81:
+    [[unlikely]] case 9:  [[fallthrough]];
+    [[unlikely]] case 81:
       myChannel0.phase0();
       myChannel1.phase0();
       break;
 
-    case 37:
-    case 149:
+    [[unlikely]] case 37: [[fallthrough]];
+    [[unlikely]] case 149:
       myChannel0.phase1();
       myChannel1.phase1();
-	  createSample();
+      createSample();
       break;
 
-    default:
+    [[likely]] default:
       break;
   }
 
-  if (++myCounter == 228) myCounter = 0;
+  if (++myCounter == 228) [[unlikely]]
+    myCounter = 0;
 }
 
-#endif // TIA_AUDIO_HXX
+#endif  // AUDIO_HXX

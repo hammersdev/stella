@@ -32,7 +32,9 @@ class SqliteStatement {
 
     ~SqliteStatement();
 
-    operator sqlite3_stmt*() const { return myStmt; }  // NOLINT: explicit not required
+    // NOLINTBEGIN(google-explicit-constructor, hicpp-explicit-conversions)
+    operator sqlite3_stmt*() const { return myStmt; }
+    // NOLINTEND(google-explicit-constructor, hicpp-explicit-conversions)
 
     SqliteStatement& bind(int index, string_view value);
     SqliteStatement& bind(int index, Int32 value);
@@ -89,4 +91,4 @@ SqliteStatement::SqliteStatement(sqlite3* handle, string_view sql, T arg1, Ts...
   #pragma clang diagnostic pop
 #endif
 
-#endif // SQLITE_STATEMENT_HXX
+#endif  // SQLITE_STATEMENT_HXX

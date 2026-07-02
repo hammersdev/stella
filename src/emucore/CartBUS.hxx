@@ -29,9 +29,18 @@ class System;
   THIS BANKSWITCHING SCHEME IS EXPERIMENTAL, AND MAY BE REMOVED
   IN A FUTURE RELEASE.
 
-  There are seven 4K program banks, a 4K Display Data RAM,
-  1K C Variable and Stack, and the BUS chip.
-  BUS chip access is mapped to $1000 - $103F.
+  BUS ("Bus Stuffing") uses an ARM co-processor running on a Harmony-style
+  cartridge alongside the 6502.  The ARM binary occupies the first 4K of the
+  ROM image and is copied to RAM for execution via a Thumb emulator.  Seven 4K
+  program banks hold the 6502 code, a 4K Display Data RAM holds graphics data,
+  and 1K is reserved for C variables and the ARM stack.
+
+  The 6502 communicates with the ARM via registers mapped at $1000-$103F:
+  a communication stream at $1010 and a jump stream at $1011.  The ARM can
+  also perform "bus stuffing" -- injecting values onto the 6502 data bus on
+  precisely timed cycles -- to deliver data or execute synthetic 6502
+  instructions without the CPU fetching from ROM.  Digital audio is optionally
+  supported through a separate mode flag.
 
   @authors: Darrell Spice Jr, Chris Walton, Fred Quimby,
             Stephen Anthony, Bradford W. Mott
@@ -54,13 +63,11 @@ class CartridgeBUS : public CartridgeARM
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
     */
-    CartridgeBUS(const ByteBuffer& image, size_t size, string_view md5,
-                 const Settings& settings);
+    CartridgeBUS(ByteSpan image, string_view md5, const Settings& settings);
     ~CartridgeBUS() override = default;
 
   public:
@@ -111,10 +118,9 @@ class CartridgeBUS : public CartridgeARM
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span to the internal ROM image data
     */
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     /**
       Save the current state of this cart to the given Serializer.
@@ -235,16 +241,16 @@ class CartridgeBUS : public CartridgeARM
 
   private:
     // The 32K ROM image of the cartridge
-    ByteBuffer myImage;
+    std::array<uInt8, 32_KB> myImage{};
 
-    // Pointer to the 28K program ROM image of the cartridge
-    uInt8* myProgramImage{nullptr};
+    // Subspan into myImage for the program ROM
+    ByteMSpan myProgramImage;
 
-    // Pointer to the 4K display ROM image of the cartridge
-    uInt8* myDisplayImage{nullptr};
+    // Subspan into the 4K display data in myRAM
+    ByteMSpan myDisplayImage;
 
-    // Pointer to the 2K BUS driver image in RAM
-    uInt8* myDriverImage{nullptr};
+    // Subspan into the BUS driver image in myRAM
+    ByteMSpan myDriverImage;
 
     // The BUS 8k RAM image, used as:
     //   $0000 - 2K BUS driver
@@ -316,4 +322,4 @@ class CartridgeBUS : public CartridgeARM
     CartridgeBUS& operator=(CartridgeBUS&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_BUS_HXX

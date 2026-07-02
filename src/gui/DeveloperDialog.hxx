@@ -76,10 +76,6 @@ class DeveloperDialog : public Dialog, DevSettingsHandler
   #endif
     };
 
-    // MUST be aligned with RewindManager!
-    static constexpr int NUM_INTERVALS = 7;
-    static constexpr int NUM_HORIZONS = 8;
-
     static constexpr int DEBUG_COLORS = 6;
 
     TabWidget* myTab{nullptr};
@@ -120,6 +116,11 @@ class DeveloperDialog : public Dialog, DevSettingsHandler
     CheckboxWidget*     myMsLateHMoveWidget{nullptr};
     CheckboxWidget*     myBlLateHMoveWidget{nullptr};
 
+    StaticTextWidget*   myLateRespxLabel{nullptr};
+    CheckboxWidget*     myPlLateRespxWidget{nullptr};
+    CheckboxWidget*     myMsLateRespxWidget{nullptr};
+    CheckboxWidget*     myBlLateRespxWidget{nullptr};
+
     StaticTextWidget*   myPlayfieldLabel{nullptr};
     CheckboxWidget*     myPFBitsWidget{nullptr};
     CheckboxWidget*     myPFColorWidget{nullptr};
@@ -159,6 +160,9 @@ class DeveloperDialog : public Dialog, DevSettingsHandler
 #endif
 
     bool mySettings{false};
+    static constexpr std::array<string_view, 5> ourCPURegs = {
+      "S", "A", "X", "Y", "P"
+    };
 
   private:
     void addEmulationTab(const GUI::Font& font);
@@ -186,6 +190,7 @@ class DeveloperDialog : public Dialog, DevSettingsHandler
     void handleHorizon();
     void handleFontSize();
 
+  private:
     // Following constructors and assignment operators not supported
     DeveloperDialog() = delete;
     DeveloperDialog(const DeveloperDialog&) = delete;
@@ -194,4 +199,4 @@ class DeveloperDialog : public Dialog, DevSettingsHandler
     DeveloperDialog& operator=(DeveloperDialog&&) = delete;
 };
 
-#endif
+#endif  // DEVELOPER_DIALOG_HXX

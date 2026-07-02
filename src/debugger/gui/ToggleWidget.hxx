@@ -77,6 +77,7 @@ class ToggleWidget : public Widget, public CommandSender
   private:
     int findItem(int x, int y) const;
 
+  private:
     // Following constructors and assignment operators not supported
     ToggleWidget() = delete;
     ToggleWidget(const ToggleWidget&) = delete;
@@ -85,4 +86,4 @@ class ToggleWidget : public Widget, public CommandSender
     ToggleWidget& operator=(ToggleWidget&&) = delete;
 };
 
-#endif
+#endif  // TOGGLE_WIDGET_HXX

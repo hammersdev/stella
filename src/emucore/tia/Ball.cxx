@@ -46,6 +46,7 @@ void Ball::reset()
   myInvertedPhaseClock = false;
   myUseInvertedPhaseClock = false;
   myUseShortLateHMove = false;
+  myUseLateRespx = false;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -56,6 +57,10 @@ void Ball::enabl(uInt8 value)
   myIsEnabledNew = (value & 0x02) > 0;
 
   if (myIsEnabledNew != enabledNewOldValue && !myIsDelaying) {
+    // Without VDEL the new ENABL value is what's actually rendered — flush
+    // when it really changes. With VDEL, the live enabled state is the
+    // "old" one until shuffleStatus latches the new one, so no flush is
+    // needed here. Guarded optimization.
     myTIA->flushLineCache();
 
     updateEnabled();
@@ -69,8 +74,11 @@ void Ball::hmbl(uInt8 value)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Ball::resbl(uInt8 counter)
+void Ball::resbl(uInt8 counter, bool lateRespxCondition)
 {
+  if (myUseLateRespx && lateRespxCondition)
+    counter = (counter + TIAConstants::H_PIXEL - 1) % TIAConstants::H_PIXEL;
+
   myCounter = counter;
 
   myIsRendering = true;
@@ -85,6 +93,8 @@ void Ball::ctrlpf(uInt8 value)
   const uInt8 newWidth = ourWidths[(value & 0x30) >> 4];
 
   if (newWidth != myWidth) {
+    // CTRLPF ball width determines how many clocks the signal stays active
+    // — cached pixels used the old width.
     myTIA->flushLineCache();
     myWidth = newWidth;
   }
@@ -98,6 +108,8 @@ void Ball::vdelbl(uInt8 value)
   myIsDelaying = (value & 0x01) > 0;
 
   if (oldIsDelaying != myIsDelaying) {
+    // VDELBL flip switches between myIsEnabledOld and myIsEnabledNew as
+    // the live enabled source — visible behaviour changes from here on.
     myTIA->flushLineCache();
     updateEnabled();
   }
@@ -119,6 +131,8 @@ void Ball::toggleEnabled(bool enabled)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Ball::setColor(uInt8 color)
 {
+  // Same pattern as Player/Missile::setColor — the "&& myIsEnabled" guard
+  // is an optimization (skip flush when the ball isn't emitting).
   if (color != myObjectColor && myIsEnabled) myTIA->flushLineCache();
 
   myObjectColor = color;
@@ -128,6 +142,7 @@ void Ball::setColor(uInt8 color)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Ball::setDebugColor(uInt8 color)
 {
+  // Debug palette override changed.
   myTIA->flushLineCache();
   myDebugColor = color;
   applyColors();
@@ -136,6 +151,7 @@ void Ball::setDebugColor(uInt8 color)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Ball::enableDebugColors(bool enabled)
 {
+  // Debug color source toggled.
   myTIA->flushLineCache();
   myDebugEnabled = enabled;
   applyColors();
@@ -144,6 +160,7 @@ void Ball::enableDebugColors(bool enabled)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Ball::applyColorLoss()
 {
+  // PAL color-loss LSB flip on the rendered color.
   myTIA->flushLineCache();
   applyColors();
 }
@@ -158,6 +175,12 @@ void Ball::setInvertedPhaseClock(bool enable)
 void Ball::setShortLateHMove(bool enable)
 {
   myUseShortLateHMove = enable;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Ball::setLateRespx(bool enable)
+{
+  myUseLateRespx = enable;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -179,6 +202,7 @@ void Ball::nextLine()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Ball::setENABLOld(bool enabled)
 {
+  // Debugger-only direct write into the VDEL-old enabled slot.
   myTIA->flushLineCache();
 
   myIsEnabledOld = enabled;
@@ -192,6 +216,8 @@ void Ball::shuffleStatus()
 
   myIsEnabledOld = myIsEnabledNew;
 
+  // With VDEL active myIsEnabledOld is the live source — latching a
+  // different value mid-line changes the visible state from here on.
   if (myIsEnabledOld != oldIsEnabledOld && myIsDelaying) {
     myTIA->flushLineCache();
     updateEnabled();
@@ -204,7 +230,6 @@ void Ball::updateEnabled()
   myIsEnabled = !myIsSuppressed && (myIsDelaying ? myIsEnabledOld : myIsEnabledNew);
 
   collision = (mySignalActive && myIsEnabled) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
-  myTIA->scheduleCollisionUpdate();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -238,6 +263,7 @@ uInt8 Ball::getPosition() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Ball::setPosition(uInt8 newPosition)
 {
+  // Debugger-only direct counter move; same reasoning as Player::setPosition.
   myTIA->flushLineCache();
 
   // See getPosition for an explanation
@@ -275,6 +301,7 @@ bool Ball::save(Serializer& out) const
     out.putBool(myIsRendering);
     out.putByte(myRenderCounter);
     out.putBool(myInvertedPhaseClock);
+    out.putBool(myUseLateRespx);
   }
   catch(...)
   {
@@ -316,6 +343,7 @@ bool Ball::load(Serializer& in)
     myIsRendering = in.getBool();
     myRenderCounter = in.getByte();
     myInvertedPhaseClock = in.getBool();
+    myUseLateRespx = in.getBool();
 
     applyColors();
   }

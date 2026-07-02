@@ -18,6 +18,8 @@
 #include "Cart0FA0.hxx"
 #include "Cart0FA0Widget.hxx"
 
+using Common::Base;
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Cartridge0FA0Widget::Cartridge0FA0Widget(
       GuiObject* boss, const GUI::Font& lfont, const GUI::Font& nfont,
@@ -31,23 +33,15 @@ Cartridge0FA0Widget::Cartridge0FA0Widget(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string Cartridge0FA0Widget::description()
 {
-  std::ostringstream info;
-
-  info << "8K BR cartridge, two 4K banks\n"
-    << CartridgeEnhancedWidget::description();
-
-  return info.str();
+  return std::format("8K BR cartridge, two 4K banks\n{}",
+    CartridgeEnhancedWidget::description());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string Cartridge0FA0Widget::hotspotStr(int bank, int, bool prefix)
 {
-  std::ostringstream info;
   const uInt16 hotspot = myCart.hotspot() + bank * myHotspotDelta;
-
-  info << "(" << (prefix ? "hotspot " : "")
-    << "$" << Common::Base::HEX1 << hotspot
-    << ", $" << (hotspot | 0xf80) << ")";
-
-  return info.str();
+  return std::format("({}${}, ${})",
+    prefix ? "hotspot " : "",
+    Base::hex4(hotspot), Base::hex4(hotspot | 0xf80));
 }

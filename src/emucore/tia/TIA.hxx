@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef TIA_TIA
-#define TIA_TIA
+#ifndef TIA_HXX
+#define TIA_HXX
 
 #include <functional>
 
@@ -56,14 +56,28 @@ class DispatchResult;
   This class outputs the serial data into a frame buffer which can then
   be displayed on screen.
 
+  For paddle input, TIA acts as the wiring layer: it reads the resistance
+  Connection set by Paddles, feeds it to AnalogReadout, and exposes the
+  resulting INPT0-3 comparator state to the CPU. See Paddles for an overview
+  of the four-layer input architecture.
+
   @author  Christian Speckner (DirtyHairy) and Stephen Anthony
 */
 class TIA : public Device
 {
   public:
     /**
-     * These dummy register addresses are used to represent the delayed
-     * old / new register swap on writing GRPx and ENABL in the DelayQueue (see below).
+     * Pseudo-addresses pushed onto the DelayQueue to model the GRPx/ENABL
+     * old/new pattern swap. Writing GRP0 queues both the actual GRP0 and a
+     * shuffleP1; writing GRP1 queues GRP1, shuffleP0, and shuffleBL. When
+     * delayedWrite() sees a shuffle, it calls the appropriate sprite's
+     * shufflePatterns / shuffleStatus to latch new -> old. This models the
+     * real TIA behaviour where the *other* player's "old" register latches
+     * when *this* GRPx is poked, implementing VDELP / VDELBL.
+     *
+     * The values 0xF0-0xF2 are deliberately outside the real 6-bit TIA
+     * register space so they can't collide with actual register addresses
+     * and are skipped by the shadow-register write in delayedWrite().
      */
     enum DummyRegisters: uInt8 {
       shuffleP0 = 0xF0,
@@ -256,7 +270,8 @@ class TIA : public Device
     /**
       Answers dimensional info about the framebuffer.
     */
-    uInt32 width() const { return TIAConstants::H_PIXEL; }  // NOLINT
+    // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+    uInt32 width() const { return TIAConstants::H_PIXEL; }
     uInt32 height() const { return myFrameManager->height(); }
     Int32 vcenter() const { return myFrameManager->vcenter(); }
     Int32 minVcenter() const { return myFrameManager->minVcenter(); }
@@ -390,7 +405,7 @@ class TIA : public Device
        myBusyRateTotalCycles = 0;
        myBusyRateFrames = 0;
     }
-  #endif // DEBUGGER_SUPPORT
+  #endif  // DEBUGGER_SUPPORT
 
     /**
      * Get the CPU cycles since the last dump ports change.
@@ -417,28 +432,32 @@ class TIA : public Device
     bool electronBeamPos(uInt32& x, uInt32& y) const;
 
     /**
-      Enables/disable/toggle the specified (or all) TIA bit(s).  Note that
-      disabling a graphical object also disables its collisions.
+      Enables/disables/toggles/queries the specified TIA bit(s).
+      Disabling a graphical object also disables its collisions.
 
-      @param mode  1/0 indicates on/off, and values greater than 1 mean
-                   2 means flip the bit from its current state
-                   and values greater than 2 mean return current state
+      @param b     The bit(s) to operate on
+      @param mode  Off    = force off
+                   On     = force on
+                   Toggle = flip current state (default)
+                   Query  = return current state without modifying
 
-      @return  Whether the bit was enabled or disabled
+      @return  Whether the bit is enabled after the operation
     */
-    bool toggleBit(TIABit b, uInt8 mode = 2);
+    bool toggleBit(TIABit b, BitState mode = BitState::Toggle);
     bool toggleBits(bool toggle = true);
 
     /**
-      Enables/disable/toggle the specified (or all) TIA bit collision(s).
+      Enables/disables/toggles/queries the specified TIA bit collision(s).
 
-      @param mode  1/0 indicates on/off,
-                   2 means flip the collision from its current state
-                   and values greater than 2 mean return current state
+      @param b     The bit(s) to operate on
+      @param mode  Off    = force off
+                   On     = force on
+                   Toggle = flip current state (default)
+                   Query  = return current state without modifying
 
-      @return  Whether the collision was enabled or disabled
+      @return  Whether the collision is enabled after the operation
     */
-    bool toggleCollision(TIABit b, uInt8 mode = 2);
+    bool toggleCollision(TIABit b, BitState mode = BitState::Toggle);
     bool toggleCollisions(bool toggle = true);
 
     /**
@@ -572,6 +591,27 @@ class TIA : public Device
     void setBlShortLateHMove(bool enable);
 
     /**
+      Enables/disables late RESPx for players.
+
+      @param enable   Whether to enable late RESPx for players
+    */
+    void setPlLateRespx(bool enable);
+
+    /**
+      Enables/disables late RESPx for missiles.
+
+      @param enable   Whether to enable late RESPx for missiles
+    */
+    void setMsLateRespx(bool enable);
+
+    /**
+      Enables/disables late RESPx for ball.
+
+      @param enable   Whether to enable late RESPx for ball
+    */
+    void setBlLateRespx(bool enable);
+
+    /**
       This method should be called to update the TIA with a new scanline.
     */
     TIA& updateScanline();
@@ -601,11 +641,6 @@ class TIA : public Device
       (e.g. a register write).
     */
     void flushLineCache();
-
-    /**
-      Schedule a collision update
-     */
-    void scheduleCollisionUpdate();
 
     /**
       Create a new delayQueueIterator for the debugger.
@@ -661,7 +696,7 @@ class TIA : public Device
       @return  The access counters as comma separated string
     */
     string getAccessCounters() const override;
-  #endif // DEBUGGER_SUPPORT
+  #endif  // DEBUGGER_SUPPORT
 
   private:
     /**
@@ -680,7 +715,7 @@ class TIA : public Device
      */
     enum FixedObject: uInt8 { P0, M0, P1, M1, PF, BL, BK };
     BSPF::array2D<FixedColor, 3, 7> myFixedColorPalette{};
-    std::array<string, 7> myFixedColorNames{};
+    std::array<string_view, 7> myFixedColorNames{};
 
   private:
     /**
@@ -718,12 +753,12 @@ class TIA : public Device
     /**
      * Advance a single clock during hblank.
      */
-    void tickHblank();
+    FORCE_INLINE void tickHblank();
 
     /**
      * Advance a single clock duing the visible part of the scanline.
      */
-    void tickHframe();
+    FORCE_INLINE void tickHframe();
 
     /**
      * Update the collision bitfield.
@@ -738,7 +773,7 @@ class TIA : public Device
     /**
      * Render the current pixel into the framebuffer.
      */
-    void renderPixel(uInt32 x, uInt32 y);
+    void renderPixel(uInt32 x);
 
     /**
      * Clear the first 8 pixels of a scanline with black if we are in hblank
@@ -819,7 +854,7 @@ class TIA : public Device
 
   #ifdef DEBUGGER_SUPPORT
     void createAccessArrays();
-  #endif // DEBUGGER_SUPPORT
+  #endif  // DEBUGGER_SUPPORT
 
   private:
     ConsoleIO& myConsole;
@@ -880,6 +915,9 @@ class TIA : public Device
      * The paddle readout circuits.
      */
     std::array<AnalogReadout, 4> myAnalogReadouts;
+    // Last connection seen per readout; guards updateEmulation() from firing
+    // when the controller reports an unchanged resistance.
+    std::array<AnalogReadout::Connection, 4> myLastAnalogConnections;
 
     /**
      * Circuits for the "latched inputs".
@@ -887,12 +925,25 @@ class TIA : public Device
     LatchedInput myInput0;
     LatchedInput myInput1;
 
-    // Pointer to the internal color-index-based frame buffer
+    // Three-stage framebuffer pipeline. Emulation runs on a worker thread
+    // (EmulationWorker) while the main thread renders the previous frame:
+    //
+    //   renderPixel()        --writes-->  myBackBuffer    [emulation thread]
+    //   onFrameComplete()    --copies-->  myFrontBuffer   [emulation thread]
+    //   renderToFrameBuffer()--copies-->  myFramebuffer   [main thread, before worker starts]
+    //   TIASurface           --reads --   myFramebuffer   [main thread]
+    //
+    // Values are 8-bit TIA color indices (palette mapping happens later
+    // in TIASurface).
     std::array<uInt8, static_cast<size_t>(TIAConstants::H_PIXEL * TIAConstants::frameBufferHeight)> myFramebuffer{};
 
-    // The frame is rendered to the backbuffer and only copied to the framebuffer
-    // upon completion
     std::array<uInt8, static_cast<size_t>(TIAConstants::H_PIXEL * TIAConstants::frameBufferHeight)> myBackBuffer{};
+
+    // Pointer to the first pixel of the current scanline in myBackBuffer.
+    // Precomputed once per line in nextLine() so renderPixel() avoids a
+    // y*H_PIXEL multiply on every one of the 160 visible clocks per scanline.
+    uInt8* myCurrentRowPtr{nullptr};
+
     std::array<uInt8, static_cast<size_t>(TIAConstants::H_PIXEL * TIAConstants::frameBufferHeight)> myFrontBuffer{};
 
     // We snapshot frame statistics when the back buffer is copied to the front buffer
@@ -935,17 +986,13 @@ class TIA : public Device
     uInt8 myXAtRenderingStart{0};
 
     /**
-     * Do we need to update the collision mask this clock?
-     */
-    bool myCollisionUpdateRequired{false};
-
-    /**
-     * Force schedule a collision update
-     */
-    bool myCollisionUpdateScheduled{false};
-
-    /**
-     * The collision latches are represented by 15 bits in a bitfield.
+     * Single 15-bit accumulator that collapses the 15 per-pair collision
+     * flip-flops of the real chip into one OR-accumulated register. Each
+     * bit corresponds to a unique object pair via the encoding in the
+     * CollisionMask enum in TIA.cxx; see TIA::updateCollision for how a
+     * single AND across all six objects sets every relevant pair bit, and
+     * TIA::collCX* for how individual pair bits are extracted on read.
+     * Cleared by CXCLR.
      */
     uInt32 myCollisionMask{0};
 
@@ -967,9 +1014,16 @@ class TIA : public Device
     bool myExtendedHblank{false};
 
     /**
-     * Counts the number of line wraps since the last external TIA state change.
-     * If at least two line breaks have passed, the TIA will suspend simulation
-     * and just reuse the last line instead.
+     * Line-cache counter. Counts the number of line wraps since the last
+     * externally visible state change. Once it reaches 2, cycle() skips all
+     * sprite ticks and nextLine() memcpys the previous scanline into the
+     * current one (cloneLastLine).
+     *
+     * The contract: any state change that could alter rendering must call
+     * flushLineCache(). Flushing is always safe — it merely replays the
+     * partial current line. Call sites that guard the flush on "value
+     * actually changed" do so as an optimization to skip unneeded replays;
+     * see TIA::flushLineCache.
      */
     uInt32 myLinesSinceChange{0};
 
@@ -992,8 +1046,8 @@ class TIA : public Device
     /**
      * Bitmasks that track which sprites / collisions are enabled / disabled.
      */
-    uInt8 mySpriteEnabledBits{0xFF};
-    uInt8 myCollisionsEnabledBits{0xFF};
+    TIABit mySpriteEnabledBits{TIABit::All};
+    TIABit myCollisionsEnabledBits{TIABit::All};
 
     /**
      * The color used to highlight HMOVE blanks (if enabled).
@@ -1016,8 +1070,13 @@ class TIA : public Device
     bool myArePortsDumped{false};
 
     /**
-     * The "shadow registers" track the last written register value for the
-     * debugger.
+     * Shadow registers: the last value written to each TIA register as the
+     * program saw it, before any DelayQueue processing. The simulation
+     * never reads these — they exist purely so the debugger can display
+     * "what the CPU just wrote" without having to wait for the delayed
+     * effect to take place. Pokes that go through the delay queue update
+     * the shadow in delayedWrite once the entry fires; pokes that take
+     * immediate effect update it synchronously in poke().
      */
     std::array<uInt8, 64> myShadowRegisters{};
 
@@ -1071,7 +1130,7 @@ class TIA : public Device
      * for statistics
      */
     uInt32 myBusyRateFrames{0};
-    #endif // DEBUGGER_SUPPORT
+  #endif // DEBUGGER_SUPPORT
 
     /**
      * The frame manager can change during our lifetime, so we buffer those two.
@@ -1095,7 +1154,7 @@ class TIA : public Device
 
     // The array used to skip the first two TIA access trackings
     std::array<uInt8, TIA_SIZE> myAccessDelay{};
-  #endif // DEBUGGER_SUPPORT
+  #endif  // DEBUGGER_SUPPORT
 
   private:
     TIA() = delete;
@@ -1105,4 +1164,4 @@ class TIA : public Device
     TIA& operator=(TIA&&) = delete;
 };
 
-#endif // TIA_TIA
+#endif  // TIA_HXX

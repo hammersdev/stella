@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEDF_HXX
-#define CARTRIDGEDF_HXX
+#ifndef CARTRIDGE_DF_HXX
+#define CARTRIDGE_DF_HXX
 
 class System;
 
@@ -27,9 +27,12 @@ class System;
 #endif
 
 /**
-  Update of EF cartridge class used for Homestar Runner by Paul Slocum.
-  There are 32 4K banks (total of 128K ROM).
-  Accessing $1FC0 - $1FDF switches to each bank.
+  DF is a direct extension of the EF scheme, doubling the bank count to 32
+  (128K total).  Any access in $1FC0-$1FDF switches to the bank whose number
+  equals the low 5 bits of the address (bank 0 at $1FC0, bank 31 at $1FDF).
+  "DF" derives from this hotspot range.  The DFSC variant adds 128 bytes of
+  SuperChip RAM at the standard split window ($1000-$107F write, $1080-$10FF
+  read).
 
   @author  Mike Saarna, Thomas Jentzsch
 */
@@ -41,13 +44,12 @@ class CartridgeDF : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeDF(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeDF(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 128_KB);
     ~CartridgeDF() override = default;
 
@@ -72,6 +74,7 @@ class CartridgeDF : public CartridgeEnhanced
   #endif
 
     uInt16 hotspot() const override { return 0x1FC0; }
+    bool supportsSaveDisassembly() const override { return true; }
 
   private:
     bool checkSwitchBank(uInt16 address, uInt8) override;
@@ -86,4 +89,4 @@ private:
     CartridgeDF& operator=(CartridgeDF&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_DF_HXX

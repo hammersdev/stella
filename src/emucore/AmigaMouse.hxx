@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef AMIGAMOUSE_HXX
-#define AMIGAMOUSE_HXX
+#ifndef AMIGA_MOUSE_HXX
+#define AMIGA_MOUSE_HXX
 
 #include "PointingDevice.hxx"
 
@@ -50,7 +50,7 @@ class AmigaMouse : public PointingDevice
         0b0000, 0b0100, 0b0101, 0b0001
       };
 
-      return ourTableH[countH] | ourTableV[countV];
+      return ourTableH[countH & 0b11] | ourTableV[countV & 0b11];
     }
 
     static constexpr float trackballSensitivity = 0.8F;
@@ -63,4 +63,4 @@ class AmigaMouse : public PointingDevice
     AmigaMouse& operator=(AmigaMouse&&) = delete;
 };
 
-#endif // AMIGAMOUSE_HXX
+#endif  // AMIGA_MOUSE_HXX

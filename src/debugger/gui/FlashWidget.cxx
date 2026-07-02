@@ -19,6 +19,8 @@
 #include "MT24LC256.hxx"
 #include "FlashWidget.hxx"
 
+using Common::Base;
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 FlashWidget::FlashWidget(GuiObject* boss, const GUI::Font& font,
                          int x, int y, Controller& controller)
@@ -69,21 +71,20 @@ void FlashWidget::init(GuiObject* boss, const GUI::Font& font,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FlashWidget::handleCommand(CommandSender*, int cmd, int, int)
 {
-  if(cmd == kEEPROMEraseCurrent) {
+  if(cmd == kEEPROMEraseCurrent)
     eraseCurrent();
-  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-// display the pages used by the current ROM and update erase button status
 void FlashWidget::loadConfig()
 {
+  // display the pages used by the current ROM and update erase button status
   int useCount = 0, startPage = -1;
   for(uInt32 page = 0; page < MT24LC256::PAGE_NUM; ++page)
   {
     if(isPageUsed(page))
     {
-      if (startPage == -1)
+      if(startPage == -1)
         startPage = page;
     }
     else
@@ -91,28 +92,22 @@ void FlashWidget::loadConfig()
       if(startPage != -1)
       {
         const int from = startPage * MT24LC256::PAGE_SIZE;
-        const int to = page * MT24LC256::PAGE_SIZE - 1;
-        std::ostringstream label;
-
-        label.str("");
-        label << Common::Base::HEX3 << startPage;
-
+        const int to   = page * MT24LC256::PAGE_SIZE - 1;
+        string label = Base::hex3(startPage);
         if(!myEmbedded)
         {
           if(static_cast<int>(page) - 1 != startPage)
-            label << "-" << Common::Base::HEX3 << page - 1;
+            label += std::format("-{}", Base::hex3(page - 1));
           else
-            label << "    ";
-          label << ": " << Common::Base::HEX4 << from << "-" << Common::Base::HEX4 << to;
+            label += "    ";
+          label += std::format(": {}-{}", Base::hex3(from), Base::hex4(to));
         }
-        myPage[useCount]->setLabel(label.view());
-
+        myPage[useCount]->setLabel(label);
         startPage = -1;
         if(std::cmp_equal(++useCount, MAX_PAGES))
           break;
       }
     }
   }
-
   myEEPROMEraseCurrent->setEnabled(useCount != 0);
 }

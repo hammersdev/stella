@@ -26,7 +26,8 @@ class TrakBallWidget : public PointingDeviceWidget
 {
   public:
     TrakBallWidget(GuiObject* boss, const GUI::Font& font, int x, int y,
-                   Controller& controller);
+                   Controller& controller)
+      : PointingDeviceWidget(boss, font, x, y, controller) { }
 
     ~TrakBallWidget() override = default;
 
@@ -35,7 +36,9 @@ class TrakBallWidget : public PointingDeviceWidget
       0b00, 0b10, 0b01, 0b11
     };
 
-    uInt8 getGrayCodeTable(int index, int direction) const override;
+    uInt8 getGrayCodeTable(int index, int direction) const override {
+      return myGrayCodeTable[(index & 0b1) + direction * 2];
+    }
 
     // Following constructors and assignment operators not supported
     TrakBallWidget() = delete;
@@ -45,4 +48,4 @@ class TrakBallWidget : public PointingDeviceWidget
     TrakBallWidget& operator=(TrakBallWidget&&) = delete;
 };
 
-#endif
+#endif  // TRAKBALL_WIDGET_HXX

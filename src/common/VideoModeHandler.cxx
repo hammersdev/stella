@@ -15,7 +15,9 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
+#include <cassert>
 #include <cmath>
+#include <format>
 
 #include "Settings.hxx"
 #include "Bezel.hxx"
@@ -37,7 +39,8 @@ void VideoModeHandler::setDisplaySize(const Common::Size& display, bool fullscre
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 const VideoModeHandler::Mode&
-  VideoModeHandler::buildMode(const Settings& settings, bool inTIAMode, Bezel::Info bezelInfo)
+  VideoModeHandler::buildMode(const Settings& settings, bool inTIAMode,
+                              const Bezel::Info& bezelInfo)
 {
   const bool windowedRequested = !myFullscreen;
 
@@ -47,14 +50,12 @@ const VideoModeHandler::Mode&
     if(windowedRequested)
     {
       const auto zoom = static_cast<double>(settings.getFloat("tia.zoom"));
-      std::ostringstream desc;
-      desc << (zoom * 100) << "%";
 
       // Image and screen (aka window) dimensions are the same
       // Overscan is not applicable in this mode
       myMode = Mode(myImage.w, myImage.h,
                     Mode::Stretch::Fill, myFullscreen,
-                    desc.view(), zoom, bezelInfo);
+                    std::format("{:.4g}%", zoom * 100), zoom, bezelInfo);
     }
     else
     {
@@ -102,7 +103,7 @@ const VideoModeHandler::Mode&
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 VideoModeHandler::Mode::Mode(uInt32 iw, uInt32 ih, Stretch smode,
                              bool fs, string_view desc,
-                             double zoomLevel, Bezel::Info bezelInfo)
+                             double zoomLevel, const Bezel::Info& bezelInfo)
   : Mode(iw, ih, iw, ih, smode, fs, desc, zoomLevel, 1., bezelInfo)
 {
 }
@@ -110,37 +111,45 @@ VideoModeHandler::Mode::Mode(uInt32 iw, uInt32 ih, Stretch smode,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 VideoModeHandler::Mode::Mode(uInt32 iw, uInt32 ih, uInt32 sw, uInt32 sh,
                              Stretch smode, bool fs, string_view desc,
-                             double zoomLevel, double overscan, Bezel::Info bezelInfo)
+                             double zoomLevel, double overscan,
+                             const Bezel::Info& bezelInfo)
   : screenS{sw, sh},
     stretch{smode},
     description{desc},
-    zoom{zoomLevel}, //hZoom{zoomLevel}, vZoom{zoomLevel},
+    zoom{zoomLevel},
     fullscreen{fs}
 {
   // Now resize based on windowed/fullscreen mode and stretch factor
   if(fullscreen)
   {
+    auto rounded = [](double v) noexcept -> uInt32 {
+        return static_cast<uInt32>(std::round(v));
+    };
+
     switch(stretch)
     {
       case Stretch::Preserve:
-        iw = std::round(iw * overscan * zoomLevel);
-        ih = std::round(ih * overscan * zoomLevel);
+        iw = rounded(iw * overscan * zoomLevel);
+        ih = rounded(ih * overscan * zoomLevel);
         break;
 
       case Stretch::Fill:
-      {
         // Scale to all available space
-        iw = std::round(screenS.w * overscan / bezelInfo.ratioW());
-        ih = std::round(screenS.h * overscan / bezelInfo.ratioH());
+        iw = rounded(screenS.w * overscan / bezelInfo.ratioW());
+        ih = rounded(screenS.h * overscan / bezelInfo.ratioH());
         break;
-      }
+
       case Stretch::None: // UI Mode
         // Don't do any scaling at all
-        iw = std::min(static_cast<uInt32>(iw * zoomLevel), screenS.w) * overscan;
-        ih = std::min(static_cast<uInt32>(ih * zoomLevel), screenS.h) * overscan;
+        iw = rounded(std::min(static_cast<uInt32>
+            (iw * zoomLevel), screenS.w) * overscan);
+        ih = rounded(std::min(static_cast<uInt32>
+            (ih * zoomLevel), screenS.h) * overscan);
         break;
+
       default:
-        break;  // Not supposed to get here
+        assert(false && "Unhandled Stretch enum value");
+        break;
     }
   }
   else
@@ -151,17 +160,18 @@ VideoModeHandler::Mode::Mode(uInt32 iw, uInt32 ih, uInt32 sw, uInt32 sh,
     {
       case Stretch::Preserve:
       case Stretch::Fill:
-        iw *= zoomLevel;
-        ih *= zoomLevel;
-        screenS.w = std::round(iw * bezelInfo.ratioW());
-        screenS.h = std::round(ih * bezelInfo.ratioH());
+        iw = static_cast<uInt32>(iw * zoomLevel);
+        ih = static_cast<uInt32>(ih * zoomLevel);
+        screenS.w = static_cast<uInt32>(std::round(iw * bezelInfo.ratioW()));
+        screenS.h = static_cast<uInt32>(std::round(ih * bezelInfo.ratioH()));
         break;
 
       case Stretch::None: // UI Mode
         break;  // Do not change image or screen rects whatsoever
 
       default:
-        break;  // Not supposed to get here
+        assert(false && "Unhandled Stretch enum value");
+        break;
     }
   }
 
@@ -177,8 +187,9 @@ VideoModeHandler::Mode::Mode(uInt32 iw, uInt32 ih, uInt32 sw, uInt32 sh,
       static_cast<uInt32>(std::round(iw * bezelInfo.ratioW())));
   const uInt32 bezelH = std::min(screenS.h,
       static_cast<uInt32>(std::round(ih * bezelInfo.ratioH())));
+
   // Center image (no bezel) or move image relative to centered bezel
-  imageR.moveTo(((screenS.w - bezelW) >> 1) + wx, ((screenS.h - bezelH) >> 1) + wy);
+  imageR.moveTo((screenS.w - bezelW) / 2 + wx, (screenS.h - bezelH) / 2 + wy);
 
   imageR.setWidth(iw);
   imageR.setHeight(ih);

@@ -91,9 +91,7 @@ InputDialog::InputDialog(OSystem& osystem, DialogContainer& parent,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-InputDialog::~InputDialog()  // NOLINT (we need an empty d'tor)
-{
-}
+InputDialog::~InputDialog() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void InputDialog::addDevicePortTab()
@@ -174,7 +172,6 @@ void InputDialog::addDevicePortTab()
   myDejitterBase->setToolTip("Adjust paddle input averaging.\n"
                              "Note: Already implemented in 2600-daptor",
     Event::DecDejtterAveraging, Event::IncDejtterAveraging);
-  //xpos += myDejitterBase->getWidth() + fontWidth - 4;
   wid.push_back(myDejitterBase);
 
   ypos += lineHeight + VGAP;
@@ -414,7 +411,7 @@ void InputDialog::loadConfig()
 
   for(const auto& port: ports)
     VarList::push_back(items, port, port);
-  if(avoxport != EmptyString() && !BSPF::contains(ports, avoxport))
+  if(!avoxport.empty() && !BSPF::contains(ports, avoxport))
     VarList::push_back(items, avoxport, avoxport);
   if(items.empty())
     VarList::push_back(items, "None detected");
@@ -540,7 +537,6 @@ void InputDialog::saveConfig()
 
   instance().eventHandler().saveKeyMapping();
   instance().eventHandler().saveJoyMapping();
-//  instance().saveConfig();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -623,7 +619,7 @@ bool InputDialog::repeatEnabled()
 void InputDialog::handleKeyDown(StellaKey key, StellaMod mod, bool repeated)
 {
   // Remap key events in remap mode, otherwise pass to parent dialog
-  if (myEventMapper->remapMode())
+  if(myEventMapper->isRemapping())
     myEventMapper->handleKeyDown(key, mod);
   else
     Dialog::handleKeyDown(key, mod);
@@ -633,7 +629,7 @@ void InputDialog::handleKeyDown(StellaKey key, StellaMod mod, bool repeated)
 void InputDialog::handleKeyUp(StellaKey key, StellaMod mod)
 {
   // Remap key events in remap mode, otherwise pass to parent dialog
-  if (myEventMapper->remapMode())
+  if(myEventMapper->isRemapping())
     myEventMapper->handleKeyUp(key, mod);
   else
     Dialog::handleKeyUp(key, mod);
@@ -643,7 +639,7 @@ void InputDialog::handleKeyUp(StellaKey key, StellaMod mod)
 void InputDialog::handleJoyDown(int stick, int button, bool longPress)
 {
   // Remap joystick buttons in remap mode, otherwise pass to parent dialog
-  if(myEventMapper->remapMode())
+  if(myEventMapper->isRemapping())
     myEventMapper->handleJoyDown(stick, button);
   else
     Dialog::handleJoyDown(stick, button);
@@ -653,7 +649,7 @@ void InputDialog::handleJoyDown(int stick, int button, bool longPress)
 void InputDialog::handleJoyUp(int stick, int button)
 {
   // Remap joystick buttons in remap mode, otherwise pass to parent dialog
-  if (myEventMapper->remapMode())
+  if(myEventMapper->isRemapping())
     myEventMapper->handleJoyUp(stick, button);
   else
     Dialog::handleJoyUp(stick, button);
@@ -663,7 +659,7 @@ void InputDialog::handleJoyUp(int stick, int button)
 void InputDialog::handleJoyAxis(int stick, JoyAxis axis, JoyDir adir, int button)
 {
   // Remap joystick axis in remap mode, otherwise pass to parent dialog
-  if(myEventMapper->remapMode())
+  if(myEventMapper->isRemapping())
     myEventMapper->handleJoyAxis(stick, axis, adir, button);
   else
     Dialog::handleJoyAxis(stick, axis, adir, button);
@@ -673,7 +669,7 @@ void InputDialog::handleJoyAxis(int stick, JoyAxis axis, JoyDir adir, int button
 bool InputDialog::handleJoyHat(int stick, int hat, JoyHatDir hdir, int button)
 {
   // Remap joystick hat in remap mode, otherwise pass to parent dialog
-  if(myEventMapper->remapMode())
+  if(myEventMapper->isRemapping())
     return myEventMapper->handleJoyHat(stick, hat, hdir, button);
   else
     return Dialog::handleJoyHat(stick, hat, hdir, button);
@@ -723,13 +719,13 @@ void InputDialog::handleCommand(CommandSender* sender, int cmd,
     case kDDeadzoneChanged:
       myDigitalDeadzone->setValueLabel(std::round(
           Controller::digitalDeadZoneValue(myDigitalDeadzone->getValue()) *
-          100.F / (Paddles::ANALOG_RANGE / 2)));  // NOLINT
+          100.F / (Paddles::ANALOG_RANGE / 2.F)));
       break;
 
     case kADeadzoneChanged:
       myAnalogDeadzone->setValueLabel(std::round(
           Controller::analogDeadZoneValue(myAnalogDeadzone->getValue()) *
-          100.F / (Paddles::ANALOG_RANGE / 2)));  // NOLINT
+          100.F / (Paddles::ANALOG_RANGE / 2.F)));
       break;
 
     case kPSpeedChanged:

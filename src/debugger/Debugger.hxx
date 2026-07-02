@@ -41,7 +41,7 @@ class TIADebug;
 class DebuggerParser;
 class RewindManager;
 
-#include <map>
+#include <unordered_map>
 
 #include "Base.hxx"
 #include "Rect.hxx"
@@ -67,8 +67,10 @@ class Debugger : public DialogContainer
   friend class M6502;
 
   public:
-    using FunctionMap = std::map<string, unique_ptr<Expression>, std::less<>>;
-    using FunctionDefMap = std::map<string, string, std::less<>>;
+    using FunctionMap    = std::unordered_map<string, unique_ptr<Expression>,
+                             BSPF::StringHash, std::equal_to<>>;
+    using FunctionDefMap = std::unordered_map<string, string,
+                             BSPF::StringHash, std::equal_to<>>;
 
     /**
       Create a new debugger parent object
@@ -110,7 +112,7 @@ class Debugger : public DialogContainer
     void quit();
 
     bool addFunction(string_view name, string_view def,
-                     Expression* exp, bool builtin = false);
+                     unique_ptr<Expression> exp, bool builtin = false);
     static bool isBuiltinFunction(string_view name);
     bool delFunction(string_view name);
     const Expression& getFunction(string_view name) const;
@@ -202,14 +204,14 @@ class Debugger : public DialogContainer
     int stringToValue(string_view stringval);
 
     /* Convenience methods to get/set bit(s) in an 8-bit register */
-    static uInt8 set_bit(uInt8 input, uInt8 bit, bool on)
+    static constexpr uInt8 set_bit(uInt8 input, uInt8 bit, bool on)
     {
       if(on)
         return static_cast<uInt8>(input | (1 << bit));
       else
         return static_cast<uInt8>(input & ~(1 << bit));
     }
-    static void set_bits(uInt8 reg, BoolArray& bits)
+    static constexpr void set_bits(uInt8 reg, BoolArray& bits)
     {
       bits.clear();
       for(int i = 0; i < 8; ++i)
@@ -220,7 +222,7 @@ class Debugger : public DialogContainer
           bits.push_back(false);
       }
     }
-    static uInt8 get_bits(const BoolArray& bits)
+    static constexpr uInt8 get_bits(const BoolArray& bits)
     {
       uInt8 result = 0x0;
       for(int i = 0; i < 8; ++i)
@@ -255,6 +257,7 @@ class Debugger : public DialogContainer
     int dpeekAsInt(int addr, Device::AccessFlags flags = Device::NONE);
     Device::AccessFlags getAccessFlags(uInt16 addr) const;
     void setAccessFlags(uInt16 addr, Device::AccessFlags flags);
+    Device::AccessCounter getAccessCounter(uInt16 addr) const;
 
     static uInt32 getBaseAddress(uInt32 addr, bool read);
 
@@ -324,7 +327,7 @@ class Debugger : public DialogContainer
     void log(string_view triggerMsg);
 
     // Set a bunch of RAM locations at once
-    string setRAM(IntArray& args);
+    string setRAM(const IntArray& args);
 
     void reset();
 
@@ -380,4 +383,4 @@ class Debugger : public DialogContainer
     Debugger& operator=(Debugger&&) = delete;
 };
 
-#endif
+#endif  // DEBUGGER_HXX

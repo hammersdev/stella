@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEFA2_HXX
-#define CARTRIDGEFA2_HXX
+#ifndef CARTRIDGE_FA2_HXX
+#define CARTRIDGE_FA2_HXX
 
 class System;
 
@@ -53,13 +53,12 @@ class CartridgeFA2 : public CartridgeFA
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the settings object
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeFA2(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeFA2(ByteSpan image, string_view md5,
                  const Settings& settings, size_t bsSize = 28_KB);
     ~CartridgeFA2() override = default;
 
@@ -150,4 +149,4 @@ class CartridgeFA2 : public CartridgeFA
     CartridgeFA2& operator=(CartridgeFA2&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_FA2_HXX

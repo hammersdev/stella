@@ -20,6 +20,8 @@
 #ifndef FS_NODE_ZIP_HXX
 #define FS_NODE_ZIP_HXX
 
+#include <stdexcept>
+
 #include "ZipHandler.hxx"
 #include "FSNode.hxx"
 
@@ -35,6 +37,9 @@
 class FSNodeZIP : public AbstractFSNode
 {
   public:
+    using ZipError = ZipHandler::ZipError;
+    using ZipException = ZipHandler::ZipException;
+
     /**
      * Creates a FSNodeZIP for a given path.
      *
@@ -48,8 +53,8 @@ class FSNodeZIP : public AbstractFSNode
     const string& getPath() const override { return _path;      }
     string getShortPath() const   override { return _shortPath; }
     bool hasParent() const override   { return true; }
-    bool isDirectory() const override { return _isDirectory; }
-    bool isFile() const      override { return _isFile;      }
+    bool isDirectory() const override { return _kind == NodeKind::Directory; }
+    bool isFile()      const override { return _kind == NodeKind::File;      }
     bool isReadable() const  override { return _realNode && _realNode->isReadable(); }
     bool isWritable() const  override { return false; }
 
@@ -62,21 +67,31 @@ class FSNodeZIP : public AbstractFSNode
     size_t getSize() const override { return _size; }
     bool getChildren(AbstractFSList& list, ListMode mode) const override;
     AbstractFSNodePtr getParent() const override;
+    AbstractFSNodePtr getSiblingNode(string_view ext) const override;
 
-    size_t read(ByteBuffer& buffer, size_t) const override;
+    size_t read(ByteArray& buffer, size_t) const override;
     size_t read(std::stringstream& buffer) const override;
-    size_t write(const ByteBuffer& buffer, size_t) const override;
-    size_t write(const std::ostringstream& buffer) const override;
+    size_t write(ByteSpan) const override {
+      throw std::runtime_error("ZIP file writing not implemented");
+    }
+    size_t write(string_view) const override {
+      throw std::runtime_error("ZIP file writing not implemented");
+    }
 
-  private:
-    FSNodeZIP(const string& zipfile, const string& virtualpath,
+  public:
+    // Passkey: only FSNodeZIP internals can construct Key{}, enabling make_shared
+    struct Key { explicit Key() = default; };
+    FSNodeZIP(Key, string_view zipfile, string_view virtualpath,
         const AbstractFSNodePtr& realnode, size_t size, bool isdir);
 
-    void setFlags(const string& zipfile, const string& virtualpath,
+  private:
+    void setFlags(string_view zipfile, string_view virtualpath,
         const AbstractFSNodePtr& realnode);
 
-    friend std::ostream& operator<<(std::ostream& os, const FSNodeZIP& node)
-    {
+    static AbstractFSNodePtr makeShared(string_view zipfile, string_view virtualpath,
+        const AbstractFSNodePtr& realnode, size_t size, bool isdir);
+
+    friend std::ostream& operator<<(std::ostream& os, const FSNodeZIP& node) {
       os << "_zipFile:     " << node._zipFile << '\n'
          << "_virtualPath: " << node._virtualPath << '\n'
          << "_name:        " << node._name << '\n'
@@ -87,34 +102,24 @@ class FSNodeZIP : public AbstractFSNode
     }
 
   private:
-    /* Error types */
-    enum class zip_error: uInt8
-    {
-      NONE,
-      NOT_A_FILE,
-      NOT_READABLE,
-      NO_ROMS
-    };
-
     // Since a ZIP file is itself an abstraction, it still needs access to
     // an actual concrete filesystem node
     AbstractFSNodePtr _realNode;
 
     string _zipFile, _virtualPath;
     string _name, _path, _shortPath;
-    zip_error _error{zip_error::NONE};
-    uInt16 _numFiles{0};
     size_t _size{0};
 
-    bool _isDirectory{false}, _isFile{false};
+    enum class NodeKind : uInt8 { Invalid, File, Directory };
+    NodeKind _kind{NodeKind::Invalid};
 
     // ZipHandler static reference variable responsible for accessing ZIP files
-    static unique_ptr<ZipHandler>& zipHandler() {
-      static unique_ptr<ZipHandler> z = std::make_unique<ZipHandler>();
+    static ZipHandler& zipHandler() {
+      static ZipHandler z;
       return z;
     }
 };
 
-#endif
+#endif  // FS_NODE_ZIP_HXX
 
 #endif  // ZIP_SUPPORT

@@ -47,15 +47,15 @@ void M6532::reset()
   // Initialize the 128 bytes of memory
   const bool devSettings = mySettings.getBool("dev.settings");
   if(mySettings.getString(devSettings ? "dev.console" : "plr.console") == "7800")
-    std::copy_n(RAM_7800.begin(), RAM_7800.size(), myRAM.begin());
+    std::ranges::copy(RAM_7800, myRAM.begin());
   else if(mySettings.getBool(devSettings ? "dev.ramrandom" : "plr.ramrandom"))
-    for(auto& ram: myRAM)
-      ram = mySystem->randGenerator().next();
+    std::ranges::generate(myRAM, [this]{ return mySystem->randGenerator().next(); });
   else
     myRAM.fill(0);
 
   myTimer = mySystem->randGenerator().next() & 0xff;
   myDivider = 1024;
+  myDividerShift = 10;
   mySubTimer = 0;
   myWrappedThisCycle = false;
 
@@ -73,58 +73,93 @@ void M6532::reset()
   // Edge-detect set to negative (high to low)
   myEdgeDetectPositive = false;
 
+  myPA7Sync1 = true;
+  myPA7LastStable = true;
+
   // Let the controllers know about the reset
-  myConsole.leftController().reset();
-  myConsole.rightController().reset();
+  bindToControllers();
+  myLeftPort->reset();
+  myRightPort->reset();
 
 #ifdef DEBUGGER_SUPPORT
   createAccessBases();
-#endif // DEBUGGER_SUPPORT
+#endif  // DEBUGGER_SUPPORT
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void M6532::update()
 {
-  Controller& lport = myConsole.leftController();
-  Controller& rport = myConsole.rightController();
-
-  // Get current PA7 state
-  const bool prevPA7 = lport.getPin(Controller::DigitalPin::Four);
-
   // Update entire port state
-  lport.update();
-  rport.update();
+  myLeftPort->update();
+  myRightPort->update();
   myConsole.switches().update();
+}
 
-  // Get new PA7 state
-  const bool currPA7 = lport.getPin(Controller::DigitalPin::Four);
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void M6532::bindToControllers()
+{
+  myLeftPort = &myConsole.leftController();
+  myRightPort = &myConsole.rightController();
+}
 
-  // PA7 Flag is set on active transition in appropriate direction
-  if((!myEdgeDetectPositive && prevPA7 && !currPA7) ||
-     (myEdgeDetectPositive && !prevPA7 && currPA7))
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+FORCE_INLINE bool M6532::samplePA7Raw() const
+{
+  // If PA7 configured as output, RIOT drives the line
+  if(myDDRA & 0x80) [[unlikely]]
+    return (myOutA & 0x80) != 0;
+
+  // Otherwise sample external input
+  return myLeftPort->getPin(Controller::DigitalPin::Four);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+FORCE_INLINE void M6532::updatePA7EdgeDetect()
+{
+  // --------------------------------------------------------------------------
+  // Synchronizer model:
+  //
+  // raw input -> sync1 -> sync2 -> edge detector
+  //
+  // This approximates hardware flip-flop synchronization and prevents
+  // controller jitter or frame-rate dependent edge artifacts.
+  // --------------------------------------------------------------------------
+
+  // Simple 2-stage synchronizer (cheap, stable, deterministic)
+  const bool stablePA7 = myPA7Sync1;
+  myPA7Sync1 = samplePA7Raw();
+
+  // Detect transition on the stable (post-sync) signal only
+  const bool edge = (myPA7LastStable != stablePA7) &&
+                    (stablePA7 == myEdgeDetectPositive);
+
+  if(edge) [[unlikely]]
     myInterruptFlag |= PA7Bit;
+
+  myPA7LastStable = stablePA7;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void M6532::updateEmulation()
 {
-  auto cycles = static_cast<uInt32>(mySystem->cycles() - myLastCycle);
+  const uInt64 currentCycle = mySystem->cycles();
+  auto cycles = static_cast<uInt32>(currentCycle - myLastCycle);
   const uInt32 subTimer = mySubTimer;
 
   // Guard against further state changes if the debugger alread forwarded emulation
   // state (in particular myWrappedThisCycle)
-  if (cycles == 0) return;
+  if(cycles == 0) [[unlikely]] return;
 
   myWrappedThisCycle = false;
-  mySubTimer = (cycles + mySubTimer) % myDivider;
+  mySubTimer = (cycles + mySubTimer) & (myDivider - 1);
 
-  if ((myInterruptFlag & TimerBit) == 0)
+  if((myInterruptFlag & TimerBit) == 0) [[likely]]
   {
-    const uInt32 timerTicks = (cycles + subTimer) / myDivider;
+    const uInt32 timerTicks = (cycles + subTimer) >> myDividerShift;
 
-    if(timerTicks > myTimer)
+    if(timerTicks > myTimer) [[unlikely]]
     {
-      cycles -= ((myTimer + 1) * myDivider - subTimer);
+      cycles -= ((myTimer + 1) << myDividerShift) - subTimer;
 
       myWrappedThisCycle = cycles == 0;
       myTimer = 0xFF;
@@ -137,12 +172,15 @@ void M6532::updateEmulation()
     }
   }
 
-  if((myInterruptFlag & TimerBit) != 0) {
+  if((myInterruptFlag & TimerBit) != 0) [[unlikely]]
+  {
     myTimer = (myTimer - cycles) & 0xFF;
     myWrappedThisCycle = myTimer == 0xFF;
   }
 
-  myLastCycle = mySystem->cycles();
+  updatePA7EdgeDetect();
+
+  myLastCycle = currentCycle;
 
 #ifdef DEBUGGER_SUPPORT
   myTimWrappedOnRead = myTimWrappedOnWrite = false;
@@ -171,10 +209,9 @@ void M6532::installDelegate(System& system, Device& device)
   //    (addr & 0x0200) == 0x0200 is IO     (A9 is 1)
   //    (addr & 0x0300) == 0x0100 is Stack  (A8 is 1, A9 is 0)
   //    (addr & 0x0300) == 0x0000 is ZP RAM (A8 is 0, A9 is 0)
-  for (uInt16 addr = 0; addr < 0x1000; addr += System::PAGE_SIZE)
-    if ((addr & 0x0080) == 0x0080) {
+  for(uInt16 addr = 0; addr < 0x1000; addr += System::PAGE_SIZE)
+    if((addr & 0x0080) == 0x0080)
       mySystem->setPageAccess(addr, access);
-    }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -185,15 +222,14 @@ uInt8 M6532::peek(uInt16 addr)
   // A9 distinguishes I/O registers from ZP RAM
   // A9 = 1 is read from I/O
   // A9 = 0 is read from RAM
-  if((addr & 0x0200) == 0x0000)
+  if((addr & 0x0200) == 0x0000) [[likely]]
     return myRAM[addr & 0x007f];
 
   switch(addr & 0x07)
   {
     case 0x00:    // SWCHA - Port A I/O Register (Joystick)
     {
-      const uInt8 value = (myConsole.leftController().read() << 4) |
-                           myConsole.rightController().read();
+      const uInt8 value = (myLeftPort->read() << 4) | myRightPort->read();
 
       // Each pin is high (1) by default and will only go low (0) if either
       //  (a) External device drives the pin low
@@ -209,7 +245,10 @@ uInt8 M6532::peek(uInt16 addr)
 
     case 0x02:    // SWCHB - Port B I/O Register (Console switches)
     {
-      return (myOutB | ~myDDRB) & (myConsole.switches().read() | myDDRB);
+      // Sample the console switches at the current position within the input
+      // window so a momentary Select/Reset press is seen between reads
+      return (myOutB | ~myDDRB) &
+             (myConsole.switches().read(mySystem->cycles()) | myDDRB);
     }
 
     case 0x03:    // SWBCNT - Port B Data Direction Register
@@ -221,7 +260,8 @@ uInt8 M6532::peek(uInt16 addr)
     case 0x06:
     {
       // Timer Flag is always cleared when accessing INTIM
-      if (!myWrappedThisCycle) myInterruptFlag &= ~TimerBit;
+      if(!myWrappedThisCycle)
+        myInterruptFlag &= ~TimerBit;
   #ifdef DEBUGGER_SUPPORT
       myTimWrappedOnRead = myWrappedThisCycle;
       myTimReadCycles += 7;
@@ -259,7 +299,7 @@ bool M6532::poke(uInt16 addr, uInt8 value)
   // A9 distinguishes I/O registers from ZP RAM
   // A9 = 1 is write to I/O
   // A9 = 0 is write to RAM
-  if((addr & 0x0200) == 0x0000)
+  if((addr & 0x0200) == 0x0000) [[likely]]
   {
     myRAM[addr & 0x007f] = value;
     return true;
@@ -318,15 +358,18 @@ bool M6532::poke(uInt16 addr, uInt8 value)
 void M6532::setTimerRegister(uInt8 value, uInt8 interval)
 {
   static constexpr std::array<uInt32, 4> divider = { 1, 8, 64, 1024 };
+  static constexpr std::array<uInt8,  4> dividerShift = { 0, 3, 6, 10 };
 
   myDivider = divider[interval];
+  myDividerShift = dividerShift[interval];
   myOutTimer[interval] = value;
 
   myTimer = value;
   mySubTimer = myDivider - 1;
 
   // Interrupt timer flag is cleared (and invalid) when writing to the timer
-  if (!myWrappedThisCycle) myInterruptFlag &= ~TimerBit;
+  if(!myWrappedThisCycle)
+    myInterruptFlag &= ~TimerBit;
 #ifdef DEBUGGER_SUPPORT
   myTimWrappedOnWrite = myWrappedThisCycle;
 #endif
@@ -347,24 +390,21 @@ void M6532::setPinState(bool swcha)
       if(DDR bit is input)       set output as 1
       else if(DDR bit is output) set output as bit in ORA
   */
-  Controller& lport = myConsole.leftController();
-  Controller& rport = myConsole.rightController();
-
   const uInt8 ioport = myOutA | ~myDDRA;
 
-  lport.write(Controller::DigitalPin::One,   ioport & 0b00010000);
-  lport.write(Controller::DigitalPin::Two,   ioport & 0b00100000);
-  lport.write(Controller::DigitalPin::Three, ioport & 0b01000000);
-  lport.write(Controller::DigitalPin::Four,  ioport & 0b10000000);
-  rport.write(Controller::DigitalPin::One,   ioport & 0b00000001);
-  rport.write(Controller::DigitalPin::Two,   ioport & 0b00000010);
-  rport.write(Controller::DigitalPin::Three, ioport & 0b00000100);
-  rport.write(Controller::DigitalPin::Four,  ioport & 0b00001000);
+  myLeftPort->write (Controller::DigitalPin::One,   ioport & 0b00010000);
+  myLeftPort->write (Controller::DigitalPin::Two,   ioport & 0b00100000);
+  myLeftPort->write (Controller::DigitalPin::Three, ioport & 0b01000000);
+  myLeftPort->write (Controller::DigitalPin::Four,  ioport & 0b10000000);
+  myRightPort->write(Controller::DigitalPin::One,   ioport & 0b00000001);
+  myRightPort->write(Controller::DigitalPin::Two,   ioport & 0b00000010);
+  myRightPort->write(Controller::DigitalPin::Three, ioport & 0b00000100);
+  myRightPort->write(Controller::DigitalPin::Four,  ioport & 0b00001000);
 
   if(swcha)
   {
-    lport.controlWrite(ioport);
-    rport.controlWrite(ioport);
+    myLeftPort->controlWrite(ioport);
+    myRightPort->controlWrite(ioport);
   }
 }
 
@@ -393,6 +433,9 @@ bool M6532::save(Serializer& out) const
 
     out.putByte(myInterruptFlag);
     out.putBool(myEdgeDetectPositive);
+    out.putBool(myPA7Sync1);
+    out.putBool(myPA7LastStable);
+
     out.putByteArray(myOutTimer);
   }
   catch(...)
@@ -414,6 +457,7 @@ bool M6532::load(Serializer& in)
     myTimer = in.getInt();
     mySubTimer = in.getInt();
     myDivider = in.getInt();
+    myDividerShift = static_cast<uInt8>(std::bit_width(myDivider) - 1);
     myWrappedThisCycle = in.getBool();
     myLastCycle = in.getLong();
     mySetTimerCycle = in.getLong();
@@ -429,6 +473,9 @@ bool M6532::load(Serializer& in)
 
     myInterruptFlag = in.getByte();
     myEdgeDetectPositive = in.getBool();
+    myPA7Sync1 = in.getBool();
+    myPA7LastStable = in.getBool();
+
     in.getByteArray(myOutTimer);
   }
   catch(...)
@@ -490,9 +537,9 @@ void M6532::createAccessBases()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Device::AccessFlags M6532::getAccessFlags(uInt16 address) const
 {
-  if (address & IO_BIT)
+  if(address & IO_BIT)
     return myIOAccessBase[address & IO_MASK];
-  else if (address & STACK_BIT)
+  else if(address & STACK_BIT)
     return myStackAccessBase[address & STACK_MASK];
   else
     return myRAMAccessBase[address & RAM_MASK];
@@ -502,14 +549,16 @@ Device::AccessFlags M6532::getAccessFlags(uInt16 address) const
 void M6532::setAccessFlags(uInt16 address, Device::AccessFlags flags)
 {
   // ignore none flag
-  if (flags != Device::NONE) {
-    if (address & IO_BIT)
+  if(flags != Device::NONE)
+  {
+    if(address & IO_BIT)
       myIOAccessBase[address & IO_MASK] |= flags;
-    else {
-      // the first access, either by direct RAM or stack access is assumed as initialization
-      if (myZPAccessDelay[address & RAM_MASK])
+    else
+    {
+      // The first access, either by direct RAM or stack access is assumed as initialization
+      if(myZPAccessDelay[address & RAM_MASK])
         myZPAccessDelay[address & RAM_MASK]--;
-      else if (address & STACK_BIT)
+      else if(address & STACK_BIT)
         myStackAccessBase[address & STACK_MASK] |= flags;
       else
         myRAMAccessBase[address & RAM_MASK] |= flags;
@@ -520,13 +569,14 @@ void M6532::setAccessFlags(uInt16 address, Device::AccessFlags flags)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void M6532::increaseAccessCounter(uInt16 address, bool isWrite)
 {
-  if (address & IO_BIT)
+  if(address & IO_BIT)
     myIOAccessCounter[(isWrite ? IO_SIZE : 0) + (address & IO_MASK)]++;
-  else {
-    // the first access, either by direct RAM or stack access is assumed as initialization
-    if (myZPAccessDelay[address & RAM_MASK])
+  else
+  {
+    // The first access, either by direct RAM or stack access is assumed as initialization
+    if(myZPAccessDelay[address & RAM_MASK])
       myZPAccessDelay[address & RAM_MASK]--;
-    else if (address & STACK_BIT)
+    else if(address & STACK_BIT)
       myStackAccessCounter[(isWrite ? STACK_SIZE : 0) + (address & STACK_MASK)]++;
     else
       myRAMAccessCounter[(isWrite ? RAM_SIZE : 0) + (address & RAM_MASK)]++;
@@ -536,43 +586,35 @@ void M6532::increaseAccessCounter(uInt16 address, bool isWrite)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string M6532::getAccessCounters() const
 {
-  std::ostringstream out;
+  string out;
 
-  out << "RAM reads:\n";
-  for(uInt16 addr = 0x00; addr < RAM_SIZE; ++addr)
-    out << Common::Base::HEX4 << (addr | 0x80) << ","
-    << Common::Base::toString(myRAMAccessCounter[addr], Common::Base::Fmt::_10_8) << ", ";
-  out << "\n";
-  out << "RAM writes:\n";
-  for(uInt16 addr = 0x00; addr < RAM_SIZE; ++addr)
-    out << Common::Base::HEX4 << (addr | 0x80) << ","
-    << Common::Base::toString(myRAMAccessCounter[RAM_SIZE + addr], Common::Base::Fmt::_10_8) << ", ";
-  out << "\n";
+  // Helper: append one address+counter entry
+  const auto addEntry = [&out](uInt16 addr, Device::AccessCounter counter) {
+    out += std::format("{},{}, ",
+      Common::Base::toString(addr, Common::Base::Fmt::_16_4),
+      Common::Base::toString(counter, Common::Base::Fmt::_10_8));
+  };
 
+  // Helper: append a labeled section
+  const auto addSection = [&](string_view label, uInt16 baseAddr,
+                              uInt16 size, const auto& counters,
+                              uInt16 offset = 0)
+  {
+    out += label;
+    out += '\n';
+    for(uInt16 addr = 0x00; addr < size; ++addr)
+      addEntry(addr | baseAddr, counters[offset + addr]);
+    out += '\n';
+  };
 
-  out << "Stack reads:\n";
-  for(uInt16 addr = 0x00; addr < STACK_SIZE; ++addr)
-    out << Common::Base::HEX4 << (addr | 0x180) << ","
-    << Common::Base::toString(myStackAccessCounter[addr], Common::Base::Fmt::_10_8) << ", ";
-  out << "\n";
-  out << "Stack writes:\n";
-  for(uInt16 addr = 0x00; addr < STACK_SIZE; ++addr)
-    out << Common::Base::HEX4 << (addr | 0x180) << ","
-    << Common::Base::toString(myStackAccessCounter[STACK_SIZE + addr], Common::Base::Fmt::_10_8) << ", ";
-  out << "\n";
+  addSection("RAM reads:\n",   0x080, RAM_SIZE,   myRAMAccessCounter,   0);
+  addSection("RAM writes:\n",  0x080, RAM_SIZE,   myRAMAccessCounter,   RAM_SIZE);
+  addSection("Stack reads:\n", 0x180, STACK_SIZE, myStackAccessCounter, 0);
+  addSection("Stack writes:\n",0x180, STACK_SIZE, myStackAccessCounter, STACK_SIZE);
+  addSection("IO reads:\n",    0x280, IO_SIZE,    myIOAccessCounter,    0);
+  addSection("IO writes:\n",   0x280, IO_SIZE,    myIOAccessCounter,    IO_SIZE);
 
-  out << "IO reads:\n";
-  for(uInt16 addr = 0x00; addr < IO_SIZE; ++addr)
-    out << Common::Base::HEX4 << (addr | 0x280) << ","
-    << Common::Base::toString(myIOAccessCounter[addr], Common::Base::Fmt::_10_8) << ", ";
-  out << "\n";
-  out << "IO writes:\n";
-  for(uInt16 addr = 0x00; addr < IO_SIZE; ++addr)
-    out << Common::Base::HEX4 << (addr | 0x280) << ","
-    << Common::Base::toString(myIOAccessCounter[IO_SIZE + addr], Common::Base::Fmt::_10_8) << ", ";
-  out << "\n";
-
-  return out.str();
+  return out;
 }
 
-#endif // DEBUGGER_SUPPORT
+#endif  // DEBUGGER_SUPPORT

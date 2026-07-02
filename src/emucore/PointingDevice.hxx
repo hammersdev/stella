@@ -20,6 +20,8 @@
 
 class Event;
 
+#include <climits>
+
 #include "Control.hxx"
 #include "bspf.hxx"
 
@@ -39,11 +41,9 @@ class PointingDevice : public Controller
                    float sensitivity);
     ~PointingDevice() override = default;
 
-  public:
     static constexpr int MIN_SENSE = 1;
     static constexpr int MAX_SENSE = 20;
 
-  public:
     using Controller::read;
 
     /**
@@ -61,9 +61,9 @@ class PointingDevice : public Controller
     void update() override;
 
     /**
-      Answers whether the controller is intrinsically an analog controller.
+      Trackballs/mice are driven by the mouse (digital gray code internally).
     */
-    bool isAnalog() const override { return true; }
+    bool usesMouse() const override { return true; }
 
     /**
       Determines how this controller will treat values received from the
@@ -99,16 +99,16 @@ class PointingDevice : public Controller
     virtual uInt8 ioPortA(uInt8 countH, uInt8 countV, uInt8 left, uInt8 down) = 0;
 
   private:
-    void updateDirection(int counter, float& counterRemainder,
-                         bool& trackBallDir, int& trackBallLines,
-                         int& scanCount, int& firstScanOffset);
+    void updateDirection(int counter, uInt64 cyclesLastWindow,
+                         float& counterRemainder, bool& trackBallDir,
+                         int& trackBallCycles, int& cycleCount, int& firstOffset);
 
   private:
     // Mouse input to sensitivity emulation
     float mySensitivity{0.F}, myHCounterRemainder{0.F}, myVCounterRemainder{0.F};
 
-    // How many lines to wait between sending new horz and vert values
-    int myTrackBallLinesH{1}, myTrackBallLinesV{1};
+    // How many CPU cycles to wait between sending new horz and vert values
+    int myTrackBallCyclesH{1}, myTrackBallCyclesV{1};
 
     // Was TrackBall moved left or moved right instead
     bool myTrackBallLeft{false};
@@ -119,20 +119,26 @@ class PointingDevice : public Controller
     // Counter to iterate through the gray codes
     uInt8 myCountH{0}, myCountV{0};
 
-    // Next scanline for change
-    int myScanCountH{0}, myScanCountV{0};
+    // Elapsed-cycle offset (from window start) of the next gray code change.
+    // INT_MAX means "no pending change", so a plugged-but-unmapped controller
+    // never steps its counters
+    int myCycleCountH{INT_MAX}, myCycleCountV{INT_MAX};
 
-    // Offset factor for first scanline, 0..(1 << 12 - 1)
-    int myFirstScanOffsetH{0}, myFirstScanOffsetV{0};
+    // System cycle at the start of the current input window.  A real
+    // quadrature encoder's output depends only on elapsed time.
+    uInt64 myWindowStartCycle{0};
+
+    // Offset factor for first change, 0..(1 << 12) - 1
+    int myFirstOffsetH{0}, myFirstOffsetV{0};
 
     // Whether to use the mouse to emulate this controller
     bool myMouseEnabled{false};
 
     // User-defined sensitivity; adjustable since end-users may have different
     // mouse speeds
-    static float TB_SENSITIVITY;
+    static inline float TB_SENSITIVITY = 1.F;
 
-private:
+  private:
     // Following constructors and assignment operators not supported
     PointingDevice() = delete;
     PointingDevice(const PointingDevice&) = delete;
@@ -141,4 +147,4 @@ private:
     PointingDevice& operator=(PointingDevice&&) = delete;
 };
 
-#endif // POINTING_DEVICE_HXX
+#endif  // POINTING_DEVICE_HXX

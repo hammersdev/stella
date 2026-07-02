@@ -20,22 +20,27 @@
 
 class Console;
 class Event;
+class FSNode;
+class OSystem;
 class System;
 
 #include "bspf.hxx"
 #include "Control.hxx"
+#include "CompuMateCassette.hxx"
 
 /**
   Handler for SpectraVideo CompuMate bankswitched games.
 
-  The specifics of the CompuMate format can be found in both the Cart side
-  (CartCM) and the Controller side (CMControl).  The CompuMate device is
-  unique for the 2600 in that it requires close co-operation between the
-  cartridge and the left and right controllers.
+  The specifics of the CompuMate format can be found in the Cart side
+  (CartCM), the Controller side (CMControl) and the cassette handling
+  (CompuMateCassette).  The CompuMate device is unique for the 2600 in
+  that it requires close co-operation between the cartridge and the
+  left and right controllers.
 
-  This class acts as a 'parent' for cartridge and both the left and right
-  CMControl's, taking care of their creation and communication between them.
-  It also allows to enable/disable the users actual keyboard when required.
+  This class acts as a 'parent' for cartridge, cassette and both the left
+  and right CMControl's, taking care of their creation and communication
+  between them.  Keyboard trigger detection (Func+J for LOAD, Func+H for SAVE)
+  lives here; all cassette I/O is delegated to CompuMateCassette.
 
   @author  Stephen Anthony
 */
@@ -51,7 +56,8 @@ class CompuMate
       @param event    The event object to use for events
       @param system   The system using this controller
     */
-    CompuMate(const Console& console, const Event& event, const System& system);
+    CompuMate(OSystem& osystem, const Console& console,
+              const Event& event, const System& system);
     ~CompuMate() = default;
 
     /**
@@ -60,6 +66,34 @@ class CompuMate
     unique_ptr<Controller>& leftController()  { return myLeftController;  }
     unique_ptr<Controller>& rightController() { return myRightController; }
 
+    /**
+      Called by CartCM whenever SWCHA bit 6 (D6, audio-out/CLK) changes.
+      Forwarded to CompuMateCassette's FSK decoder during save.
+    */
+    void cassetteD6Toggled(uInt64 cycles) { myCassette.cassetteD6Toggled(cycles); }
+
+    bool isRecording() const { return myCassette.isRecording(); }
+    void checkTimeout(uInt64 currentCycle) { myCassette.checkTimeout(currentCycle); }
+
+    /**
+      Return the current cassette waveform bit for SWCHA D7.
+      Returns 1 when no cassette is loaded (pulled high = no signal).
+    */
+    uInt8 cassetteBit() const { return myCassette.cassetteBit(); }
+
+    /**
+      Cancel a pending cassette load (e.g. when a file-browser dialog is
+      dismissed).  Resets the Func+J / Enter state machine so the user
+      must press Func+J → Enter again to start a new load.
+    */
+    void cancelCassetteLoad() { myLoadArm.reset(); }
+
+    /**
+      Cancel a pending cassette save (e.g. when a file-browser dialog is
+      dismissed).  Resets the Func+H / Enter state machine so the user
+      must press Func+H → Enter again to start a new save.
+    */
+    void cancelCassetteSave() { mySaveArm.reset(); }
 
     /** Needed for communication with CartCM class */
     uInt8& column() { return myColumn; }
@@ -87,8 +121,19 @@ class CompuMate
         CMControl(class CompuMate& handler, Controller::Jack jack, const Event& event,
                   const System& system)
           : Controller(jack, event, system, Controller::Type::CompuMate),
-            myHandler{handler} { }
+            myHandler{handler}
+        {
+          if(jack == Controller::Jack::Left) {
+            setPin(AnalogPin::Nine, AnalogReadout::connectToGround());
+            setPin(AnalogPin::Five, AnalogReadout::connectToVcc());
+          } else {
+            setPin(AnalogPin::Nine, AnalogReadout::connectToVcc());
+            setPin(AnalogPin::Five, AnalogReadout::connectToGround());
+          }
+        }
         ~CMControl() override = default;
+
+        using Controller::setPin;
 
       public:
         /**
@@ -123,15 +168,46 @@ class CompuMate
     };
 
   private:
-    // Console and Event objects
+    // OSystem, Console, Event, and System objects
+    OSystem&       myOSystem;
     const Console& myConsole;
-    const Event& myEvent;
+    const Event&   myEvent;
+    const System&  mySystem;
 
     // Left and right controllers
     unique_ptr<Controller> myLeftController, myRightController;
 
     // Column currently active
     uInt8 myColumn{0};
+
+    // Cassette tape emulation
+    CompuMateCassette myCassette;
+
+    // Shared state for the Func+J (LOAD) and Func+H (SAVE) arm sequences
+    struct ArmState {
+      bool   seen{false};
+      uInt8  bufLen{0};
+      bool   waitingForRelease{false};
+      bool   prevEnter{false};
+      bool   prevBackspace{false};
+      bool   prevAnyChar{false};
+
+      void reset() { *this = {}; }
+    };
+    FSNode myPendingLoadPath;  // set by dialog at Func+J time
+    ArmState myLoadArm;
+    ArmState mySaveArm;
+    // Cycle at which to release a virtually-injected Backspace keypress
+    // (0 = none pending).  Used on LOAD/SAVE cancel to erase the command from
+    // the ROM screen; the event is held briefly so the ROM scans it at
+    // column 5, then auto-released in update().
+    uInt64   myBackspaceReleaseCycle{0};
+
+  #ifdef GUI_SUPPORT
+    // Cycles to hold an injected Backspace so the ROM scans it at column 5 and
+    // sees a clean press/release (~1 NTSC frame); used by the cancel callbacks
+    static constexpr uInt32 BACKSPACE_HOLD_CYCLES = 20000;
+  #endif
 
   private:
     // Following constructors and assignment operators not supported
@@ -142,4 +218,4 @@ class CompuMate
     CompuMate& operator=(CompuMate&&) = delete;
 };
 
-#endif
+#endif  // COMPUMATE_HXX

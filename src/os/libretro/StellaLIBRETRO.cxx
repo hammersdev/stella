@@ -23,6 +23,9 @@
 
 #include "AtariNTSC.hxx"
 #include "AudioSettings.hxx"
+#include "CartDPC.hxx"
+#include "M6532.hxx"
+#include "PaletteHandler.hxx"
 #include "Serializer.hxx"
 #include "StateManager.hxx"
 #include "Switches.hxx"
@@ -31,13 +34,13 @@
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 StellaLIBRETRO::StellaLIBRETRO()
-  : rom_image{std::make_unique<uInt8[]>(getROMMax())},
+  : rom_image(getROMMax()),
     audio_buffer{std::make_unique<Int16[]>(audio_buffer_max)}
 {
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool StellaLIBRETRO::create(bool logging)
+bool StellaLIBRETRO::create(const SettingsLIBRETRO& cfg, bool logging)
 {
   system_ready = false;
 
@@ -60,10 +63,25 @@ bool StellaLIBRETRO::create(bool logging)
   }
 
   settings.setValue("speed", 1.0);
-  settings.setValue("uimessages", false);
 
-  settings.setValue("format", console_format);
-  settings.setValue("palette", video_palette);
+  settings.setValue("uimessages",       cfg.info_messages);
+  settings.setValue("plr.extaccess",    cfg.info_messages);
+  settings.setValue("plr.detectedinfo", cfg.info_messages);
+  settings.setValue("plr.timemachine",  false);
+
+  settings.setValue("detectpal60",  cfg.detect_pal60);
+  settings.setValue("detectntsc50", cfg.detect_ntsc50);
+
+  settings.setValue(AudioSettings::SETTING_DPC_PITCH, cfg.dpc_pitch);
+
+  settings.setValue("pal.contrast",   cfg.pal_contrast);
+  settings.setValue("pal.brightness", cfg.pal_brightness);
+  settings.setValue("pal.hue",        cfg.pal_hue);
+  settings.setValue("pal.saturation", cfg.pal_saturation);
+  settings.setValue("pal.gamma",      cfg.pal_gamma);
+
+  settings.setValue("format", cfg.console_format);
+  settings.setValue("palette", cfg.video_palette);
 
   settings.setValue("tia.zoom", 1);
   settings.setValue("tia.vsizeadjust", 0);
@@ -72,10 +90,10 @@ bool StellaLIBRETRO::create(bool logging)
   //fastscbios
   // Fast loading of Supercharger BIOS
 
-  settings.setValue("tv.filter", static_cast<int>(video_filter));
+  settings.setValue("tv.filter", static_cast<int>(cfg.video_filter));
 
-  settings.setValue("tv.phosphor", video_phosphor);
-  settings.setValue("tv.phosblend", video_phosphor_blend);
+  settings.setValue("tv.phosphor", cfg.video_phosphor);
+  settings.setValue("tv.phosblend", cfg.video_phosphor_blend);
 
   /*
   31440 rate
@@ -89,11 +107,11 @@ bool StellaLIBRETRO::create(bool logging)
   settings.setValue(AudioSettings::SETTING_HEADROOM, 0);
   settings.setValue(AudioSettings::SETTING_RESAMPLING_QUALITY, static_cast<int>(AudioSettings::ResamplingQuality::nearestNeighbour));
   settings.setValue(AudioSettings::SETTING_VOLUME, 100);
-  settings.setValue(AudioSettings::SETTING_STEREO, audio_mode);
+  settings.setValue(AudioSettings::SETTING_STEREO, cfg.audio_mode);
 
   const FSNode rom(rom_path);
 
-  if(myOSystem->createConsole(rom) != EmptyString())
+  if(!myOSystem->createConsole(rom).empty())
     return false;
 
   // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -101,7 +119,7 @@ bool StellaLIBRETRO::create(bool logging)
   console_timing = myOSystem->console().timing();
   phosphor_default = myOSystem->frameBuffer().tiaSurface().phosphorEnabled();
 
-  if(video_phosphor == "never") setVideoPhosphor(1, video_phosphor_blend);
+  if(cfg.video_phosphor == "never") setVideoPhosphor("never", cfg.video_phosphor_blend);
 
   // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -126,10 +144,6 @@ void StellaLIBRETRO::destroy()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void StellaLIBRETRO::runFrame()
 {
-  // write ram updates
-  for(int lcv = 0; lcv <= 127; lcv++)
-    myOSystem->console().system().m6532().poke(lcv | 0x80, system_ram[lcv]);
-
   // poll input right at vsync
   updateInput();
 
@@ -138,20 +152,14 @@ void StellaLIBRETRO::runFrame()
 
   // drain generated audio
   updateAudio();
-
-  // refresh ram copy
-  memcpy(system_ram, myOSystem->console().system().m6532().getRAM(), 128);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void StellaLIBRETRO::updateInput()
 {
-  const Console& console = myOSystem->console();
-
-  console.leftController().update();
-  console.rightController().update();
-
-  console.switches().update();
+  // Update both controller ports and the console switches (same per-frame
+  // port update the core runs via EventHandler::poll() on other platforms)
+  myOSystem->console().riot().update();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -189,12 +197,9 @@ bool StellaLIBRETRO::loadState(const void* data, size_t size)
   Serializer state;
 
   state.putByteArray(std::span{reinterpret_cast<const uInt8*>(data), size});
+  state.rewind();
 
-  if(!myOSystem->state().loadState(state))
-    return false;
-
-  memcpy(system_ram, myOSystem->console().system().m6532().getRAM(), 128);
-  return true;
+  return myOSystem->state().loadState(state);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -208,6 +213,7 @@ bool StellaLIBRETRO::saveState(void* data, size_t size) const
   if (state.size() > size)
     return false;
 
+  state.rewind();
   state.getByteArray(std::span{reinterpret_cast<uInt8*>(data), state.size()});
   return true;
 }
@@ -224,35 +230,26 @@ size_t StellaLIBRETRO::getStateSize() const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-float StellaLIBRETRO::getVideoAspectPar() const
+float StellaLIBRETRO::getVideoAspectPar(uInt32 aspect_ntsc, uInt32 aspect_pal) const
 {
   float par = 0.F;
 
   if (getVideoNTSC())
   {
-    if (!video_aspect_ntsc)
-      par = (6.1363635f / 3.579545454f) / 2.0;
+    if (!aspect_ntsc)
+      par = (6.1363635F / 3.579545454F) / 2.0;
     else
-      par = video_aspect_ntsc / 100.0;
+      par = aspect_ntsc / 100.0;
   }
   else
   {
-    if (!video_aspect_pal)
-      par = (7.3750000f / (4.43361875f * 4.0f / 5.0f)) / 2.0f;
+    if (!aspect_pal)
+      par = (7.375F / (4.43361875F * 4.F / 5.F)) / 2.F;
     else
-      par = video_aspect_pal / 100.0;
+      par = aspect_pal / 100.0;
   }
 
   return par;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-float StellaLIBRETRO::getVideoAspect() const
-{
-  const uInt32 width = myOSystem->console().tia().width() * 2;
-
-  // display aspect ratio
-  return (width * getVideoAspectPar()) / getVideoHeight();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -295,35 +292,14 @@ void StellaLIBRETRO::setROM(const char* path, const void* data, size_t size)
 {
   rom_path = path;
 
-  memcpy(rom_image.get(), data, size);
+  memcpy(rom_image.data(), data, size);
 
   rom_size = static_cast<uInt32>(size);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void StellaLIBRETRO::setConsoleFormat(uInt32 mode)
-{
-  switch(mode)
-  {
-    case 0:  console_format = "AUTO";    break;
-    case 1:  console_format = "NTSC";    break;
-    case 2:  console_format = "PAL";     break;
-    case 3:  console_format = "SECAM";   break;
-    case 4:  console_format = "NTSC50";  break;
-    case 5:  console_format = "PAL60";   break;
-    case 6:  console_format = "SECAM60"; break;
-    default:                             break;
-  }
-
-  if (system_ready)
-    myOSystem->settings().setValue("format", console_format);
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void StellaLIBRETRO::setVideoFilter(NTSCFilter::Preset mode)
 {
-  video_filter = mode;
-
   if (system_ready)
   {
     myOSystem->settings().setValue("tv.filter", static_cast<int>(mode));
@@ -332,59 +308,81 @@ void StellaLIBRETRO::setVideoFilter(NTSCFilter::Preset mode)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void StellaLIBRETRO::setVideoPalette(const string& mode)
+void StellaLIBRETRO::setVideoPalette(string_view mode)
 {
-  video_palette = mode;
-
   if (system_ready)
   {
-    myOSystem->settings().setValue("palette", video_palette);
-    myOSystem->frameBuffer().tiaSurface().paletteHandler().setPalette(video_palette);
+    myOSystem->settings().setValue("palette", mode);
+    myOSystem->frameBuffer().tiaSurface().paletteHandler().setPalette(string{mode});
   }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void StellaLIBRETRO::setVideoPhosphor(uInt32 mode, uInt32 blend)
+void StellaLIBRETRO::setVideoPhosphor(string_view phosphor, uInt32 blend)
 {
-  switch (mode)
-  {
-    case 0:  video_phosphor = "byrom";  break;
-    case 1:  video_phosphor = "never";  break;
-    case 2:  video_phosphor = "always"; break;
-    default:                            break;
-  }
-
-  video_phosphor_blend = blend;
-
   if (system_ready)
   {
-    myOSystem->settings().setValue("tv.phosphor", video_phosphor);
+    myOSystem->settings().setValue("tv.phosphor", phosphor);
     myOSystem->settings().setValue("tv.phosblend", blend);
 
-    switch (mode)
-    {
-      case 0: myOSystem->frameBuffer().tiaSurface().enablePhosphor(phosphor_default, blend); break;
-      case 1: myOSystem->frameBuffer().tiaSurface().enablePhosphor(false, blend); break;
-      case 2: myOSystem->frameBuffer().tiaSurface().enablePhosphor(true, blend); break;
-      default:  break;
-    }
+    if(phosphor == "byrom")
+      myOSystem->frameBuffer().tiaSurface().enablePhosphor(phosphor_default, blend);
+    else if(phosphor == "never")
+      myOSystem->frameBuffer().tiaSurface().enablePhosphor(false, blend);
+    else
+      myOSystem->frameBuffer().tiaSurface().enablePhosphor(true, blend);
   }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void StellaLIBRETRO::setAudioStereo(int mode)
+void StellaLIBRETRO::setMessages(bool enabled)
 {
-  switch (mode)
+  if(system_ready)
   {
-    case 0:  audio_mode = "byrom";  break;
-    case 1:  audio_mode = "mono";   break;
-    case 2:  audio_mode = "stereo"; break;
-    default:                        break;
+    Settings& settings = myOSystem->settings();
+    settings.setValue("uimessages",       enabled);
+    settings.setValue("plr.extaccess",    enabled);
+    settings.setValue("plr.detectedinfo", enabled);
   }
+}
 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void StellaLIBRETRO::setPaletteAdjust(float contrast, float brightness, float hue,
+                                       float saturation, float gamma)
+{
+  if(system_ready)
+  {
+    Settings& settings = myOSystem->settings();
+    settings.setValue("pal.contrast",   contrast);
+    settings.setValue("pal.brightness", brightness);
+    settings.setValue("pal.hue",        hue);
+    settings.setValue("pal.saturation", saturation);
+    settings.setValue("pal.gamma",      gamma);
+
+    PaletteHandler& ph = myOSystem->frameBuffer().tiaSurface().paletteHandler();
+    ph.loadConfig(settings);
+    ph.setPalette();
+  }
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void StellaLIBRETRO::setDpcPitch(uInt32 pitch)
+{
+  if(system_ready)
+  {
+    myOSystem->settings().setValue(AudioSettings::SETTING_DPC_PITCH, pitch);
+
+    if(myOSystem->console().cartridge().name() == "CartridgeDPC")
+      static_cast<CartridgeDPC&>(myOSystem->console().cartridge()).setDpcPitch(pitch);
+  }
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void StellaLIBRETRO::setAudioStereo(string_view mode)
+{
   if (system_ready)
   {
-    myOSystem->settings().setValue(AudioSettings::SETTING_STEREO, audio_mode);
+    myOSystem->settings().setValue(AudioSettings::SETTING_STEREO, mode);
     myOSystem->console().initializeAudio();
   }
 }

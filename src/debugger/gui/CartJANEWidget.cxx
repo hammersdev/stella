@@ -18,6 +18,8 @@
 #include "CartJANE.hxx"
 #include "CartJANEWidget.hxx"
 
+using Common::Base;
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 CartridgeJANEWidget::CartridgeJANEWidget(
       GuiObject* boss, const GUI::Font& lfont, const GUI::Font& nfont,
@@ -30,25 +32,15 @@ CartridgeJANEWidget::CartridgeJANEWidget(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeJANEWidget::description()
 {
-  std::ostringstream info;
-
-  info << "Tarzan cartridge, four 4K banks\n"
-       << CartridgeEnhancedWidget::description();
-
-  return info.str();
+  return std::format("Tarzan cartridge, four 4K banks\n{}",
+    CartridgeEnhancedWidget::description());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeJANEWidget::hotspotStr(int bank, int, bool prefix)
 {
-  std::ostringstream info;
   const uInt16 hotspot = myCart.hotspot() | ADDR_BASE;
-
-  info << (prefix ? "(hotspot " : "(")
-    << "$" << Common::Base::HEX1 << (hotspot + (bank < 2 ? bank : bank + 6))
-    << ")";
-    // << (prefix ? ")" : ")");  TODO: misc-redundant-expression
-    //                                 same logic for true and false
-
-  return info.str();
+  return std::format("{}${})",
+    prefix ? "(hotspot " : "(",
+    Base::hex4(hotspot + (bank < 2 ? bank : bank + 6)));
 }

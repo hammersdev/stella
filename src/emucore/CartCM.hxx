@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGECM_HXX
-#define CARTRIDGECM_HXX
+#ifndef CARTRIDGE_CM_HXX
+#define CARTRIDGE_CM_HXX
 
 class CompuMate;
 class System;
@@ -28,8 +28,7 @@ class System;
 #endif
 
 /**
-  FIXME: This scheme is not yet fully implemented.  In particular, loading
-         from and saving to the cassette is completely missing.
+  FIXME: Loading directly from WAV files is not yet implemented.
 
   Cartridge class used for SpectraVideo CompuMate bankswitched games.
 
@@ -119,13 +118,11 @@ class CartridgeCM : public Cartridge
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
     */
-    CartridgeCM(const ByteBuffer& image, size_t size, string_view md5,
-                const Settings& settings);
+    CartridgeCM(ByteSpan image, string_view md5, const Settings& settings);
     ~CartridgeCM() override = default;
 
   public:
@@ -176,10 +173,9 @@ class CartridgeCM : public Cartridge
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span to the internal ROM image data
     */
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     /**
       Save the current state of this cart to the given Serializer.
@@ -250,10 +246,10 @@ class CartridgeCM : public Cartridge
     shared_ptr<CompuMate> myCompuMate;
 
     // The 16K ROM image of the cartridge
-    ByteBuffer myImage;
+    std::array<uInt8, 16_KB> myImage{};
 
     // The 2K of RAM
-    std::array<uInt8, 2_KB> myRAM{0};
+    std::array<uInt8, 2_KB> myRAM{};
 
     // Current copy of SWCHA (controls ROM/RAM accesses)
     uInt8 mySWCHA{0xFF};  // Port A all 1's
@@ -270,4 +266,4 @@ class CartridgeCM : public Cartridge
     CartridgeCM& operator=(CartridgeCM&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_CM_HXX

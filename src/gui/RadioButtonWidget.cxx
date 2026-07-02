@@ -254,7 +254,8 @@ RadioButtonWidget::RadioButtonWidget(GuiObject* boss, const GUI::Font& font,
   else                                   // center text
     _textY = (_buttonSize - _font.getFontHeight()) / 2;
 
-  setFill(CheckboxWidget::FillType::Normal);  // NOLINT
+  // NOLINTNEXTLINE(clang-analyzer-optin.cplusplus.VirtualCall)
+  setFill(CheckboxWidget::FillType::Normal);
   myGroup->addWidget(this);
 }
 
@@ -277,7 +278,7 @@ void RadioButtonWidget::setState(bool state, bool send)
     setDirty();
     if(_state && send)
       sendCommand(_cmd, _state, _id);
-    if (state)
+    if(state)
       myGroup->select(this);
   }
 }
@@ -329,7 +330,8 @@ void RadioButtonGroup::addWidget(RadioButtonWidget* widget)
 {
   myWidgets.push_back(widget);
   // set first button as default
-  widget->setState(myWidgets.size() == 1, false);  // NOLINT
+  // NOLINTNEXTLINE(clang-analyzer-optin.cplusplus.VirtualCall)
+  widget->setState(myWidgets.size() == 1, false);
   mySelected = 0;
 }
 
@@ -357,7 +359,7 @@ void RadioButtonGroup::setSelected(uInt32 selected)
   mySelected = selected;
   for(const auto& w : myWidgets)
   {
-    (static_cast<RadioButtonWidget*>(w))->setState(i == mySelected);
+    static_cast<RadioButtonWidget*>(w)->setState(i == mySelected);
     ++i;
   }
 }

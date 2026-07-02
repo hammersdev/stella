@@ -46,7 +46,6 @@ QuadTariDialog::QuadTariDialog(GuiObject* boss, const GUI::Font& font, int max_w
 
   int xpos = HBORDER, ypos = VBORDER + _th;
 
-  ctrls.clear();
   VarList::push_back(ctrls, "Auto-detect", "AUTO");
   VarList::push_back(ctrls, "Joystick", "JOYSTICK");
   VarList::push_back(ctrls, "Paddles", "PADDLES");
@@ -103,7 +102,6 @@ QuadTariDialog::QuadTariDialog(GuiObject* boss, const GUI::Font& font, int max_w
     myRight1Port->getLeft() + fontWidth * 3, ypos, "                 ");
   ypos += lineHeight + VGAP;
 
-  //ypos += lineHeight + VGAP * 2;
   myRight2Port = new PopUpWidget(this, font, xpos, ypos,
                                 pwidth, lineHeight, ctrls, "P4 ");
   wid.push_back(myRight2Port);
@@ -151,24 +149,21 @@ void QuadTariDialog::loadControllerProperties(const Properties& props)
   }
 }
 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void QuadTariDialog::defineController(const Properties& props, PropType key,
   Controller::Jack jack, PopUpWidget* popupWidget, StaticTextWidget* labelWidget, bool first)
 {
-  bool autoDetect = false;
-  ByteBuffer image;
-  size_t size = 0;
-
-  const string& controllerName = props.get(key);
+  ByteArray image;
+  string_view controllerName = props.get(key);
   popupWidget->setSelected(controllerName, "AUTO");
 
-  // try to load the image for auto detection
+  // Try to load the image for auto detection
   if(!instance().hasConsole())
   {
     const FSNode& node = FSNode(instance().launcher().selectedRom());
-    string md5 = myGameProperties.get(PropType::Cart_MD5);
-
-    autoDetect = node.exists() && !node.isDirectory()
-      && (image = instance().openROM(node, md5, size)) != nullptr;
+    string md5{myGameProperties.get(PropType::Cart_MD5)};
+    if(node.exists() && !node.isDirectory())
+      image = instance().openROM(node, md5);
   }
   string label;
   const Controller::Type type = Controller::getType(popupWidget->getSelectedTag().toString());
@@ -180,7 +175,6 @@ void QuadTariDialog::defineController(const Properties& props, PropType key,
       const Controller& controller = (jack == Controller::Jack::Left
         ? instance().console().leftController()
         : instance().console().rightController());
-
       if(BSPF::startsWithIgnoreCase(controller.name(), "QT"))
       {
         const auto& qt = static_cast<const QuadTari&>(controller);
@@ -192,9 +186,9 @@ void QuadTariDialog::defineController(const Properties& props, PropType key,
       else
         label = "nothing detected";
     }
-    else if(autoDetect)
-      label = ControllerDetector::detectName(
-        image, size, type, jack, instance().settings(), true) + " detected";
+    else if(!image.empty())
+      label = std::format("{} detected",
+        ControllerDetector::detectName(image, type, jack, instance().settings(), true));
   }
   labelWidget->setLabel(label);
 }
@@ -239,7 +233,7 @@ void QuadTariDialog::saveConfig()
 void QuadTariDialog::setDefaults()
 {
   // Load the default properties
-  const string& md5 = myGameProperties.get(PropType::Cart_MD5);
+  string_view md5 = myGameProperties.get(PropType::Cart_MD5);
   Properties defaultProperties;
 
   instance().propSet().getMD5(md5, defaultProperties, true);

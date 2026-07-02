@@ -25,32 +25,31 @@
 #include "exception/FatalEmulationError.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CartridgeDPCPlus::CartridgeDPCPlus(const ByteBuffer& image, size_t size,
-                                   string_view md5, const Settings& settings)
+CartridgeDPCPlus::CartridgeDPCPlus(ByteSpan image, string_view md5,
+                                   const Settings& settings)
   : CartridgeARM(settings, md5),
-    myImage{std::make_unique<uInt8[]>(32_KB)},
-    mySize{std::min(size, 32_KB)}
+    mySize{std::min(image.size(), 32_KB)}
 {
   // Image is always 32K, but in the case of ROM < 32K, the image is
   // copied to the end of the buffer
-  if(mySize < 32_KB)
-    std::fill_n(myImage.get(), mySize, 0);
-  std::copy_n(image.get(), size, myImage.get() + (32_KB - mySize));
+  // Use mySize (capped at 32K) as the length so an over-sized image can
+  // never write past the 32K myImage buffer
+  std::copy_n(image.data(), mySize, myImage.data() + (32_KB - mySize));
   createRomAccessArrays(24_KB);
 
-  // Pointer to the program ROM (24K @ 3K offset; ignore first 3K)
-  myProgramImage = myImage.get() + 3_KB;
+  // Subspan for the program ROM (24K @ 3K offset; ignore first 3K)
+  myProgramImage = ByteMSpan{myImage}.subspan(3_KB);
 
-  // Pointer to the display RAM
-  myDisplayImage = myDPCRAM.data() + 3_KB;
+  // Subspan for the display RAM (4K @ 3K offset)
+  myDisplayImage = ByteMSpan{myDPCRAM}.subspan(3_KB, 4_KB);
 
-  // Pointer to the Frequency RAM
-  myFrequencyImage = myDisplayImage + 4_KB;
+  // Subspan for the frequency table (1K @ 7K offset)
+  myFrequencyImage = ByteSpan{myDPCRAM}.subspan(7_KB, 1_KB);
 
   // Create Thumbulator ARM emulator
   const bool devSettings = settings.getBool("dev.settings");
   myThumbEmulator = std::make_unique<Thumbulator>
-      (reinterpret_cast<uInt16*>(myImage.get()),
+      (reinterpret_cast<uInt16*>(myImage.data()),
        reinterpret_cast<uInt16*>(myDPCRAM.data()),
        static_cast<uInt32>(32_KB),
       0x00000C00,
@@ -73,17 +72,17 @@ CartridgeDPCPlus::CartridgeDPCPlus(const ByteBuffer& image, size_t size,
   //
   // The default mask for DFxFRACLOW implements the Jitter behavior. This
   // changes the mask to implement the Stable behavior.
-  myDriverMD5 = MD5::hash(image, 3_KB);
+  myDriverMD5 = MD5::hash(image.first(3_KB));
   if(myDriverMD5 == "5f80b5a5adbe483addc3f6e6f1b472f8" ||
      myDriverMD5 == "8dd73b44fd11c488326ce507cbeb19d1" )
     myFractionalLowMask = 0x0F0000;
 
-  this->setInitialState();  // NOLINT
+  this->setInitialState();  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
 
   myPlusROM = std::make_unique<PlusROM>(mySettings, *this);
 
   // Determine whether we have a PlusROM cart
-  myPlusROM->initialize(myImage, mySize);
+  myPlusROM->initialize(ByteSpan{myImage}.first(mySize));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -107,7 +106,7 @@ void CartridgeDPCPlus::setInitialState()
   myDPCRAM.fill(0);
 
   // Copy initial DPC display data and Frequency table state to Harmony RAM
-  std::copy_n(myProgramImage + 24_KB, 5_KB, myDisplayImage);
+  std::copy_n(myProgramImage.data() + 24_KB, 5_KB, myDisplayImage.begin());
 
   // Initialize the DPC data fetcher registers
   myTops.fill(0);
@@ -148,7 +147,7 @@ void CartridgeDPCPlus::install(System& system)
 FORCE_INLINE void CartridgeDPCPlus::clockRandomNumberGenerator()
 {
   // Update random number generator (32-bit LFSR)
-  myRandomNumber = ((myRandomNumber & (1<<10)) ? 0x10adab1e: 0x00) ^
+  myRandomNumber = ((myRandomNumber & (1U<<10)) ? 0x10adab1e: 0x00) ^
                    ((myRandomNumber >> 11) | (myRandomNumber << 21));
 }
 
@@ -175,7 +174,7 @@ FORCE_INLINE void CartridgeDPCPlus::updateMusicModeDataFetchers()
 
   // Let's update counters and flags of the music mode data fetchers
   if(wholeClocks > 0)
-    for(int x = 0; x <= 2; ++x)
+    for(size_t x = 0; x < myMusicCounters.size(); ++x)
       myMusicCounters[x] += myMusicFrequencies[x] * wholeClocks;
 }
 
@@ -190,15 +189,36 @@ inline void CartridgeDPCPlus::callFunction(uInt8 value)
       myParameterPointer = 0;
       break;
     case 1: // Copy ROM to fetcher
-      for(int i = 0; std::cmp_less(i, myParameter[3]); ++i)
-        myDisplayImage[myCounters[myParameter[2] & 0x7]+i] = myProgramImage[ROMdata+i];
+    {
+      const uInt16 destBase = myCounters[myParameter[2] & 0x7];
+      if(ROMdata < myProgramImage.size() && destBase < myDisplayImage.size())
+      {
+        const uInt32 count = std::min({
+          static_cast<uInt32>(myParameter[3]),
+          static_cast<uInt32>(myProgramImage.size() - ROMdata),
+          static_cast<uInt32>(myDisplayImage.size() - destBase)
+        });
+        for(uInt32 i = 0; i < count; ++i)
+          myDisplayImage[destBase + i] = myProgramImage[ROMdata + i];
+      }
       myParameterPointer = 0;
       break;
+    }
     case 2: // Copy value to fetcher
-      for(int i = 0; std::cmp_less(i, myParameter[3]); ++i)
-        myDisplayImage[myCounters[myParameter[2]]+i] = myParameter[0];
+    {
+      const uInt16 destBase = myCounters[myParameter[2] & 0x7];
+      if(destBase < myDisplayImage.size())
+      {
+        const uInt32 count = std::min(
+          static_cast<uInt32>(myParameter[3]),
+          static_cast<uInt32>(myDisplayImage.size() - destBase)
+        );
+        for(uInt32 i = 0; i < count; ++i)
+          myDisplayImage[destBase + i] = myParameter[0];
+      }
       myParameterPointer = 0;
       break;
+    }
       // Call user written ARM code (most likely be C compiled for ARM)
     case 254: // call with IRQ driven audio, no special handling needed at this
               // time for Stella as ARM code "runs in zero 6507 cycles".
@@ -464,7 +484,7 @@ bool CartridgeDPCPlus::poke(uInt16 address, uInt8 value)
 
       // DFxLOW - data pointer low byte
       case 0x05:
-        myCounters[index] = (myCounters[index] & 0x0F00) | value ;
+        myCounters[index] = (myCounters[index] & 0x0F00) | value;
         break;
 
       // Control registers
@@ -491,7 +511,7 @@ bool CartridgeDPCPlus::poke(uInt16 address, uInt8 value)
           case 0x05:  // WAVEFORM0
           case 0x06:  // WAVEFORM1
           case 0x07:  // WAVEFORM2
-            myMusicWaveforms[index - 5] =  value & 0x7f;
+            myMusicWaveforms[index - 5] = value & 0x7f;
             break;
           default:
             break;
@@ -545,13 +565,8 @@ bool CartridgeDPCPlus::poke(uInt16 address, uInt8 value)
           case 0x05:  // NOTE0
           case 0x06:  // NOTE1
           case 0x07:  // NOTE2
-          {
-            myMusicFrequencies[index-5] = myFrequencyImage[(value<<2)] +
-            (myFrequencyImage[(value<<2)+1]<<8) +
-            (myFrequencyImage[(value<<2)+2]<<16) +
-            (myFrequencyImage[(value<<2)+3]<<24);
+            myMusicFrequencies[index-5] = getUInt32(myFrequencyImage.data(), value << 2);
             break;
-          }
           default:
             break;
         }
@@ -662,10 +677,9 @@ bool CartridgeDPCPlus::patch(uInt16 address, uInt8 value)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-const ByteBuffer& CartridgeDPCPlus::getImage(size_t& size) const
+ByteSpan CartridgeDPCPlus::getImage() const
 {
-  size = mySize;
-  return myImage;
+  return ByteSpan{myImage}.first(mySize);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -16,7 +16,6 @@
 //============================================================================
 
 #include <cmath>
-#include <iomanip>
 
 #include "Console.hxx"
 #include "FrameBuffer.hxx"
@@ -67,12 +66,10 @@ void PaletteHandler::cyclePalette(int direction)
         static_cast<int>(PaletteType::MinType), static_cast<int>(PaletteType::MaxType));
   } while(type == PaletteType::User && !myUserPaletteDefined);
 
-  const string_view palette = toPaletteName(static_cast<PaletteType>(type));
-  const string message = string{MESSAGES[type]} + " palette";
+  myOSystem.frameBuffer().showTextMessage(
+    std::format("{} palette", MESSAGES[type]));
 
-  myOSystem.frameBuffer().showTextMessage(message);
-
-  setPalette(palette);
+  setPalette(toPaletteName(static_cast<PaletteType>(type)));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -102,37 +99,38 @@ bool PaletteHandler::isRGBShift() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void PaletteHandler::showAdjustableMessage()
 {
-  std::ostringstream msg, buf;
+  const string_view name = myAdjustables[myCurrentAdjustable].name;
 
-  msg << "Palette " << myAdjustables[myCurrentAdjustable].name;
   if(isPhaseShift())
   {
     const ConsoleTiming timing = myOSystem.console().timing();
     const bool isNTSC = timing == ConsoleTiming::ntsc;
     const float value =
-        myOSystem.console().timing() == ConsoleTiming::pal ? myPhasePAL : myPhaseNTSC;
-    buf << std::fixed << std::setprecision(1) << value << DEGREE;
+        timing == ConsoleTiming::pal ? myPhasePAL : myPhaseNTSC;
     myOSystem.frameBuffer().showGaugeMessage(
-        "Palette phase shift", buf.view(), value,
+        "Palette phase shift",
+        std::format("{:.1f}{}", value, DEGREE),
+        value,
         (isNTSC ? DEF_NTSC_SHIFT : DEF_PAL_SHIFT) - MAX_PHASE_SHIFT,
         (isNTSC ? DEF_NTSC_SHIFT : DEF_PAL_SHIFT) + MAX_PHASE_SHIFT);
   }
   else if(isRGBShift())
   {
     const float value = *myAdjustables[myCurrentAdjustable].value;
-
-    buf << std::fixed << std::setprecision(1) << value << DEGREE;
     myOSystem.frameBuffer().showGaugeMessage(
-      msg.view(), buf.view(), value, -MAX_RGB_SHIFT, +MAX_RGB_SHIFT);
+      std::format("Palette {}", name),
+      std::format("{:.1f}{}", value, DEGREE),
+      value, -MAX_RGB_SHIFT, +MAX_RGB_SHIFT);
   }
   else
   {
     const int value = isRGBScale()
       ? scaleRGBTo100(*myAdjustables[myCurrentAdjustable].value)
       : scaleTo100(*myAdjustables[myCurrentAdjustable].value);
-    buf << value << "%";
     myOSystem.frameBuffer().showGaugeMessage(
-      msg.view(), buf.view(), value);
+      std::format("Palette {}", name),
+      std::format("{}%", value),
+      value);
   }
 }
 
@@ -230,18 +228,18 @@ void PaletteHandler::loadConfig(const Settings& settings)
                               DEF_NTSC_SHIFT - MAX_PHASE_SHIFT, DEF_NTSC_SHIFT + MAX_PHASE_SHIFT);
   myPhasePAL    = BSPF::clamp(settings.getFloat("pal.phase_pal"),
                               DEF_PAL_SHIFT - MAX_PHASE_SHIFT, DEF_PAL_SHIFT + MAX_PHASE_SHIFT);
-  myRedScale    = BSPF::clamp(settings.getFloat("pal.red_scale"),   -1.0F, 1.0F) + 1.F;
-  myGreenScale  = BSPF::clamp(settings.getFloat("pal.green_scale"), -1.0F, 1.0F) + 1.F;
-  myBlueScale   = BSPF::clamp(settings.getFloat("pal.blue_scale"),  -1.0F, 1.0F) + 1.F;
+  myRedScale    = BSPF::clamp(settings.getFloat("pal.red_scale"),   -1.F, 1.F) + 1.F;
+  myGreenScale  = BSPF::clamp(settings.getFloat("pal.green_scale"), -1.F, 1.F) + 1.F;
+  myBlueScale   = BSPF::clamp(settings.getFloat("pal.blue_scale"),  -1.F, 1.F) + 1.F;
   myRedShift    = BSPF::clamp(settings.getFloat("pal.red_shift"),   -MAX_RGB_SHIFT, MAX_RGB_SHIFT);
   myGreenShift  = BSPF::clamp(settings.getFloat("pal.green_shift"), -MAX_RGB_SHIFT, MAX_RGB_SHIFT);
   myBlueShift   = BSPF::clamp(settings.getFloat("pal.blue_shift"),  -MAX_RGB_SHIFT, MAX_RGB_SHIFT);
 
-  myHue         = BSPF::clamp(settings.getFloat("pal.hue"),         -1.0F, 1.0F);
-  mySaturation  = BSPF::clamp(settings.getFloat("pal.saturation"),  -1.0F, 1.0F);
-  myContrast    = BSPF::clamp(settings.getFloat("pal.contrast"),    -1.0F, 1.0F);
-  myBrightness  = BSPF::clamp(settings.getFloat("pal.brightness"),  -1.0F, 1.0F);
-  myGamma       = BSPF::clamp(settings.getFloat("pal.gamma"),       -1.0F, 1.0F);
+  myHue         = BSPF::clamp(settings.getFloat("pal.hue"),         -1.F, 1.F);
+  mySaturation  = BSPF::clamp(settings.getFloat("pal.saturation"),  -1.F, 1.F);
+  myContrast    = BSPF::clamp(settings.getFloat("pal.contrast"),    -1.F, 1.F);
+  myBrightness  = BSPF::clamp(settings.getFloat("pal.brightness"),  -1.F, 1.F);
+  myGamma       = BSPF::clamp(settings.getFloat("pal.gamma"),       -1.F, 1.F);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -359,6 +357,10 @@ PaletteArray PaletteHandler::adjustedPalette(const PaletteArray& palette) const
   const float brightness = myBrightness * (0.5F * RGB_UNIT) + RGB_OFFSET;
   const float contrast = myContrast * (0.5F * RGB_UNIT) + RGB_UNIT;
   const float saturation = mySaturation + 1;
+  // The hue/saturation transform is identical for every palette entry,
+  // so compute the trigonometry once outside the loop
+  const float su = saturation * cosf(-hue * BSPF::PI_f);
+  const float sw = saturation * sinf(-hue * BSPF::PI_f);
   const float gamma = 1.1333F - myGamma * 0.5F;
   /* match common PC's 2.2 gamma to TV's 2.65 gamma */
   constexpr float toFloat = 1.F / (ADJUST_SIZE - 1);
@@ -375,10 +377,10 @@ PaletteArray PaletteHandler::adjustedPalette(const PaletteArray& palette) const
     int g = (pixel >> 8)  & 0xff;
     int b = (pixel >> 0)  & 0xff;
 
-    // adjust hue (different for NTSC and PAL?) and saturation
-    adjustHueSaturation(r, g, b, hue, saturation);
+    // Adjust hue (different for NTSC and PAL?) and saturation
+    adjustHueSaturation(r, g, b, su, sw);
 
-    // adjust contrast, brightness, gamma
+    // Adjust contrast, brightness, gamma
     r = adjust[r];
     g = adjust[g];
     b = adjust[b];
@@ -402,14 +404,14 @@ PaletteArray PaletteHandler::adjustedPalette(const PaletteArray& palette) const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void PaletteHandler::loadUserPalette()
 {
-  if (!myOSystem.checkUserPalette(true))
+  if(!myOSystem.checkUserPalette(true))
     return;
 
-  ByteBuffer in;
+  ByteArray in;
   try        { myOSystem.paletteFile().read(in); }
   catch(...) { return; }
 
-  uInt8* pixbuf = in.get();  // NOLINT (erroneously marked as const)
+  const uInt8* pixbuf = in.data();
   for(int i = 0; i < 128; i++, pixbuf += 3)  // NTSC palette
   {
     const uInt32 pixel = (static_cast<int>(pixbuf[0]) << 16) +
@@ -431,10 +433,10 @@ void PaletteHandler::loadUserPalette()
     const uInt32 pixel = (static_cast<int>(pixbuf[0]) << 16) +
                          (static_cast<int>(pixbuf[1]) << 8)  +
                           static_cast<int>(pixbuf[2]);
-    secam[(i<<1)]   = pixel;
+    secam[(i<<1)  ] = pixel;
     secam[(i<<1)+1] = 0;
   }
-  uInt32* ptr = ourUserSECAMPalette.data();  // NOLINT (erroneously marked as const)
+  uInt32* ptr = ourUserSECAMPalette.data();  // NOLINT(misc-const-correctness)
   for(int i = 0; i < 16; ++i)
   {
     const uInt32* s = secam.data();
@@ -453,7 +455,7 @@ void PaletteHandler::generateCustomPalette(ConsoleTiming timing) const
 
   if(timing == ConsoleTiming::ntsc)
   {
-    constexpr float SATURATION = 0.30F; // default NTSC saturation
+    constexpr float SATURATION = 0.3F; // default NTSC saturation
     vector2d IQ[NUM_CHROMA];
     // YIQ is YUV shifted by 33°
     // -90° + 33° = -57° would create a greenish yellow
@@ -517,9 +519,9 @@ void PaletteHandler::generateCustomPalette(ConsoleTiming timing) const
         UV[idx].y = SATURATION * -sinf(offset - shift * chroma / 2.F);
     }
     // Most sources
-    const vector2d UVR = scale(rotate(vector2d( 0.000F, +1.403F), myRedShift),   myRedScale);
+    const vector2d UVR = scale(rotate(vector2d( 0.F, +1.403F), myRedShift),   myRedScale);
     const vector2d UVG = scale(rotate(vector2d(-0.344F, -0.714F), myGreenShift), myGreenScale);
-    const vector2d UVB = scale(rotate(vector2d(+0.714F,  0.000F), myBlueShift),  myBlueScale);
+    const vector2d UVB = scale(rotate(vector2d(+0.714F,  0.F), myBlueShift),  myBlueScale);
     // German Wikipedia, huh???
     //float R = Y + 1 / 0.877 * V;
     //float B = Y + 1 / 0.493 * U;
@@ -535,9 +537,9 @@ void PaletteHandler::generateCustomPalette(ConsoleTiming timing) const
         float G = Y + dotProduct(UV[chroma], UVG);
         float B = Y + dotProduct(UV[chroma], UVB);
 
-        if(R < 0) R = 0.0;
-        if(G < 0) G = 0.0;
-        if(B < 0) B = 0.0;
+        R = std::max(R, 0.F);
+        G = std::max(G, 0.F);
+        B = std::max(B, 0.F);
 
         R = powf(R, 1.2F);
         G = powf(G, 1.2F);
@@ -554,13 +556,11 @@ void PaletteHandler::generateCustomPalette(ConsoleTiming timing) const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void PaletteHandler::adjustHueSaturation(int& R, int& G, int& B, float H, float S)
+void PaletteHandler::adjustHueSaturation(int& R, int& G, int& B, float su, float sw)
 {
   // Adapted from http://beesbuzz.biz/code/16-hsv-color-transforms
   // (C) J. Fluffy Shagam
   // License: CC BY-SA 4.0
-  const float su = S * cosf(-H * BSPF::PI_f);
-  const float sw = S * sinf(-H * BSPF::PI_f);
   const float r = (.299F + .701F * su + .168F * sw) * R
                 + (.587F - .587F * su + .330F * sw) * G
                 + (.114F - .114F * su - .497F * sw) * B;

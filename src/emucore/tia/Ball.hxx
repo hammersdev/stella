@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef TIA_BALL
-#define TIA_BALL
+#ifndef BALL_HXX
+#define BALL_HXX
 
 class TIA;
 
@@ -24,6 +24,22 @@ class TIA;
 #include "TIAConstants.hxx"
 #include "Serializable.hxx"
 
+/**
+  TIA ball sprite object. Conceptually a single-copy Missile (no NUSIZ; the
+  one and only decode position is myCounter == 156) with VDELBL semantics:
+
+   - VDELBL: ENABL writes update myIsEnabledNew; the shuffleBL dummy
+     register (queued from a GRP1 write) later latches new -> old via
+     shuffleStatus(). The effective myIsEnabled reads from old or new
+     depending on whether VDEL is active.
+   - Width: comes from CTRLPF bits 5-4 (1/2/4/8), shared with the
+     playfield width control — both Playfield::ctrlpf and Ball::ctrlpf
+     are called from TIA's CTRLPF handler.
+   - Starfield: same HMOVE/regular-clock phase trick as Missile produces
+     the Cosmic Ark-style width quirk.
+
+  @author  Christian Speckner (DirtyHairy)
+*/
 class Ball : public Serializable
 {
   public:
@@ -58,7 +74,7 @@ class Ball : public Serializable
     /**
       RESBL write.
      */
-    void resbl(uInt8 counter);
+    void resbl(uInt8 counter, bool lateRespxCondition = false);
 
     /**
       CTRLPF write.
@@ -109,6 +125,7 @@ class Ball : public Serializable
      */
     void setInvertedPhaseClock(bool enable);
     void setShortLateHMove(bool enable);
+    void setLateRespx(bool enable);
 
     /**
       Start movement --- this is triggered by strobing HMOVE.
@@ -169,6 +186,15 @@ class Ball : public Serializable
       Process a single movement tick. Inline for performance (implementation below).
      */
     FORCE_INLINE void movementTick(uInt32 clock, uInt32 hclock, bool hblank);
+
+    /**
+      The ball circuit has a F1 cell right that is clocked by the color clock
+      (CLKP) right at the end of the pixel signal. This cell receives color clock
+      even during HBLANK and is responsible for latching the display signal to
+      the screen. In order to get this correct we distribute CLKP separately to
+      the ball during HBLANK.
+     */
+    FORCE_INLINE void tickClkpInHblank();
 
     /**
       Tick one color clock. Inline for performance (implementation below).
@@ -325,6 +351,7 @@ class Ball : public Serializable
     bool myUseInvertedPhaseClock{false};
 
     bool myUseShortLateHMove{false};
+    bool myUseLateRespx{false};
 
     /**
       TIA instance. Required for flushing the line cache and requesting collision updates.
@@ -366,11 +393,26 @@ void Ball::movementTick(uInt32 clock, uInt32 hclock, bool hblank)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Ball::tickClkpInHblank()
+{
+  // See tick for an explanation of the various steps.
+  if(myUseInvertedPhaseClock && myInvertedPhaseClock) [[unlikely]]
+  {
+    myInvertedPhaseClock = false;
+    return;
+  }
+
+  mySignalActive = myIsRendering && myRenderCounter >= 0;
+
+  collision = (mySignalActive && myIsEnabled) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Ball::tick(bool isReceivingRegularClock)
 {
   // If we are in inverted movement clock phase mode and a movement tick occurred, it
   // will supress the tick.
-  if(myUseInvertedPhaseClock && myInvertedPhaseClock)
+  if(myUseInvertedPhaseClock && myInvertedPhaseClock) [[unlikely]]
   {
     myInvertedPhaseClock = false;
     return;
@@ -387,7 +429,7 @@ void Ball::tick(bool isReceivingRegularClock)
   const bool starfieldEffect = isMoving && isReceivingRegularClock;
 
   // Decode value that triggers rendering
-  if (myCounter == 156) {
+  if (myCounter == 156) [[unlikely]] {
     myIsRendering = true;
     myRenderCounter = renderCounterOffset;
 
@@ -409,12 +451,12 @@ void Ball::tick(bool isReceivingRegularClock)
         break;
     }
 
-  } else if (myIsRendering && std::cmp_greater_equal(++myRenderCounter,
-        starfieldEffect ? myEffectiveWidth : myWidth))
+  } else if (myIsRendering &&
+             ++myRenderCounter >= static_cast<Int8>(starfieldEffect ? myEffectiveWidth : myWidth))
     myIsRendering = false;
 
-  if (++myCounter >= TIAConstants::H_PIXEL)
+  if (++myCounter >= TIAConstants::H_PIXEL) [[unlikely]]
       myCounter = 0;
 }
 
-#endif // TIA_BALL
+#endif  // BALL_HXX

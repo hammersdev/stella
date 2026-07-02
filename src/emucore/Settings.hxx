@@ -18,7 +18,7 @@
 #ifndef SETTINGS_HXX
 #define SETTINGS_HXX
 
-#include <map>
+#include <unordered_map>
 
 #include "Variant.hxx"
 #include "bspf.hxx"
@@ -49,7 +49,8 @@ class Settings
     explicit Settings();
     virtual ~Settings() = default;
 
-    using Options = std::map<string, Variant, std::less<>>;
+    using Options = std::unordered_map<string, Variant,
+                    BSPF::StringHash, std::equal_to<>>;
 
     static constexpr int SETTINGS_VERSION = 1;
     static constexpr string_view SETTINGS_VERSION_KEY = "settings.version";
@@ -129,16 +130,6 @@ class Settings
     */
     void validate();
 
-    /**
-      Migrate settings over one version.
-     */
-    void migrateOne();
-
-    /**
-     Migrate settings.
-     */
-    void migrate();
-
   private:
     // Holds key/value pairs that are necessary for Stella to
     // function and must be saved on each program exit.
@@ -148,7 +139,7 @@ class Settings
     // program exit.
     Options myTemporarySettings;
 
-    shared_ptr<KeyValueRepository> myRespository;
+    shared_ptr<KeyValueRepository> myRepository;
 
   private:
     // Following constructors and assignment operators not supported
@@ -158,4 +149,4 @@ class Settings
     Settings& operator=(Settings&&) = delete;
 };
 
-#endif
+#endif  // SETTINGS_HXX

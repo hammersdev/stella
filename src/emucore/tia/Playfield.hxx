@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef TIA_PLAYFIELD
-#define TIA_PLAYFIELD
+#ifndef PLAYFIELD_HXX
+#define PLAYFIELD_HXX
 
 class TIA;
 
@@ -24,6 +24,23 @@ class TIA;
 #include "TIAConstants.hxx"
 #include "Serializable.hxx"
 
+/**
+  TIA playfield object. Unlike the sprites, the playfield has no counter:
+  the visible pattern is a 20-bit register myPattern derived from PF0/PF1/
+  PF2 (the bit-shuffle for the PF1 nibbles is hand-coded in pf1()). The
+  playfield clock is 1/4 of the color clock, so tick() bails on x%4 != 0
+  and otherwise indexes the pattern by (x >> 2) over the left half, then
+  either mirrors or repeats it across the right half depending on the
+  CTRLPF reflect bit. The reflect flag is only sampled at x = 0 or x = 79
+  so a CTRLPF write mid-line behaves correctly.
+
+  Color is split left/right: in normal mode both halves use COLUPF; in
+  score mode the left half uses COLUP0 and the right half COLUP1. The
+  optional score-glitch quirk (myScoreHaste) shifts the boundary one
+  pixel earlier to reproduce the matchie-Pesco behavior.
+
+  @author  Christian Speckner (DirtyHairy)
+*/
 class Playfield : public Serializable
 {
   public:
@@ -272,11 +289,11 @@ void Playfield::tick(uInt32 x)
   myX = x;
 
   // Reflected flag is updated only at x = 0 or x = 79
-  if (myX == TIAConstants::H_PIXEL / 2-1 || myX == 0) myRefp = myReflected;
+  if (myX == TIAConstants::H_PIXEL / 2-1 || myX == 0) [[unlikely]] myRefp = myReflected;
 
-  if (x & 0x03) return;
+  if (x & 0x03) [[likely]] return;
 
-  uInt32 currentPixel;  // NOLINT (cppcoreguidelines-init-variables)
+  uInt32 currentPixel;  // NOLINT(cppcoreguidelines-init-variables)
 
   if (myEffectivePattern == 0) {
       currentPixel = 0;
@@ -291,4 +308,4 @@ void Playfield::tick(uInt32 x)
   collision = currentPixel ? myCollisionMaskEnabled : myCollisionMaskDisabled;
 }
 
-#endif // TIA_PLAYFIELD
+#endif  // PLAYFIELD_HXX

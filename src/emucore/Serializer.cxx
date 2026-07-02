@@ -33,7 +33,7 @@ Serializer::Serializer(string_view filename, FileMode fm)
   }
 
   myFile.emplace();
-  myFile->stream.open(string(filename), mode);
+  myFile->stream = FSNode(filename).openFStream(mode);
   if(myFile->stream.is_open())
     myFile->stream.exceptions(std::ios::failbit | std::ios::badbit);
   else
@@ -44,7 +44,7 @@ Serializer::Serializer(string_view filename, FileMode fm)
 Serializer::Serializer()
 {
   myMemory.emplace();
-  myMemory->buffer.reserve(4_KB);  // tweak or remove as needed
+  myMemory->buffer.resize(4_KB);  // tweak or remove as needed
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -170,21 +170,24 @@ uInt8 Serializer::getByte()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Serializer::getByteArray(std::span<uInt8> array)
+void Serializer::getByteArray(ByteMSpan arr)
 {
+  if(arr.empty())
+    return;
+
   if(myMemory)
   {
-    if(myMemory->pos + array.size() > myMemory->size)
+    if(myMemory->pos + arr.size() > myMemory->size)
     {
-      myMemory->ensureSize(myMemory->pos + array.size());
-      myMemory->size = myMemory->pos + array.size();
+      myMemory->ensureSize(myMemory->pos + arr.size());
+      myMemory->size = myMemory->pos + arr.size();
     }
-    std::memcpy(array.data(), myMemory->buffer.data() + myMemory->pos, array.size());
-    myMemory->pos += array.size();
+    std::memcpy(arr.data(), myMemory->buffer.data() + myMemory->pos, arr.size());
+    myMemory->pos += arr.size();
   }
   else if(myFile)
   {
-    myFile->stream.read(reinterpret_cast<char*>(array.data()), array.size());
+    myFile->stream.read(reinterpret_cast<char*>(arr.data()), arr.size());
   }
   else
     throw std::runtime_error("Serializer not initialized");
@@ -197,12 +200,12 @@ uInt16 Serializer::getShort()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Serializer::getShortArray(std::span<uInt16> array)
+void Serializer::getShortArray(ShortMSpan arr)
 {
-  getByteArray(std::span<uInt8>(reinterpret_cast<uInt8*>(array.data()),
-                                                         array.size_bytes()));
+  getByteArray(ByteMSpan(reinterpret_cast<uInt8*>(arr.data()),
+                                                  arr.size_bytes()));
   if constexpr(std::endian::native != std::endian::little)
-    for(auto& val: array)
+    for(auto& val: arr)
       val = byteswap(val);
 }
 
@@ -213,12 +216,12 @@ uInt32 Serializer::getInt()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Serializer::getIntArray(std::span<uInt32> array)
+void Serializer::getIntArray(IntMSpan arr)
 {
-  getByteArray(std::span<uInt8>(reinterpret_cast<uInt8*>(array.data()),
-                                                         array.size_bytes()));
+  getByteArray(ByteMSpan(reinterpret_cast<uInt8*>(arr.data()),
+                         arr.size_bytes()));
   if constexpr(std::endian::native != std::endian::little)
-    for(auto& val: array)
+    for(auto& val: arr)
       val = byteswap(val);
 }
 
@@ -244,9 +247,16 @@ bool Serializer::getBool()
 string Serializer::getString()
 {
   const uInt32 len = getInt();
+
+  // A serialized string cannot be larger than the entire stream.  Reject a
+  // corrupt/hostile length before allocating, to avoid a huge allocation
+  // driven by a bad save state.
+  if(len > size())
+    throw std::runtime_error("Serializer: invalid string length");
+
   string result(len, '\0');
 
-  getByteArray(std::span<uInt8>(reinterpret_cast<uInt8*>(result.data()), len));
+  getByteArray(ByteMSpan(reinterpret_cast<uInt8*>(result.data()), len));
   return result;
 }
 
@@ -257,18 +267,21 @@ void Serializer::putByte(uInt8 value)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Serializer::putByteArray(std::span<const uInt8> array)
+void Serializer::putByteArray(ByteSpan arr)
 {
+  if(arr.empty())
+    return;
+
   if(myMemory)
   {
-    myMemory->ensureCapacity(array.size());
-    std::memcpy(myMemory->buffer.data() + myMemory->pos, array.data(), array.size());
-    myMemory->pos += array.size();
+    myMemory->ensureCapacity(arr.size());
+    std::memcpy(myMemory->buffer.data() + myMemory->pos, arr.data(), arr.size());
+    myMemory->pos += arr.size();
     myMemory->size = std::max(myMemory->size, myMemory->pos);
   }
   else if(myFile)
   {
-    myFile->writeBuffered(array.data(), array.size());
+    myFile->writeBuffered(arr.data(), arr.size());
   }
   else
     throw std::runtime_error("Serializer not initialized");
@@ -281,13 +294,13 @@ void Serializer::putShort(uInt16 value)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Serializer::putShortArray(std::span<const uInt16> array)
+void Serializer::putShortArray(ShortSpan arr)
 {
   if constexpr(std::endian::native == std::endian::little)
-    putByteArray(std::span<const uInt8>(
-        reinterpret_cast<const uInt8*>(array.data()), array.size_bytes()));
+    putByteArray(ByteSpan(reinterpret_cast<const uInt8*>(arr.data()),
+                          arr.size_bytes()));
   else
-    for(const auto& val: array)
+    for(const auto& val: arr)
       writeRaw<uInt16>(val);
 }
 
@@ -298,13 +311,13 @@ void Serializer::putInt(uInt32 value)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Serializer::putIntArray(std::span<const uInt32> array)
+void Serializer::putIntArray(IntSpan arr)
 {
   if constexpr(std::endian::native == std::endian::little)
-    putByteArray(std::span<const uInt8>(
-        reinterpret_cast<const uInt8*>(array.data()), array.size_bytes()));
+    putByteArray(ByteSpan(reinterpret_cast<const uInt8*>(arr.data()),
+                          arr.size_bytes()));
   else
-    for(const auto& val: array)
+    for(const auto& val: arr)
       writeRaw<uInt32>(val);
 }
 
@@ -324,8 +337,7 @@ void Serializer::putDouble(double value)
 void Serializer::putString(string_view str)
 {
   putInt(static_cast<uInt32>(str.size()));
-  putByteArray(std::span<const uInt8>(
-      reinterpret_cast<const uInt8*>(str.data()), str.size()));
+  putByteArray(ByteSpan(reinterpret_cast<const uInt8*>(str.data()), str.size()));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

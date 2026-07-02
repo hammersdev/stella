@@ -291,10 +291,8 @@ TimeMachineDialog::TimeMachineDialog(OSystem& osystem, DialogContainer& parent,
 
   // Add message
   const int mWidth = (myLastTimeWidget->getLeft() - xpos) / font.getMaxCharWidth();
-  const string blanks = "                                             ";
-
   myMessageWidget = new StaticTextWidget(this, font, xpos, ypos_s,
-                                         blanks.substr(0, mWidth),
+                                         string(mWidth, ' '),
                                          TextAlign::Left, kBGColor);
   myMessageWidget->setFlags(Widget::FLAG_CLEARBG | Widget::FLAG_NOBG);
   myMessageWidget->setTextColor(kColorInfo);
@@ -387,7 +385,7 @@ void TimeMachineDialog::handleKeyUp(StellaKey key, StellaMod mod)
 
   const Event::Type event = instance().eventHandler().eventForKey(EventMode::kEmulationMode, key, mod);
 
-  if(event == Event::TogglePlayBackMode || key == KBDK_SPACE)
+  if(event == Event::TogglePlayBackMode || key == StellaKey::SPACE)
     handleCommand(nullptr, kPlayBack, 0, 0);
   else
     Dialog::handleKeyUp(key, mod);
@@ -490,10 +488,8 @@ void TimeMachineDialog::initBar()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-string TimeMachineDialog::getTimeString(uInt64 cycles) const
+string TimeMachineDialog::getTimeString(uInt64 cycles, size_t scanlines)
 {
-  const size_t scanlines =
-      std::max<size_t>(instance().console().tia().scanlinesLastFrame(), 240);
   const bool isNTSC = scanlines <= 287;
   constexpr size_t NTSC_FREQ = 1193182; // ~76*262*60
   constexpr size_t PAL_FREQ  = 1182298; // ~76*312*50
@@ -505,12 +501,7 @@ string TimeMachineDialog::getTimeString(uInt64 cycles) const
   cycles -= seconds * freq;
   const auto frames  = static_cast<uInt32>(cycles / (scanlines * 76));
 
-  std::ostringstream time;
-  time << Common::Base::toString(minutes, Common::Base::Fmt::_10_02) << ":";
-  time << Common::Base::toString(seconds, Common::Base::Fmt::_10_02) << ".";
-  time << Common::Base::toString(frames, Common::Base::Fmt::_10_02);
-
-  return time.str();
+  return std::format("{:02}:{:02}.{:02}", minutes, seconds, frames);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -521,22 +512,24 @@ void TimeMachineDialog::handleWinds(Int32 numWinds)
   if(numWinds)
   {
     const uInt64 startCycles = r.getCurrentCycles();
-    if(numWinds < 0)      r.rewindStates(-numWinds);
-    else if(numWinds > 0) r.unwindStates(numWinds);
+    if(numWinds < 0) r.rewindStates(-numWinds);
+    else             r.unwindStates(numWinds);
 
     const uInt64 elapsed = instance().console().system().cycles() - startCycles;
     if(elapsed > 0)
     {
       const string message = r.getUnitString(elapsed);
 
-      // TODO: add message text from addState()
-      myMessageWidget->setLabel((numWinds < 0 ? "(-" : "(+") + message + ")");
+      myMessageWidget->setLabel(std::format("({}{})", numWinds < 0 ? '-' : '+',
+                                            message));
     }
   }
 
   // Update time
-  myCurrentTimeWidget->setLabel(getTimeString(r.getCurrentCycles() - r.getFirstCycles()));
-  myLastTimeWidget->setLabel(getTimeString(r.getLastCycles() - r.getFirstCycles()));
+  const size_t scanlines =
+      std::max<size_t>(instance().console().tia().scanlinesLastFrame(), 240);
+  myCurrentTimeWidget->setLabel(getTimeString(r.getCurrentCycles() - r.getFirstCycles(), scanlines));
+  myLastTimeWidget->setLabel(getTimeString(r.getLastCycles() - r.getFirstCycles(), scanlines));
   myTimeline->setValue(r.getCurrentIdx()-1);
   // Update index
   myCurrentIdxWidget->setValue(r.getCurrentIdx());

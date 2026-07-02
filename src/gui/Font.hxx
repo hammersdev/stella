@@ -25,8 +25,8 @@
 
 struct BBX
 {
-  Int8 w;
-  Int8 h;
+  uInt8 w;
+  uInt8 h;
   Int8 x;
   Int8 y;
 };
@@ -82,4 +82,4 @@ class Font
 
 } // namespace GUI
 
-#endif
+#endif  // FONT_HXX

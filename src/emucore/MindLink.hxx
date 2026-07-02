@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef MINDLINK_HXX
-#define MINDLINK_HXX
+#ifndef MIND_LINK_HXX
+#define MIND_LINK_HXX
 
 #include "bspf.hxx"
 #include "Control.hxx"
@@ -78,9 +78,9 @@ class MindLink : public Controller
     string name() const override { return "MindLink"; }
 
     /**
-      Answers whether the controller is intrinsically an analog controller.
+      MindLink is driven by the mouse.
     */
-    bool isAnalog() const override { return true; }
+    bool usesMouse() const override { return true; }
 
     /**
       Determines how this controller will treat values received from the
@@ -116,10 +116,10 @@ class MindLink : public Controller
   private:
     // Position value in Mindlink controller
     // Gets transferred bitwise (16 bits)
-    int myMindlinkPos{0x2a00};
+    uInt32 myMindlinkPos{0x2a00};
 
     // Which bit to transfer next
-    int myMindlinkShift{1};
+    uInt32 myMindlinkShift{1};
 
     // Whether to use the mouse to emulate this controller
     bool myMouseEnabled{false};
@@ -133,4 +133,4 @@ class MindLink : public Controller
     MindLink& operator=(MindLink&&) = delete;
 };
 
-#endif
+#endif  // MIND_LINK_HXX

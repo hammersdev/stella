@@ -49,20 +49,16 @@ DataGridWidget::DataGridWidget(GuiObject* boss, const GUI::Font& font,
   _editMode = false;
 
   // Make sure all lists contain some default values
-  _hiliteList.clear();
-  int size = _rows * _cols;
-  while(size--)
-  {
-    _addrList.push_back(0);
-    _valueList.push_back(0);
-    _valueStringList.push_back(EmptyString());
-    _toolTipList.push_back(EmptyString());
-    _changedList.push_back(false);
-    _hiliteList.push_back(false);
-  }
+  const int size = _rows * _cols;
+  _addrList.assign(size, 0);
+  _valueList.assign(size, 0);
+  _valueStringList.assign(size, {});
+  _toolTipList.assign(size, {});
+  _changedList.assign(size, false);
+  _hiliteList.assign(size, false);
 
   // Set lower and upper bounds to sane values
-  setRange(0, 1 << bits);
+  setRange(0, Int64{1} << bits);
   // Limit number of chars allowed
   setMaxLen(colchars);
 
@@ -109,38 +105,18 @@ DataGridWidget::DataGridWidget(GuiObject* boss, const GUI::Font& font,
 void DataGridWidget::setList(const IntArray& alist, const IntArray& vlist,
                              const BoolArray& changed)
 {
-  /*
-  cerr << "alist.size() = "     << alist.size()
-       << ", vlist.size() = "   << vlist.size()
-       << ", changed.size() = " << changed.size()
-       << ", _rows*_cols = "    << _rows * _cols << "\n\n";
-  */
-  const size_t size = vlist.size();  // assume the alist is the same size
-
   const bool dirty = _editMode
     || !std::ranges::equal(_valueList, vlist)
     || !std::ranges::equal(_changedList, changed);
-
-  _addrList.clear();
-  _valueList.clear();
-  _valueStringList.clear();
-  _changedList.clear();
 
   _addrList    = alist;
   _valueList   = vlist;
   _changedList = changed;
 
-  // An efficiency thing
-  for(size_t i = 0; i < size; ++i)
-    _valueStringList.push_back(Common::Base::toString(_valueList[i], _base));
+  _valueStringList.clear();
+  std::ranges::transform(_valueList, std::back_inserter(_valueStringList),
+    [this](int v) { return Common::Base::toString(v, _base); });
 
-  /*
-  cerr << "_addrList.size() = "     << _addrList.size()
-       << ", _valueList.size() = "   << _valueList.size()
-       << ", _changedList.size() = " << _changedList.size()
-       << ", _valueStringList.size() = " << _valueStringList.size()
-       << ", _rows*_cols = "    << _rows * _cols << "\n\n";
-  */
   enableEditMode(false);
 
   if(dirty)
@@ -190,7 +166,6 @@ void DataGridWidget::setEditable(bool editable, bool hiliteBG)
 void DataGridWidget::setHiliteList(const BoolArray& hilitelist)
 {
   assert(hilitelist.size() == uInt32(_rows * _cols));
-  _hiliteList.clear();
   _hiliteList = hilitelist;
 
   setDirty();
@@ -242,27 +217,27 @@ void DataGridWidget::setValue(int position, int value, bool changed,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void DataGridWidget::setRange(int lower, int upper)
+void DataGridWidget::setRange(Int64 lower, Int64 upper)
 {
-  _lowerBound = std::max(0, lower);
-  _upperBound = std::min(1 << _bits, upper);
+  _lowerBound = std::max(Int64{0}, lower);
+  _upperBound = std::min(Int64{1} << _bits, upper);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DataGridWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
-  if (!isEnabled())
+  if(!isEnabled())
     return;
 
   resetSelection();
   // First check whether the selection changed
   int newSelectedItem = findItem(x, y);
-  if (newSelectedItem > static_cast<int>(_valueList.size()) - 1)
+  if(newSelectedItem > static_cast<int>(_valueList.size()) - 1)
     newSelectedItem = -1;
 
-  if (_selectedItem != newSelectedItem)
+  if(_selectedItem != newSelectedItem)
   {
-    if (_editMode)
+    if(_editMode)
       abortEditMode();
 
     _selectedItem = newSelectedItem;
@@ -279,7 +254,7 @@ void DataGridWidget::handleMouseUp(int x, int y, MouseButton b, int clickCount)
 {
   // If this was a double click and the mouse is still over the selected item,
   // send the double click command
-  if (clickCount == 2 && (_selectedItem == findItem(x, y)))
+  if(clickCount == 2 && (_selectedItem == findItem(x, y)))
   {
     sendCommand(DataGridWidget::kItemDoubleClickedCmd, _selectedItem, _id);
 
@@ -337,7 +312,7 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
   bool handled = true;
   bool dirty = false;
 
-  if (_editMode)
+  if(_editMode)
   {
     // Class EditableWidget handles all single-key presses for us
     handled = EditableWidget::handleKeyDown(key, mod);
@@ -346,9 +321,9 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
   {
     switch(key)
     {
-      case KBDK_RETURN:
-      case KBDK_KP_ENTER:
-        if (_currentRow >= 0 && _currentCol >= 0)
+      case StellaKey::RETURN:
+      case StellaKey::KP_ENTER:
+        if(_currentRow >= 0 && _currentCol >= 0)
         {
           dirty = true;
           _selectedItem = _currentRow*_cols + _currentCol;
@@ -356,8 +331,8 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
         }
         break;
 
-      case KBDK_UP:
-        if (_currentRow > 0)
+      case StellaKey::UP:
+        if(_currentRow > 0)
         {
           _currentRow--;
           dirty = true;
@@ -370,8 +345,8 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
         }
         break;
 
-      case KBDK_DOWN:
-        if (_currentRow < _rows - 1)
+      case StellaKey::DOWN:
+        if(_currentRow < _rows - 1)
         {
           _currentRow++;
           dirty = true;
@@ -384,8 +359,8 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
         }
         break;
 
-      case KBDK_LEFT:
-        if (_currentCol > 0)
+      case StellaKey::LEFT:
+        if(_currentCol > 0)
         {
           _currentCol--;
           dirty = true;
@@ -398,8 +373,8 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
         }
         break;
 
-      case KBDK_RIGHT:
-        if (_currentCol < _cols - 1)
+      case StellaKey::RIGHT:
+        if(_currentCol < _cols - 1)
         {
           _currentCol++;
           dirty = true;
@@ -412,75 +387,75 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
         }
         break;
 
-      case KBDK_PAGEUP:
+      case StellaKey::PAGEUP:
         if(StellaModTest::isShift(mod) && _scrollBar)
           handleMouseWheel(0, 0, -1);
-        else if (_currentRow > 0)
+        else if(_currentRow > 0)
         {
           _currentRow = 0;
           dirty = true;
         }
         break;
 
-      case KBDK_PAGEDOWN:
+      case StellaKey::PAGEDOWN:
         if(StellaModTest::isShift(mod) && _scrollBar)
           handleMouseWheel(0, 0, +1);
-        else if (_currentRow < _rows - 1)
+        else if(_currentRow < _rows - 1)
         {
           _currentRow = _rows - 1;
           dirty = true;
         }
         break;
 
-      case KBDK_HOME:
-        if (_currentCol > 0)
+      case StellaKey::HOME:
+        if(_currentCol > 0)
         {
           _currentCol = 0;
           dirty = true;
         }
         break;
 
-      case KBDK_END:
-        if (_currentCol < _cols - 1)
+      case StellaKey::END:
+        if(_currentCol < _cols - 1)
         {
           _currentCol = _cols - 1;
           dirty = true;
         }
         break;
 
-      case KBDK_N: // negate
+      case StellaKey::N: // negate
         if(isEditable())
           negateCell();
         break;
 
-      case KBDK_I: // invert
+      case StellaKey::I: // invert
         if(isEditable())
           invertCell();
         break;
 
-      case KBDK_MINUS: // decrement
-      case KBDK_KP_MINUS:
+      case StellaKey::MINUS: // decrement
+      case StellaKey::KP_MINUS:
         if(isEditable())
           decrementCell();
         break;
 
-      case KBDK_EQUALS: // increment
-      case KBDK_KP_PLUS:
+      case StellaKey::EQUALS: // increment
+      case StellaKey::KP_PLUS:
         if(isEditable())
           incrementCell();
         break;
 
-      case KBDK_COMMA: // shift left
+      case StellaKey::COMMA: // shift left
         if(isEditable())
           lshiftCell();
         break;
 
-      case KBDK_PERIOD: // shift right
+      case StellaKey::PERIOD: // shift right
         if(isEditable())
           rshiftCell();
         break;
 
-      case KBDK_Z: // zero
+      case StellaKey::Z: // zero
         if(isEditable())
           zeroCell();
         break;
@@ -490,7 +465,7 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
     }
   }
 
-  if (dirty)
+  if(dirty)
   {
     const int oldItem = _selectedItem;
     _selectedItem = _currentRow*_cols + _currentCol;
@@ -509,8 +484,8 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool DataGridWidget::handleKeyUp(StellaKey key, StellaMod mod)
 {
-  if (key == _currentKeyDown)
-    _currentKeyDown = KBDK_UNKNOWN;
+  if(key == _currentKeyDown)
+    _currentKeyDown = StellaKey::UNKNOWN;
   return true;
 }
 
@@ -604,25 +579,21 @@ string DataGridWidget::getToolTip(const Common::Point& pos) const
   const int idx = getToolTipIndex(pos);
 
   if(idx < 0)
-    return EmptyString();
+    return string{};
 
   const Int32 val = _valueList[idx];
-  std::ostringstream buf;
 
-  if(_toolTipList[idx] != EmptyString())
-    buf << _toolTipList[idx];
-  else
-    buf << _toolTipText;
-   buf << "$" << Common::Base::toString(val, Common::Base::Fmt::_16)
-       << " = #" << val;
+  string buf = !_toolTipList[idx].empty() ? _toolTipList[idx] : _toolTipText;
+  buf += std::format("${} = #{}",
+    Common::Base::toString(val, Common::Base::Fmt::_16), val);
   if(val < 0x100)
   {
     if(val >= 0x80)
-      buf << '/' << -(0x100 - val);
-    buf << " = %" << Common::Base::toString(val, Common::Base::Fmt::_2);
+      buf += std::format("/{}", -(0x100 - val));
+    buf += std::format(" = %{}",
+      Common::Base::toString(val, Common::Base::Fmt::_2));
   }
-
-  return buf.str();
+  return buf;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -659,14 +630,14 @@ void DataGridWidget::drawWidget(bool hilite)
       ColorId textColor = kTextColor;
 
       // Draw the selected item inverted, on a highlighted background.
-      if (_currentRow == row && _currentCol == col &&
+      if(_currentRow == row && _currentCol == col &&
           _hasFocus && !_editMode)
       {
         s.fillRect(x - 4, y - 2, _colWidth+1, _rowHeight+1, kTextColorHi);
         textColor = kTextColorInv;
       }
 
-      if (_selectedItem == pos && _editMode)
+      if(_selectedItem == pos && _editMode)
       {
         adjustOffset();
         s.drawString(_font, editString(), x, y, _colWidth, textColor,
@@ -738,7 +709,7 @@ void DataGridWidget::setCrossed(bool enable)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DataGridWidget::startEditMode()
 {
-  if (isEditable() && !_editMode && _selectedItem >= 0)
+  if(isEditable() && !_editMode && _selectedItem >= 0)
   {
     dialog().tooltip().hide();
     enableEditMode(true);
@@ -750,7 +721,7 @@ void DataGridWidget::startEditMode()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DataGridWidget::endEditMode()
 {
-  if (!_editMode)
+  if(!_editMode)
     return;
 
   enableEditMode(false);
@@ -834,7 +805,7 @@ void DataGridWidget::decrementCell()
   const int mask  = (1 << _bits) - 1;
   int value = getSelectedValue();
   if(value <= _lowerBound)        // take care of wrap-around
-    value = _upperBound;
+    value = static_cast<int>(_upperBound);
 
   value = (value - 1) & mask;
   setSelectedValue(value);
@@ -846,7 +817,7 @@ void DataGridWidget::incrementCell()
   const int mask  = (1 << _bits) - 1;
   int value = getSelectedValue();
   if(value >= _upperBound - 1)    // take care of wrap-around
-    value = _lowerBound - 1;
+    value = static_cast<int>(_lowerBound) - 1;
 
   value = (value + 1) & mask;
   setSelectedValue(value);

@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEFA_HXX
-#define CARTRIDGEFA_HXX
+#ifndef CARTRIDGE_FA_HXX
+#define CARTRIDGE_FA_HXX
 
 #include "bspf.hxx"
 #include "CartEnhanced.hxx"
@@ -25,10 +25,16 @@
 #endif
 
 /**
-  Cartridge class used for CBS' RAM Plus cartridges.  There are three 4K
-  banks, accessible by read/write at $1FF8 - $1FFA (note: D0 has to be 1
-  for switching), and 256 bytes of RAM.
-  RAM read port is $1100 - $11FF, write port is $1000 - $10FF.
+  Cartridge class used for CBS' RAM Plus cartridges (used by Tunnel Runner,
+  Omega Race, etc.).  Three 4K banks are selected by accessing $1FF8-$1FFA,
+  but with an unusual constraint: bit D0 of the written value must be 1 for
+  the switch to fire.  This was an intentional design choice to reduce the
+  chance of accidental bank changes from stray writes.
+
+  The 256 bytes of RAM use a larger split window than the SuperChip: write
+  port occupies $1000-$10FF and read port occupies $1100-$11FF.  FA2 is an
+  extended version of this scheme supporting six or seven banks with
+  persistent RAM saved to flash.
 
   @author  Bradford W. Mott, Thomas Jentzsch
 */
@@ -40,13 +46,12 @@ class CartridgeFA : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeFA(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeFA(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 12_KB);
     ~CartridgeFA() override = default;
 
@@ -71,6 +76,7 @@ class CartridgeFA : public CartridgeEnhanced
   #endif
 
     uInt16 hotspot() const override { return 0x1FF8; }
+    bool supportsSaveDisassembly() const override { return true; }
 
   private:
     bool checkSwitchBank(uInt16 address, uInt8) override;
@@ -89,4 +95,4 @@ class CartridgeFA : public CartridgeEnhanced
     CartridgeFA& operator=(CartridgeFA&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_FA_HXX

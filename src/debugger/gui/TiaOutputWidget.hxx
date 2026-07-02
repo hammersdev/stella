@@ -37,7 +37,7 @@ class TiaOutputWidget : public Widget, public CommandSender
 
     void setZoomWidget(TiaZoomWidget* w) { myZoom = w; }
 
-    void saveSnapshot(int execDepth = 0, string_view execPrefix = EmptyString(),
+    void saveSnapshot(int execDepth = 0, string_view execPrefix = {},
                       bool mark = true);
 
     string getToolTip(const Common::Point& pos) const override;
@@ -81,4 +81,4 @@ class TiaOutputWidget : public Widget, public CommandSender
     TiaOutputWidget& operator=(TiaOutputWidget&&) = delete;
 };
 
-#endif
+#endif  // TIA_OUTPUT_WIDGET_HXX

@@ -18,12 +18,10 @@
 #ifndef SERIALIZER_HXX
 #define SERIALIZER_HXX
 
-#include <bit>
 #include <cstring>
-#include <fstream>
 #include <optional>
-#include <span>
 
+#include "FSNode.hxx"
 #include "bspf.hxx"
 
 /**
@@ -96,9 +94,9 @@ class Serializer
     /**
       Reads a byte array (unsigned 8-bit) from the current input stream.
 
-      @param array  The storage space to write bytes to
+      @param arr  The storage space to write bytes to
     */
-    void getByteArray(std::span<uInt8> array);
+    void getByteArray(ByteMSpan arr);
 
     /**
       Reads a short value (unsigned 16-bit) from the current input stream.
@@ -110,9 +108,9 @@ class Serializer
     /**
       Reads a short array (unsigned 16-bit) from the current input stream.
 
-      @param array  The storage space to write shorts to
+      @param arr  The storage space to write shorts to
     */
-    void getShortArray(std::span<uInt16> array);
+    void getShortArray(ShortMSpan arr);
 
     /**
       Reads an int value (unsigned 32-bit) from the current input stream.
@@ -124,9 +122,9 @@ class Serializer
     /**
       Reads an integer array (unsigned 32-bit) from the current input stream.
 
-      @param array  The storage space to write ints to
+      @param arr  The storage space to write ints to
     */
-    void getIntArray(std::span<uInt32> array);
+    void getIntArray(IntMSpan arr);
 
     /**
       Reads a long int value (unsigned 64-bit) from the current input stream.
@@ -166,9 +164,9 @@ class Serializer
     /**
       Writes a byte array (unsigned 8-bit) to the current output stream.
 
-      @param array  The storage space to read bytes from
+      @param arr  The storage space to read bytes from
     */
-    void putByteArray(std::span<const uInt8> array);
+    void putByteArray(ByteSpan arr);
 
     /**
       Writes a short value (unsigned 16-bit) to the current output stream.
@@ -180,9 +178,9 @@ class Serializer
     /**
       Writes a short array (unsigned 16-bit) to the current output stream.
 
-      @param array  The storage space to read shorts from
+      @param arr  The storage space to read shorts from
     */
-    void putShortArray(std::span<const uInt16> array);
+    void putShortArray(ShortSpan arr);
 
     /**
       Writes an int value (unsigned 32-bit) to the current output stream.
@@ -194,9 +192,9 @@ class Serializer
     /**
       Writes an integer array (unsigned 32-bit) to the current output stream.
 
-      @param array  The storage space to read ints from
+      @param arr  The storage space to read ints from
     */
-    void putIntArray(std::span<const uInt32> array);
+    void putIntArray(IntSpan arr);
 
     /**
       Writes a long int value (unsigned 64-bit) to the current output stream.
@@ -232,14 +230,15 @@ class Serializer
     template<typename T> void writeRaw(T value);
 
     // Endian conversion helpers
-    template<typename T> static constexpr T byteswap(T v) {  // TODO: until C++23
+    // TODO: until we can use C++23 std::byteswap
+    template<typename T> static constexpr T byteswap(T v) {
       static_assert(sizeof(T) == 1 || sizeof(T) == 2 ||
                     sizeof(T) == 4 || sizeof(T) == 8,
                     "Unsupported type size for byteswap");
 
       if constexpr(sizeof(T) > 1) {
         auto src = std::bit_cast<std::array<std::byte, sizeof(T)>>(v);
-        std::reverse(src.begin(), src.end());
+        std::ranges::reverse(src);
         return std::bit_cast<T>(src);
       }
       return v;
@@ -262,8 +261,9 @@ class Serializer
       size_t pos{0};
       size_t size{0};
 
-      MemoryStream() { }  // NOLINT: can't use = default here
-                          // possible clang bug; fails to compile with default
+      MemoryStream() { }  // NOLINT(modernize-use-equals-default,
+                          //        hicpp-use-equals-default)
+                          // possible clang bug; fails to compile with '= default'
 
       void ensureCapacity(size_t additional) {
         ensureSize(pos + additional);
@@ -336,4 +336,4 @@ class Serializer
     Serializer& operator=(Serializer&&) = delete;
 };
 
-#endif
+#endif  // SERIALIZER_HXX

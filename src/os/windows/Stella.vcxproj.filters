@@ -151,6 +151,9 @@
     <Filter Include="Source Files\emucore\elf">
       <UniqueIdentifier>{1123de9d-fb61-41e2-b820-44c541aa2687}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\lib\dr_libs">
+      <UniqueIdentifier>{3ae6ce19-97c3-4362-a3ae-176d35cad1f5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\emucore\AtariVox.cxx">
@@ -360,9 +363,6 @@
     <ClCompile Include="..\..\gui\CommandDialog.cxx">
       <Filter>Source Files\gui</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\gui\CommandMenu.cxx">
-      <Filter>Source Files\gui</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\gui\ContextMenu.cxx">
       <Filter>Source Files\gui</Filter>
     </ClCompile>
@@ -406,9 +406,6 @@
       <Filter>Source Files\gui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\gui\ListWidget.cxx">
-      <Filter>Source Files\gui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\gui\OptionsMenu.cxx">
       <Filter>Source Files\gui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\gui\MessageBox.cxx">
@@ -672,9 +669,6 @@
     <ClCompile Include="..\..\common\audio\SimpleResampler.cxx">
       <Filter>Source Files\common\audio</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\common\audio\ConvolutionBuffer.cxx">
-      <Filter>Source Files\common\audio</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\common\audio\LanczosResampler.cxx">
       <Filter>Source Files\common\audio</Filter>
     </ClCompile>
@@ -683,9 +677,6 @@
     </ClCompile>
     <ClCompile Include="..\..\emucore\EmulationWorker.cxx">
       <Filter>Source Files\emucore</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\common\audio\HighPass.cxx">
-      <Filter>Source Files\common\audio</Filter>
     </ClCompile>
     <ClCompile Include="..\..\emucore\ControllerDetector.cxx">
       <Filter>Source Files\emucore</Filter>
@@ -708,13 +699,7 @@
     <ClCompile Include="..\..\emucore\Lightgun.cxx">
       <Filter>Source Files\emucore</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\gui\MessageMenu.cxx">
-      <Filter>Source Files\gui</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\gui\MessageDialog.cxx">
-      <Filter>Source Files\gui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\gui\HighScoresMenu.cxx">
       <Filter>Source Files\gui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\gui\HighScoresDialog.cxx">
@@ -804,9 +789,6 @@
     <ClCompile Include="..\..\emucore\CartARM.cxx">
       <Filter>Source Files\emucore</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\gui\PlusRomsMenu.cxx">
-      <Filter>Source Files\gui</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\gui\PlusRomsSetupDialog.cxx">
       <Filter>Source Files\gui</Filter>
     </ClCompile>
@@ -839,15 +821,6 @@
     </ClCompile>
     <ClCompile Include="..\..\debugger\yacc\YaccParser.cxx">
       <Filter>Source Files\debugger\yacc</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\debugger\gui\AmigaMouseWidget.cxx">
-      <Filter>Source Files\debugger\gui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\debugger\gui\AtariMouseWidget.cxx">
-      <Filter>Source Files\debugger\gui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\debugger\gui\AtariVoxWidget.cxx">
-      <Filter>Source Files\debugger\gui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\debugger\gui\AudioWidget.cxx">
       <Filter>Source Files\debugger\gui</Filter>
@@ -1062,9 +1035,6 @@
     <ClCompile Include="..\..\debugger\gui\RomWidget.cxx">
       <Filter>Source Files\debugger\gui</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\debugger\gui\SaveKeyWidget.cxx">
-      <Filter>Source Files\debugger\gui</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\debugger\gui\TiaInfoWidget.cxx">
       <Filter>Source Files\debugger\gui</Filter>
     </ClCompile>
@@ -1084,9 +1054,6 @@
       <Filter>Source Files\debugger\gui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\debugger\gui\ToggleWidget.cxx">
-      <Filter>Source Files\debugger\gui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\debugger\gui\TrakBallWidget.cxx">
       <Filter>Source Files\debugger\gui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\debugger\gui\CpuWidget.cxx">
@@ -1268,6 +1235,30 @@
     </ClCompile>
     <ClCompile Include="..\..\emucore\CartEFF.cxx">
       <Filter>Source Files\emucore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\emucore\CompuMateCassette.cxx">
+      <Filter>Source Files\emucore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\emucore\CartDevCard.cxx">
+      <Filter>Source Files\emucore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\debugger\gui\CartDevCardWidget.cxx">
+      <Filter>Source Files\debugger\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\emucore\FBMessageHandler.cxx">
+      <Filter>Source Files\emucore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\debugger\yacc\stella.tab.cxx">
+      <Filter>Source Files\debugger\yacc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\debugger\CartDisassemblyWriter.cxx">
+      <Filter>Source Files\debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\debugger\gui\DisasmColorsDialog.cxx">
+      <Filter>Source Files\debugger\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\OverlayMenu.cxx">
+      <Filter>Source Files\gui</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1520,9 +1511,6 @@
     <ClInclude Include="..\..\gui\CommandDialog.hxx">
       <Filter>Header Files\gui</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\gui\CommandMenu.hxx">
-      <Filter>Header Files\gui</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\gui\ConsoleFont.hxx">
       <Filter>Header Files\gui</Filter>
     </ClInclude>
@@ -1572,9 +1560,6 @@
       <Filter>Header Files\gui</Filter>
     </ClInclude>
     <ClInclude Include="..\..\gui\ListWidget.hxx">
-      <Filter>Header Files\gui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\gui\OptionsMenu.hxx">
       <Filter>Header Files\gui</Filter>
     </ClInclude>
     <ClInclude Include="..\..\gui\MessageBox.hxx">
@@ -1907,13 +1892,7 @@
     <ClInclude Include="..\..\emucore\Lightgun.hxx">
       <Filter>Header Files\emucore</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\gui\MessageMenu.hxx">
-      <Filter>Header Files\gui</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\gui\MessageDialog.hxx">
-      <Filter>Header Files\gui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\gui\HighScoresMenu.hxx">
       <Filter>Header Files\gui</Filter>
     </ClInclude>
     <ClInclude Include="..\..\gui\HighScoresDialog.hxx">
@@ -2035,9 +2014,6 @@
     </ClInclude>
     <ClInclude Include="..\..\emucore\CartARM.hxx">
       <Filter>Header Files\emucore</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\gui\PlusRomsMenu.hxx">
-      <Filter>Header Files\gui</Filter>
     </ClInclude>
     <ClInclude Include="..\..\gui\PlusRomsSetupDialog.hxx">
       <Filter>Header Files\gui</Filter>
@@ -2584,6 +2560,48 @@
     </ClInclude>
     <ClInclude Include="..\..\common\SpanStream.hxx">
       <Filter>Header Files\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\common\BitmaskEnum.hxx">
+      <Filter>Header Files\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\common\AsciiFold.hxx">
+      <Filter>Header Files\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\emucore\CompuMateCassette.hxx">
+      <Filter>Header Files\emucore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\emucore\CartDevCard.hxx">
+      <Filter>Header Files\emucore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\debugger\gui\CartDevCardWidget.hxx">
+      <Filter>Header Files\debugger\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\emucore\FBMessageHandler.hxx">
+      <Filter>Header Files\emucore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\debugger\yacc\stella.tab.hxx">
+      <Filter>Header Files\debugger\yacc</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\debugger\CartDisassemblyWriter.hxx">
+      <Filter>Header Files\debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\debugger\gui\DisasmColorsDialog.hxx">
+      <Filter>Header Files\debugger\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\lib\dr_libs\dr_mp3.h">
+      <Filter>Header Files\lib\dr_libs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\lib\dr_libs\dr_mp3_lib.hxx">
+      <Filter>Header Files\lib\dr_libs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\lib\dr_libs\dr_wav.h">
+      <Filter>Header Files\lib\dr_libs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\lib\dr_libs\dr_wav_lib.hxx">
+      <Filter>Header Files\lib\dr_libs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\OverlayMenu.hxx">
+      <Filter>Header Files\gui</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

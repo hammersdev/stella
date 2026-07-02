@@ -100,6 +100,20 @@ class Cartridge : public Device
     void enableRandomHotspots(bool enable) { myRandomHotspots = enable; }
 
     /**
+      Get the first bankswitching hotspot address in ROM space, or 0 if none.
+      Successive banks are selected by accessing hotspot(), hotspot()+1, etc.
+      Overridden by cart types that use address-based bankswitching.
+    */
+    virtual uInt16 hotspot() const { return 0; }
+
+    /**
+      Whether this cartridge type produces correct output from
+      CartDebug::saveDisassembly().  Returns false by default; override and
+      return true only for schemes whose save path has been verified correct.
+    */
+    virtual bool supportsSaveDisassembly() const { return false; }
+
+    /**
       Get the default startup bank for a cart.  This is the bank where
       the system will look at address 0xFFFC to determine where to
       start running code.
@@ -210,7 +224,7 @@ class Cartridge : public Device
       @param PC    The current PC
       @return  The origin of the bank
     */
-    uInt16 bankOrigin(uInt16 bank, uInt16 PC = 0) const;
+    virtual uInt16 bankOrigin(uInt16 bank, uInt16 PC = 0) const;
   #endif
 
   public:
@@ -220,6 +234,12 @@ class Cartridge : public Device
     // bankswitching (for any reason) do not have to provide an
     // implementation for bankswitch-related methods.
     //////////////////////////////////////////////////////////////////////
+
+    /**
+      Reset device to its power-on state
+    */
+    void reset() override;
+
     /**
       Set the specified bank.  This is used only when the bankswitching
       scheme defines banks in a standard format (ie, 0 for first bank,
@@ -304,10 +324,9 @@ class Cartridge : public Device
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span of the internal ROM image data
     */
-    virtual const ByteBuffer& getImage(size_t& size) const = 0;
+    virtual ByteSpan getImage() const = 0;
 
     /**
       Get a descriptor for the cart name.
@@ -398,11 +417,10 @@ class Cartridge : public Device
     /**
       Fill the given RAM array with (possibly random) data.
 
-      @param arr  Pointer to the RAM array
-      @param size The size of the RAM array
+      @param arr  Span of the RAM array
       @param val  If provided, the value to store in the RAM array
     */
-    void initializeRAM(uInt8* arr, size_t size, uInt8 val = 0) const;
+    void initializeRAM(ByteMSpan arr, uInt8 val = 0) const;
 
     /**
       Set the start bank to be used when the cart is reset.  This method
@@ -496,4 +514,4 @@ class Cartridge : public Device
     Cartridge& operator=(Cartridge&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_HXX

@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGESB_HXX
-#define CARTRIDGESB_HXX
+#ifndef CARTRIDGE_SB_HXX
+#define CARTRIDGE_SB_HXX
 
 #include "bspf.hxx"
 #include "CartEnhanced.hxx"
@@ -26,10 +26,14 @@
 #endif
 
 /**
-  Cartridge class used for SB "SUPERbanking" 128k-256k bankswitched games.
-  There are either 32 or 64 4K banks, accessible at hotspots $800 - $81F
-  (32 banks) and $800 - $83F (64 banks).  All mirrors up to $FFF are
-  also used ($900, $A00, ...).
+  Cartridge class used for SB "SUPERbanking" 128K-256K bankswitched games.
+  Like the 0840 and UA schemes, SB places its hotspots in the lower address
+  space (below $1000) rather than near $1FF0: accessing $0800-$081F selects
+  one of 32 banks (128K), and $0800-$083F selects one of 64 banks (256K).
+  The low bits of the hotspot address give the bank number directly.  The
+  entire hotspot block mirrors at $0900, $0A00, etc. through $0FFF.  ROM
+  size is variable; the constructor auto-detects 128K vs. 256K from the
+  image size.
 
   @author  Fred X. Quimby, Thomas Jentzsch
 */
@@ -41,14 +45,13 @@ class CartridgeSB : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
                        (where 0 means variable-sized ROM)
     */
-    CartridgeSB(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeSB(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 0);
     ~CartridgeSB() override = default;
 
@@ -116,4 +119,4 @@ class CartridgeSB : public CartridgeEnhanced
     CartridgeSB& operator=(CartridgeSB&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_SB_HXX

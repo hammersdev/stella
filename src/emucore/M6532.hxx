@@ -19,6 +19,7 @@
 #define M6532_HXX
 
 class ConsoleIO;
+class Controller;
 class RiotDebug;
 class System;
 class Settings;
@@ -34,6 +35,8 @@ class Settings;
     - A3 to enable/disable interrupt from timer to IRQ
     - A1 to enable/disable interrupt from PA7 to IRQ
 
+  The controller ports (SWCHA) and console switches (SWCHB) are read here.
+
   @author  Bradford W. Mott and Stephen Anthony
 */
 class M6532 : public Device
@@ -44,7 +47,6 @@ class M6532 : public Device
     */
     friend class RiotDebug;
 
-  public:
     /**
       Create a new 6532 for the specified console
 
@@ -54,7 +56,6 @@ class M6532 : public Device
     M6532(const ConsoleIO& console, const Settings& settings);
     ~M6532() override = default;
 
-   public:
     /**
       Reset cartridge to its power-on state
     */
@@ -64,6 +65,14 @@ class M6532 : public Device
       Update the entire digital and analog pin state of ports A and B.
     */
     void update();
+
+    /**
+      Cache direct pointers to both controllers. Invoked on reset and from
+      Console::setControllers() whenever the controller objects are replaced.
+      PA7 edge detection samples the left port on every RIOT access, so it
+      must not pay for a virtual ConsoleIO::leftController() lookup there.
+    */
+    void bindToControllers();
 
     /**
       Install 6532 in the specified system.  Invoked by the system
@@ -100,7 +109,6 @@ class M6532 : public Device
     */
     bool load(Serializer& in) override;
 
-   public:
     /**
       Get the byte at the specified address
 
@@ -123,12 +131,14 @@ class M6532 : public Device
      */
     void updateEmulation();
 
+  #ifdef __LIB_RETRO__
     /**
-      Get a pointer to the RAM contents.
+      Get mutable RAM contents for direct external access (libretro cheat/memory interface).
 
-      @return  Pointer to RAM array.
+      @return  Mutable span over RAM array.
     */
-    const uInt8* getRAM() const { return myRAM.data(); }
+    ByteMSpan getRAM() { return myRAM; }
+  #endif
 
   #ifdef DEBUGGER_SUPPORT
     /**
@@ -179,6 +189,9 @@ class M6532 : public Device
     void setTimerRegister(uInt8 value, uInt8 interval);
     void setPinState(bool swcha);
 
+    bool samplePA7Raw() const;
+    void updatePA7EdgeDetect();
+
   #ifdef DEBUGGER_SUPPORT
     // The following are used by the debugger to read INTIM/TIMINT
     // We need separate methods to do this, so the state of the system
@@ -189,7 +202,7 @@ class M6532 : public Device
     uInt32 timerClocks() const;
 
     void createAccessBases();
-  #endif // DEBUGGER_SUPPORT
+  #endif  // DEBUGGER_SUPPORT
 
   private:
     // Reference to the console
@@ -197,6 +210,11 @@ class M6532 : public Device
 
     // Reference to the settings
     const Settings& mySettings;
+
+    // Direct pointers to the connected controllers, refreshed on reset and
+    // whenever the controller objects are replaced (Console::setControllers)
+    Controller* myLeftPort{nullptr};
+    Controller* myRightPort{nullptr};
 
     // An amazing 128 bytes of RAM
     std::array<uInt8, 128> myRAM{};
@@ -207,8 +225,11 @@ class M6532 : public Device
     // Current number of clocks "queued" for the divider
     uInt32 mySubTimer{0};
 
-    // The divider
+    // The divider (always a power of 2: 1, 8, 64, 1024)
     uInt32 myDivider{1};
+
+    // log2 of myDivider; kept in sync so hot-path code can shift instead of divide
+    uInt8 myDividerShift{0};
 
     // Has the timer wrapped this very cycle?
     bool myWrappedThisCycle{false};
@@ -237,6 +258,10 @@ class M6532 : public Device
     // Used to determine whether an active transition on PA7 has occurred
     // True is positive edge-detect, false is negative edge-detect
     bool myEdgeDetectPositive{false};
+
+    // PA7 synchronizer
+    bool myPA7Sync1{true};      // 1st flip-flop stage
+    bool myPA7LastStable{true}; // last stable sampled value
 
     // Last value written to the timer registers
     std::array<uInt8, 4> myOutTimer{};
@@ -274,7 +299,7 @@ class M6532 : public Device
     // Timer read CPU cycles
     uInt16 myTimReadCycles{0};
     uInt64 myBusyRateTimReadCycles{0};
-#endif // DEBUGGER_SUPPORT
+#endif  // DEBUGGER_SUPPORT
 
   private:
     // Following constructors and assignment operators not supported
@@ -285,4 +310,4 @@ class M6532 : public Device
     M6532& operator=(M6532&&) = delete;
 };
 
-#endif
+#endif  // M6532_HXX

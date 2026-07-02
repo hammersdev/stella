@@ -26,6 +26,7 @@
 #include "Settings.hxx"
 
 #include "ThreadDebugging.hxx"
+#include "TIASurface.hxx"
 #include "FBSurfaceSDL.hxx"
 #include "FBBackendSDL.hxx"
 
@@ -72,8 +73,8 @@ FBBackendSDL::~FBBackendSDL()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FBBackendSDL::queryHardware(vector<Common::Size>& fullscreenRes,
-                                 vector<Common::Size>& windowedRes,
+void FBBackendSDL::queryHardware(std::unordered_map<uInt32, Common::Size>& fullscreenRes,
+                                 std::unordered_map<uInt32, Common::Size>& windowedRes,
                                  VariantList& renderers)
 {
   ASSERT_MAIN_THREAD;
@@ -90,15 +91,18 @@ void FBBackendSDL::queryHardware(vector<Common::Size>& fullscreenRes,
   {
     // Fullscreen mode
     const SDL_DisplayMode* display = SDL_GetDesktopDisplayMode(displays[i]);
-    fullscreenRes.emplace_back(display->w, display->h);
+    SDL_Rect bounds;
+    SDL_GetDisplayBounds(displays[i], &bounds);
+    fullscreenRes.try_emplace(displays[i], bounds.w, bounds.h);
 
     // Windowed mode
     SDL_Rect r{};
     if(SDL_GetDisplayUsableBounds(displays[i], &r))
-      windowedRes.emplace_back(r.w, r.h);
+      windowedRes.try_emplace(displays[i], r.w, r.h);
 
+    constexpr float epsilon = 0.001F;
     int numModes = 0;
-    SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(displays[i], &numModes);  // NOLINT
+    SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(displays[i], &numModes);
 
     string log = std::format("Supported video modes ({}) for display {} ({}):",
                              numModes, i, SDL_GetDisplayName(displays[i]));
@@ -116,13 +120,15 @@ void FBBackendSDL::queryHardware(vector<Common::Size>& fullscreenRes,
       }
 
       const bool isDesktopMode =
-        mode->w == display->w &&
-        mode->h == display->h &&
-        std::equal_to()(mode->refresh_rate, display->refresh_rate);
+        mode->w == bounds.w &&
+        mode->h == bounds.h &&
+        display != nullptr &&
+        std::fabs(mode->refresh_rate - display->refresh_rate) < epsilon;
       log += std::format("{:>7}{}", std::format("{}Hz", mode->refresh_rate),
                          isDesktopMode ? "* " : "  ");
     }
     Logger::debug(log);
+    SDL_free(static_cast<void*>(modes));
   }
   SDL_free(displays);
 
@@ -132,14 +138,16 @@ void FBBackendSDL::queryHardware(vector<Common::Size>& fullscreenRes,
     string_view stellaName;
   };
   // Create name map for all currently known SDL renderers
-  static constexpr std::array<RenderName, 8> RENDERER_NAMES = {{
+  static constexpr std::array<RenderName, 10> RENDERER_NAMES = {{
     { "direct3d",   "Direct3D"    },
     { "direct3d11", "Direct3D 11" },
     { "direct3d12", "Direct3D 12" },
-    { "metal",      "Metal"       },
     { "opengl",     "OpenGL"      },
     { "opengles",   "OpenGL ES"   },
     { "opengles2",  "OpenGL ES 2" },
+    { "metal",      "Metal"       },
+    { "vulkan",     "Vulkan"      },
+    { "gpu",        "GPU"         },
     { "software",   "Software"    }
   }};
 
@@ -195,44 +203,46 @@ uInt32 FBBackendSDL::getCurrentDisplayID() const
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool FBBackendSDL::setVideoMode(const VideoModeHandler::Mode& mode,
-                                int winIdx, const Common::Point& winPos)
+                                uInt32 winIdx, const Common::Point& winPos)
 {
   ASSERT_MAIN_THREAD;
-
-// cerr << mode << '\n';
 
   // If not initialized by this point, then immediately fail
   if(SDL_WasInit(SDL_INIT_VIDEO) == 0)
     return false;
 
-  const uInt32 displayIndex = std::min<uInt32>(myNumDisplays, winIdx);
+  SDL_DisplayID* displayIds = SDL_GetDisplays(nullptr);
+  const SDL_DisplayID displayId = winIdx;
   int posX = 0, posY = 0;
 
   myCenter = myOSystem.settings().getBool("center");
   if(myCenter)
-    posX = posY = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
+    posX = posY = SDL_WINDOWPOS_CENTERED_DISPLAY(displayId);
   else
   {
     posX = winPos.x;
     posY = winPos.y;
 
     // Make sure the window is at least partially visibile
-    int x0 = INT_MAX, y0 = INT_MAX, x1 = 0, y1 = 0;
-
-    for(int display = myNumDisplays - 1; display >= 0; --display)
+    if(displayIds)
     {
-      SDL_Rect rect;
+      int x0 = INT_MAX, y0 = INT_MAX, x1 = 0, y1 = 0;
 
-      if(SDL_GetDisplayUsableBounds(display, &rect))
+      for(int i = myNumDisplays - 1; i >= 0; --i)
       {
-        x0 = std::min(x0, rect.x);
-        y0 = std::min(y0, rect.y);
-        x1 = std::max(x1, rect.x + rect.w);
-        y1 = std::max(y1, rect.y + rect.h);
+        SDL_Rect rect;
+
+        if(SDL_GetDisplayUsableBounds(displayIds[i], &rect))
+        {
+          x0 = std::min(x0, rect.x);
+          y0 = std::min(y0, rect.y);
+          x1 = std::max(x1, rect.x + rect.w);
+          y1 = std::max(y1, rect.y + rect.h);
+        }
       }
+      posX = BSPF::clamp(posX, x0 - static_cast<Int32>(mode.screenS.w) + 50, x1 - 50);
+      posY = BSPF::clamp(posY, y0 + 50, y1 - 50);
     }
-    posX = BSPF::clamp(posX, x0 - static_cast<Int32>(mode.screenS.w) + 50, x1 - 50);
-    posY = BSPF::clamp(posY, y0 + 50, y1 - 50);
   }
 
 #ifdef ADAPTABLE_REFRESH_SUPPORT
@@ -246,7 +256,7 @@ bool FBBackendSDL::setVideoMode(const VideoModeHandler::Mode& mode,
     && refreshRate() % gameRefreshRate != 0
     && refreshRate() % (gameRefreshRate - 1) != 0;
   const bool adaptRefresh = shouldAdapt &&
-      adaptRefreshRate(displayIndex, adaptedSdlMode);
+      adaptRefreshRate(displayId, adaptedSdlMode);
 #else
   const bool adaptRefresh = false;
 #endif
@@ -259,7 +269,7 @@ bool FBBackendSDL::setVideoMode(const VideoModeHandler::Mode& mode,
     int w{0}, h{0};
 
     SDL_GetWindowSize(myWindow, &w, &h);
-    if(d != displayIndex ||
+    if(d != displayId ||
        std::cmp_not_equal(w, mode.screenS.w) ||
        std::cmp_not_equal(h, mode.screenS.h) || adaptRefresh)
     {
@@ -299,6 +309,7 @@ bool FBBackendSDL::setVideoMode(const VideoModeHandler::Mode& mode,
     {
       Logger::error(std::format("ERROR: Unable to open SDL window: {}",
                                 SDL_GetError()));
+      SDL_free(displayIds);
       return false;
     }
 
@@ -318,32 +329,48 @@ bool FBBackendSDL::setVideoMode(const VideoModeHandler::Mode& mode,
     {
       Logger::info(std::format("Display refresh rate changed to {} Hz ({}x{})",
         adaptedSdlMode.refresh_rate, adaptedSdlMode.w, adaptedSdlMode.h));
-
-//       const SDL_DisplayMode* setSdlMode = SDL_GetWindowFullscreenMode(myWindow);
-//       cerr << setSdlMode->refresh_rate << "Hz\n";
     }
   }
+  else
 #endif
-
-  const bool result = createRenderer();
-  if(result)
+  if(mode.fullscreen)
   {
-    // TODO: Checking for fullscreen status later returns invalid results,
-    //       so we check and cache it here
-    myIsFullscreen = SDL_GetWindowFlags(myWindow) & SDL_WINDOW_FULLSCREEN;
-    SDL_ShowWindow(myWindow);
+    SDL_Rect r;
+    SDL_GetDisplayBounds(displayId, &r);
+
+    // Ensure the window fits entirely inside the target monitor.
+    // This prevents SDL from assigning fullscreen to the wrong display.
+    SDL_SetWindowSize(myWindow, r.w, r.h);
+    // Place the window exactly at the top-left corner of the target monitor.
+    // This guarantees the window lies fully inside that monitor.
+    SDL_SetWindowPosition(myWindow, r.x, r.y);
+    // Activate fullscreen on that monitor.
+    // In SDL3 this is borderless fullscreen unless you set a specific mode.
+    SDL_SetWindowFullscreenMode(myWindow, nullptr);
+    SDL_SetWindowFullscreen(myWindow, true);
   }
 
+  const bool result = createRenderer();  // NOLINT(readability-misleading-indentation)
+  if(result)
+  {
+    // Cache before SDL_ShowWindow: showing the window causes SDL to process
+    // X11 _NET_WM_STATE notifications that incorrectly reset the fullscreen flag.
+    myIsFullscreen = SDL_GetWindowFlags(myWindow) & SDL_WINDOW_FULLSCREEN;
+    SDL_ShowWindow(myWindow);
+    SDL_RenderPresent(myRenderer);  // commit initial blank frame for Wayland
+  }
+
+  SDL_free(displayIds);
   return result;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool FBBackendSDL::adaptRefreshRate(Int32 displayIndex,
+bool FBBackendSDL::adaptRefreshRate(SDL_DisplayID displayId,
                                     SDL_DisplayMode& adaptedSdlMode)
 {
   ASSERT_MAIN_THREAD;
 
-  const SDL_DisplayMode* sdlMode = SDL_GetCurrentDisplayMode(displayIndex);
+  const SDL_DisplayMode* sdlMode = SDL_GetCurrentDisplayMode(displayId);
 
   if(sdlMode == nullptr)
   {
@@ -354,50 +381,46 @@ bool FBBackendSDL::adaptRefreshRate(Int32 displayIndex,
   const int currentRefreshRate = sdlMode->refresh_rate;
   const int wantedRefreshRate =
       myOSystem.hasConsole() ? myOSystem.console().gameRefreshRate() : 0;
-
   // Take care of rounded refresh rates (e.g. 59.94 Hz)
-  float factor = std::min(
+  const float factor = std::min(
       static_cast<float>(currentRefreshRate) / wantedRefreshRate,
       static_cast<float>(currentRefreshRate) / (wantedRefreshRate - 1));
-
   // Calculate difference taking care of integer factors (e.g. 100/120)
   float bestDiff = std::abs(factor - std::round(factor)) / factor;
+  int numModes = 0;
   bool adapt = false;
 
   // Display refresh rate should be an integer factor of the game's refresh rate
-  // Note: Modes are scanned with size being first priority,
-  //       therefore the size will never change.
-  // Check for integer factors 1 (60/50 Hz) and 2 (120/100 Hz)
-  for(int m = 1; m <= 2; ++m)
+  // Now find the display mode whose refresh rate is closest to an integer
+  // multiple of the target refresh rate. If two modes have the same error, the
+  // one matching the current resolution is preferred.
+  const float epsilon = 0.001F;  // floating point rounding tolerance
+  bool bestSameRes = false;
+  SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(displayId, &numModes);
+
+  for(const auto* m: std::span(modes, numModes))
   {
-    SDL_DisplayMode closestSdlMode{};
-    const float refresh_rate = wantedRefreshRate * m;
-
-    if(!SDL_GetClosestFullscreenDisplayMode(displayIndex, sdlMode->w, sdlMode->h,
-                                            refresh_rate, true, &closestSdlMode))
-    {
-      Logger::error("ERROR: Closest display mode could not be retrieved");
-      return adapt;
-    }
-    // TODO: there seems to be an error here (first one is always 1.0f)
-    factor = std::min(
-        static_cast<float>(refresh_rate) / refresh_rate,
-        static_cast<float>(refresh_rate) / (refresh_rate - 1));
-    const float diff = std::abs(factor - std::round(factor)) / factor;
-
-    if(diff < bestDiff)
+    // Determine nearest integer multiple of desired wantedRefreshRate
+    const float nearestInt = std::round(m->refresh_rate / wantedRefreshRate);
+    // Compute ideal rate for multiple
+    const float ideal = nearestInt * wantedRefreshRate;
+    // diff = delta betweem actual rate and ideal multiple
+    const float diff = std::fabs(m->refresh_rate - ideal) / ideal;
+    // Check if mode is same as current resolution
+    const bool sameRes = (m->w == sdlMode->w && m->h == sdlMode->h);
+    // 1. Prefer smaller error
+    // 2. If error is equal (within epsilon), prefer same resolution
+    if (diff < bestDiff - epsilon ||
+        (std::fabs(diff - bestDiff) < epsilon &&
+        sameRes && !bestSameRes))
     {
       bestDiff = diff;
-      adaptedSdlMode = closestSdlMode;
+      bestSameRes = sameRes;
+      adaptedSdlMode = *m;
       adapt = true;
     }
   }
-  //cerr << "refresh rate adapt ";
-  //if(adapt)
-  //  cerr << "required (" << currentRefreshRate << " Hz -> " << adaptedSdlMode.refresh_rate << " Hz)";
-  //else
-  //  cerr << "not required/possible";
-  //cerr << '\n';
+  SDL_free(static_cast<void*>(modes));
 
   // Only change if the display supports a better refresh rate
   return adapt;
@@ -445,15 +468,15 @@ bool FBBackendSDL::createRenderer()
     myRenderer = SDL_CreateRendererWithProperties(props);
     SDL_DestroyProperties(props);
 
-    detectFeatures();
-    determineDimensions();
-
     if(myRenderer == nullptr)
     {
       Logger::error(std::format("ERROR: Unable to create SDL renderer: {}",
                                 SDL_GetError()));
       return false;
     }
+
+    detectFeatures();
+    determineDimensions();
   }
   clear();
 
@@ -529,6 +552,7 @@ void FBBackendSDL::enableTextEvents(bool enable)
     SDL_StartTextInput(myWindow);
   else
     SDL_StopTextInput(myWindow);
+
   // myWindows can still be null, so we remember the state and set again when
   // the window is created
   myTextEventsEnabled = enable;
@@ -540,7 +564,7 @@ bool FBBackendSDL::fullScreen() const
   ASSERT_MAIN_THREAD;
 
 #ifdef WINDOWED_SUPPORT
-  return myIsFullscreen;  // TODO: this should query SDL directly (BUG?)
+  return myIsFullscreen;
 #else
   return true;
 #endif
@@ -591,28 +615,78 @@ unique_ptr<FBSurface> FBBackendSDL::createSurface(
   uInt32 h,
   ScalingInterpolation inter,
   const uInt32* data
-) const
+)
 {
   unique_ptr<FBSurface> s = std::make_unique<FBSurfaceSDL>
-    (const_cast<FBBackendSDL&>(*this), w, h, inter, data);
+    (*this, w, h, inter, data);
   s->setBlendLevel(100);  // by default, disable shading (use full alpha)
 
   return s;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FBBackendSDL::getSurface(FBSurface& surface) const
+const FBSurface& FBBackendSDL::compositedSurface()
 {
-#if 0
   ASSERT_MAIN_THREAD;
 
-  const SDL_Rect r = ToSDLRect(rect);
-  SDL_Surface* surface = SDL_RenderReadPixels(myRenderer, &r);
+  const FrameBuffer& fb = myOSystem.frameBuffer();
+  const Common::Rect& rectUnscaled = fb.imageRect();
+  const Common::Rect rect(
+    Common::Point(fb.scaleX(rectUnscaled.x()), fb.scaleY(rectUnscaled.y())),
+    fb.scaleX(rectUnscaled.w()), fb.scaleY(rectUnscaled.h())
+  );
 
+  const SDL_Rect surfaceRect = ToSDLRect(rect);
+  SDL_Surface* tmp = SDL_RenderReadPixels(myRenderer, &surfaceRect);
+  if(!tmp)
+    throw(std::runtime_error(std::format("Snapshot failed: {}", SDL_GetError())));
 
+  SDL_Surface* sdlSurface = SDL_ConvertSurface(tmp, myPixelFormat->format);
+  SDL_DestroySurface(tmp);
 
-  SDL_DestroySurface(surface);
-#endif
+  if(!sdlSurface)
+    throw(std::runtime_error(std::format("Snapshot failed: {}", SDL_GetError())));
+
+  // SDL3's OpenGL renderer converts sRGB textures to linear space for blending,
+  // and SDL_RenderReadPixels returns these linear values. For phosphor mode,
+  // the averaged pixel values go through this conversion and come back darker.
+  // Apply sRGB gamma correction to restore correct brightness.
+  // NOTE: this correction may need revisiting for other renderers (e.g. Metal).
+  if(fb.tiaSurface().phosphorEnabled())
+  {
+    static const std::array<uInt8, 256> gammaLUT = [] {
+      std::array<uInt8, 256> lut{};
+      for(int i = 0; i < 256; ++i)
+        lut[i] = static_cast<uInt8>(
+          std::lround(std::pow(i / 255.0, 1.0 / 1.35) * 255.0));
+      return lut;
+    }();
+
+    const uInt32 rShift = std::countr_zero(rMask());
+    const uInt32 gShift = std::countr_zero(gMask());
+    const uInt32 bShift = std::countr_zero(bMask());
+    const uInt32 aMask_ = aMask();
+
+    const auto w = static_cast<uInt32>(surfaceRect.w);
+    const auto h = static_cast<uInt32>(surfaceRect.h);
+    const uInt32 pitch = sdlSurface->pitch / sizeof(uInt32);
+    auto* pixels = static_cast<uInt32*>(sdlSurface->pixels);
+
+    const auto applyGamma = [rShift, gShift, bShift, aMask_](uInt32 px) -> uInt32 {
+      const uInt8 r = gammaLUT[(px >> rShift) & 0xFF];
+      const uInt8 g = gammaLUT[(px >> gShift) & 0xFF];
+      const uInt8 b = gammaLUT[(px >> bShift) & 0xFF];
+      return aMask_ | (r << rShift) | (g << gShift) | (b << bShift);
+    };
+
+    auto* row = pixels;
+    for(uInt32 y = 0; y < h; ++y, row += pitch)
+      std::ranges::transform(std::span{row, w}, row, applyGamma);
+  }
+  myCompositedSurface = std::make_unique<FBSurfaceSDL>
+    (*this, sdlSurface, ScalingInterpolation::none);
+
+  return *myCompositedSurface;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -620,7 +694,16 @@ void FBBackendSDL::clear()
 {
   ASSERT_MAIN_THREAD;
 
+  SDL_SetRenderDrawColor(myRenderer, 0, 0, 0, 255);
   SDL_RenderClear(myRenderer);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void FBBackendSDL::flush()
+{
+  ASSERT_MAIN_THREAD;
+
+  SDL_FlushRenderer(myRenderer);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -49,7 +49,7 @@ class TimeMachineDialog : public Dialog
     /** initialize timeline bar */
     void initBar();
     /** convert cycles into time */
-    string getTimeString(uInt64 cycles) const;
+    static string getTimeString(uInt64 cycles, size_t scanlines);
     /** re/unwind and update display */
     void handleWinds(Int32 numWinds = 0);
     /** toggle Time Machine mode */
@@ -102,4 +102,4 @@ class TimeMachineDialog : public Dialog
     TimeMachineDialog& operator=(TimeMachineDialog&&) = delete;
 };
 
-#endif
+#endif  // TIME_MACHINE_DIALOG_HXX

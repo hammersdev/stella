@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEMVC_HXX
-#define CARTRIDGEMVC_HXX
+#ifndef CARTRIDGE_MVC_HXX
+#define CARTRIDGE_MVC_HXX
 
 class System;
 class MovieCart;
@@ -25,10 +25,15 @@ class MovieCart;
 #include "Cart.hxx"
 
 /**
-  Implementation of MovieCart.
-  1K of memory is presented on the bus, but is repeated to fill the 4K image space.
-  Contents are dynamically altered with streaming image and audio content as specific
-  128-byte regions are entered.
+  Implementation of MovieCart, a scheme for playing full-motion video on the
+  2600.  Only 1K of memory is presented on the bus (mirrored to fill the 4K
+  image space), but its contents are continuously replaced on the fly as the
+  6502 enters successive 128-byte "frame" regions.  Data is streamed in 512-
+  byte chunks from a file rather than a static ROM image, so video length is
+  limited only by the source file size.  Audio is single-channel 4-bit PCM;
+  video uses TIA color dithering for image reproduction.  On-screen overlays
+  (OSD) and rewind support are provided by the driver code running in that 1K
+  window.
   Original implementation: github.com/lodefmode/moviecart
 
   @author  Rob Bairos
@@ -69,10 +74,9 @@ class CartridgeMVC : public Cartridge
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span to the internal ROM image data
     */
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     /**
       Patch the cartridge ROM.
@@ -133,9 +137,8 @@ class CartridgeMVC : public Cartridge
 
   private:
     // Currently not used:
-    // Pointer to a dynamically allocated ROM image of the cartridge
-    ByteBuffer myImage;
-    size_t mySize{0};
+    // Placeholder ROM image of the cartridge
+    ByteArray myImage;
 
     unique_ptr<MovieCart> myMovie;
     string myPath;
@@ -149,4 +152,4 @@ class CartridgeMVC : public Cartridge
     CartridgeMVC& operator=(CartridgeMVC&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_MVC_HXX

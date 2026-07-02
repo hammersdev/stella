@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEF6_HXX
-#define CARTRIDGEF6_HXX
+#ifndef CARTRIDGE_F6_HXX
+#define CARTRIDGE_F6_HXX
 
 #include "CartEnhanced.hxx"
 #ifdef DEBUGGER_SUPPORT
@@ -24,8 +24,11 @@
 #endif
 
 /**
-  Cartridge class used for Atari's 16K bankswitched games.  There are four
-  4K banks, accessible by read/write to $1FF6 - $1FF9.
+  Cartridge class used for Atari's 16K bankswitched games.  Four 4K banks
+  are selected by accessing $1FF6-$1FF9 (the low 2 bits of the address give
+  the bank number).  F6 is a direct extension of F8 (8K) and is itself
+  extended by F4 (32K).  Used by titles such as Dig Dug, Joust, and Pole
+  Position.  The F6SC variant adds 128 bytes of SuperChip RAM.
 
   @author  Bradford W. Mott, Thomas Jentzsch
 */
@@ -37,13 +40,12 @@ class CartridgeF6 : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeF6(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeF6(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 16_KB);
     ~CartridgeF6() override = default;
 
@@ -68,6 +70,7 @@ class CartridgeF6 : public CartridgeEnhanced
   #endif
 
     uInt16 hotspot() const override { return 0x1FF6; }
+    bool supportsSaveDisassembly() const override { return true; }
 
   private:
     bool checkSwitchBank(uInt16 address, uInt8 value) override;
@@ -81,4 +84,4 @@ class CartridgeF6 : public CartridgeEnhanced
     CartridgeF6& operator=(CartridgeF6&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_F6_HXX

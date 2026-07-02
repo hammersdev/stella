@@ -22,8 +22,7 @@
 
 /**
   Emulates a Microchip Technology Inc. 24LC256, a 32KB Serial Electrically
-  Erasable PROM accessed using the I2C protocol.  Thanks to J. Payson
-  (aka Supercat) for the bulk of this code.
+  Erasable PROM accessed using the I2C protocol.
 
   @author Stephen Anthony & J. Payson
 */
@@ -32,4 +31,4 @@ class MT24LC256 : public MicroChip24LC<32_KB, 64>
   using MicroChip24LC::MicroChip24LC;
 };
 
-#endif
+#endif  // MT24LC256_HXX

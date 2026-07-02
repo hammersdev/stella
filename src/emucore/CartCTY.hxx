@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGECHETIRY_HXX
-#define CARTRIDGECHETIRY_HXX
+#ifndef CARTRIDGE_CTY_HXX
+#define CARTRIDGE_CTY_HXX
 
 class System;
 
@@ -113,13 +113,11 @@ class CartridgeCTY : public Cartridge
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the settings object
     */
-    CartridgeCTY(const ByteBuffer& image, size_t size, string_view md5,
-                 const Settings& settings);
+    CartridgeCTY(ByteSpan image, string_view md5, const Settings& settings);
     ~CartridgeCTY() override = default;
 
   public:
@@ -179,10 +177,9 @@ class CartridgeCTY : public Cartridge
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span to the internal ROM image data
     */
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     /**
       Save the current state of this cart to the given Serializer.
@@ -271,7 +268,7 @@ class CartridgeCTY : public Cartridge
 
   private:
     // The 32K ROM image of the cartridge
-    ByteBuffer myImage;
+    std::array<uInt8, 32_KB> myImage{};
 
     // The 28K ROM image of the music
     std::array<uInt8, 28_KB> myTuneData{};
@@ -285,9 +282,8 @@ class CartridgeCTY : public Cartridge
     // Operation type (written to $1000, used by hotspot $1FF4)
     uInt8 myOperationType{0};
 
-    // Pointer to the 28K frequency table (points to the start of one
-    // of seven 4K tunes in myTuneData)
-    const uInt8* myFrequencyImage{nullptr};
+    // Subspan into myTuneData pointing to the current 4K tune
+    ByteSpan myFrequencyImage;
 
     // The counter register for the data fetcher
     uInt16 myTunePosition{0};
@@ -334,4 +330,4 @@ class CartridgeCTY : public Cartridge
     CartridgeCTY& operator=(CartridgeCTY&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_CTY_HXX

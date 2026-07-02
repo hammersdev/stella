@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGE4KSC_HXX
-#define CARTRIDGE4KSC_HXX
+#ifndef CARTRIDGE_4KSC_HXX
+#define CARTRIDGE_4KSC_HXX
 
 class System;
 
@@ -27,8 +27,13 @@ class System;
 #endif
 
 /**
-  Cartridge class used for 4K games with 128 bytes of RAM.
-  RAM read port is $1080 - $10FF, write port is $1000 - $107F.
+  Cartridge class used for 4K games with 128 bytes of SuperChip RAM.
+  "SC" denotes the SuperChip, a small static RAM chip present on some Atari
+  PCB revisions.  The 128 bytes are mapped with a split read/write window:
+  the write port occupies $1000-$107F and the read port occupies $1080-$10FF
+  (an $80 offset into the same RAM).  Because of this, ROM addresses in the
+  range $1000-$107F are inaccessible; games using this scheme must place all
+  code and data above $1080.
 
   @author  Stephen Anthony, Thomas Jentzsch
 */
@@ -41,13 +46,12 @@ class Cartridge4KSC : public Cartridge4K
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    Cartridge4KSC(const ByteBuffer& image, size_t size, string_view md5,
+    Cartridge4KSC(ByteSpan image, string_view md5,
                   const Settings& settings, size_t bsSize = 4_KB);
     ~Cartridge4KSC() override = default;
 
@@ -84,4 +88,4 @@ class Cartridge4KSC : public Cartridge4K
     Cartridge4KSC& operator=(Cartridge4KSC&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_4KSC_HXX

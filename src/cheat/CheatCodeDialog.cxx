@@ -43,7 +43,7 @@ CheatCodeDialog::CheatCodeDialog(OSystem& osystem, DialogContainer& parent,
             VBORDER      = Dialog::vBorder(),
             HBORDER      = Dialog::hBorder();
   WidgetArray wid;
-  ButtonWidget* b = nullptr;  // NOLINT (erroneously marked as const)
+  ButtonWidget* b = nullptr;
 
   // Set real dimensions
   _w = 45 * fontWidth + HBORDER * 2;
@@ -110,9 +110,7 @@ CheatCodeDialog::CheatCodeDialog(OSystem& osystem, DialogContainer& parent,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CheatCodeDialog::~CheatCodeDialog()  // NOLINT (we need an empty d'tor)
-{
-}
+CheatCodeDialog::~CheatCodeDialog() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CheatCodeDialog::loadConfig()
@@ -144,12 +142,10 @@ void CheatCodeDialog::saveConfig()
 {
   // Inspect checkboxes for enable/disable codes
   const CheatList& list = instance().cheat().list();
-  for(uInt32 i = 0; i < myCheatList->getList().size(); ++i)
+  for(uInt32 i = 0; const auto& cheat : list)
   {
-    if(myCheatList->getState(i))
-      list[i]->enable();
-    else
-      list[i]->disable();
+    const bool enabled = myCheatList->getState(i++);
+    enabled ? cheat->enable() : cheat->disable();
   }
 }
 

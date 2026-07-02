@@ -15,19 +15,19 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#include "CartELFStateWidget.hxx"
-
-#include <sstream>
-
 #include "CartELF.hxx"
 #include "BusTransactionQueue.hxx"
 #include "DataGridWidget.hxx"
 #include "ToggleBitWidget.hxx"
 #include "EditTextWidget.hxx"
 
+#include "CartELFStateWidget.hxx"
+
 namespace {
-  string registerName(uInt8 reg) {
-    switch (reg) {
+  string registerName(uInt8 reg)
+  {
+    switch(reg)
+    {
       case 11:
         return "FP (R11) = ";
 
@@ -43,25 +43,15 @@ namespace {
       case 15:
         return "PC (R15) = ";
 
-      default: {
-        std::ostringstream s;
-        s << "R" << static_cast<int>(reg) << " = ";
-
-        return s.str();
-      }
+      default:
+        return std::format("R{} = ", static_cast<int>(reg));
     }
   }
 
-  string describeTransaction(uInt16 address, uInt16 mask, uInt64 timestamp) {
-    std::ostringstream s;
-
-    s
-      << std::hex << std::setfill('0')
-      << "waiting for 0x" << std::setw(4) << address
-      << " mask 0x" << std::setw(4) << mask
-      << " time " << std::dec << timestamp;
-
-    return s.str();
+  string describeTransaction(uInt16 address, uInt16 mask, uInt64 timestamp)
+  {
+    return std::format("waiting for 0x{:04X} mask 0x{:04X} time {}",
+      address, mask, timestamp);
   }
 }  // namespace
 
@@ -92,7 +82,7 @@ void CartridgeELFStateWidget::initialize()
   y += myArmRegisters->getHeight() + lineHeight / 2;
 
   myArmRegisters->setEditable(false);
-  for (uInt8 i = 0; i < 16; i++) myArmRegisters->setToolTip(i % 4, i / 4, registerName(i));
+  for(uInt8 i = 0; i < 16; i++) myArmRegisters->setToolTip(i % 4, i / 4, registerName(i));
 
   new StaticTextWidget(_boss, _font, x0, y, "ARM flags:");
   myFlags = new ToggleBitWidget(_boss, _font, x0 + indent, y + lineHeight, 4, 1, 1);
@@ -129,7 +119,7 @@ void CartridgeELFStateWidget::initialize()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeELFStateWidget::loadConfig()
 {
-  for (uInt8 i = 0; i < 16; i++)
+  for(uInt8 i = 0; i < 16; i++)
     myArmRegisters->setValue(i, myCart.myCortexEmu.getRegister(i));
 
   BoolArray flags(4);
@@ -139,22 +129,14 @@ void CartridgeELFStateWidget::loadConfig()
   flags[3] = myCart.myCortexEmu.getV();
 
   BoolArray flagsChanged(4);
-  for (uInt8 i = 0; i < 4; i++) flagsChanged[i] = flags[i] != myFlagValues[i];
+  for(uInt8 i = 0; i < 4; i++) flagsChanged[i] = flags[i] != myFlagValues[i];
   myFlagValues = flags;
 
   myFlags->setState(flags, flagsChanged);
 
-  std::ostringstream s;
-  s << myCart.getVcsCyclesArm();
-  myCurrentCyclesVcs->setText(s.str());
-
-  s.str("");
-  s << myCart.getArmCycles();
-  myCurrentCyclesArm->setText(s.str());
-
-  s.str("");
-  s << myCart.myTransactionQueue.size();
-  myQueueSize->setText(s.str());
+  myCurrentCyclesVcs->setText(std::to_string(myCart.getVcsCyclesArm()));
+  myCurrentCyclesArm->setText(std::to_string(myCart.getArmCycles()));
+  myQueueSize->setText(std::to_string(myCart.myTransactionQueue.size()));
 
   const BusTransactionQueue::Transaction* nextTransaction =
       myCart.myTransactionQueue.peekNextTransaction();

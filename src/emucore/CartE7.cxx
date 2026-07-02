@@ -19,39 +19,38 @@
 #include "CartE7.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CartridgeE7::CartridgeE7(const ByteBuffer& image, size_t size,
-                         string_view md5, const Settings& settings)
-  : Cartridge(settings, md5),
-    mySize{size}
+CartridgeE7::CartridgeE7(ByteSpan image, string_view md5,
+                         const Settings& settings)
+  : Cartridge(settings, md5)
 {
-  initialize(image, size);
+  initialize(image);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void CartridgeE7::initialize(const ByteBuffer& image, size_t size)
+void CartridgeE7::initialize(ByteSpan image)
 {
-  // Allocate array for the ROM image
-  myImage = std::make_unique<uInt8[]>(size);
-
-  // Copy the ROM image into my buffer
-  std::copy_n(image.get(), std::min<size_t>(romSize(), size), myImage.get());
+  // Allocate array for the ROM image and copy it in
+  myImage.assign(image.size(), 0);
+  std::copy_n(image.data(), std::min<size_t>(romSize(), image.size()), myImage.data());
   createRomAccessArrays(romSize() + myRAM.size());
 
   myRAM.fill(0xFF);
   myCurrentBank.fill(0);
 
-  myRAMBank = romBankCount() - 1;  // NOLINT
+  myRAMBank = romBankCount() - 1;  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
 
   myPlusROM = std::make_unique<PlusROM>(mySettings, *this);
 
   // Determine whether we have a PlusROM cart
-  myPlusROM->initialize(myImage, mySize);
+  myPlusROM->initialize(myImage);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeE7::reset()
 {
-  initializeRAM(myRAM.data(), myRAM.size());
+  Cartridge::reset();
+
+  initializeRAM(myRAM);
 
   initializeStartBank(0);
   const uInt32 ramBank = randomStartBank() ?
@@ -111,7 +110,7 @@ void CartridgeE7::install(System& system)
   // Setup the second segment to always point to the last ROM bank
   const auto offset = static_cast<uInt16>(myRAMBank * BANK_SIZE);
   setAccess(0x1A00, 0x1FE0U & (~System::PAGE_MASK - 0x1A00),
-            offset, myImage.get(), offset,
+            offset, myImage.data(), offset,
             System::PageAccessType::READ, static_cast<uInt16>(BANK_SIZE - 1));
   myCurrentBank[1] = myRAMBank;
 
@@ -267,7 +266,7 @@ bool CartridgeE7::bank(uInt16 bank, uInt16)
     const uInt16 offset = bank << 11; // * BANK_SIZE (2048)
 
     // Map ROM image into first segment
-    setAccess(0x1000, BANK_SIZE, offset, myImage.get(), offset, System::PageAccessType::READ);
+    setAccess(0x1000, BANK_SIZE, offset, myImage.data(), offset, System::PageAccessType::READ);
   }
   else
   {
@@ -322,9 +321,8 @@ bool CartridgeE7::patch(uInt16 address, uInt8 value)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-const ByteBuffer& CartridgeE7::getImage(size_t& size) const
+ByteSpan CartridgeE7::getImage() const
 {
-  size = romBankCount() * BANK_SIZE;
   return myImage;
 }
 
@@ -375,11 +373,11 @@ bool CartridgeE7::load(Serializer& in)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt16 CartridgeE7::romBankCount() const
 {
-  return static_cast<uInt16>(mySize >> 11);
+  return static_cast<uInt16>(myImage.size() >> 11);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt16 CartridgeE7::romSize() const
 {
-  return romBankCount() * BANK_SIZE;  // NOLINT
+  return romBankCount() * BANK_SIZE;  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
 }

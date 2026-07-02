@@ -28,23 +28,16 @@ EventHandlerSDL::EventHandlerSDL(OSystem& osystem)
   ASSERT_MAIN_THREAD;
 
 #ifdef GUI_SUPPORT
-  {
-    std::ostringstream buf;
-    myQwertz = int{'y'} == static_cast<int>
-      (SDL_GetKeyFromScancode(static_cast<SDL_Scancode>(KBDK_Z), static_cast<SDL_Keymod>(StellaMod::KBDM_NONE), false));
-    buf << "Keyboard: " << (myQwertz ? "QWERTZ" : "QWERTY");
-    Logger::debug(buf.view());
-  }
+  myQwertz = int{'y'} == static_cast<int>
+    (SDL_GetKeyFromScancode(static_cast<SDL_Scancode>(StellaKey::Z),
+                            static_cast<SDL_Keymod>(StellaMod::NONE), false));
+  Logger::debug(std::format("Keyboard: {}", myQwertz ? "QWERTZ" : "QWERTY"));
 #endif
 
 #ifdef JOYSTICK_SUPPORT
   if(!SDL_InitSubSystem(SDL_INIT_JOYSTICK))
-  {
-    std::ostringstream buf;
-    buf << "ERROR: Couldn't initialize SDL joystick support: "
-        << SDL_GetError() << '\n';
-    Logger::error(buf.view());
-  }
+    Logger::error(std::format("ERROR: Couldn't initialize SDL joystick support: {}\n",
+                              SDL_GetError()));
   Logger::debug("EventHandlerSDL::EventHandlerSDL SDL_INIT_JOYSTICK");
 #endif
 
@@ -66,7 +59,7 @@ EventHandlerSDL::~EventHandlerSDL()
 void EventHandlerSDL::copyText(const string& text) const
 {
   SDL_SetClipboardText(text.c_str());
-};
+}
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string EventHandlerSDL::pasteText(string& text) const
@@ -77,7 +70,13 @@ string EventHandlerSDL::pasteText(string& text) const
     text = "";
 
   return text;
-};
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool EventHandlerSDL::hasClipboardText() const
+{
+  return SDL_HasClipboardText();
+}
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandlerSDL::pollEvent()
@@ -91,26 +90,20 @@ void EventHandlerSDL::pollEvent()
       // keyboard events
       case SDL_EVENT_KEY_UP:
       case SDL_EVENT_KEY_DOWN:
-      {
         handleKeyEvent(static_cast<StellaKey>(myEvent.key.scancode),
                        static_cast<StellaMod>(myEvent.key.mod),
                        myEvent.type == SDL_EVENT_KEY_DOWN,
                        myEvent.key.repeat);
         break;
-      }
 
       case SDL_EVENT_TEXT_INPUT:
-      {
         handleTextEvent(*(myEvent.text.text));
         break;
-      }
 
       case SDL_EVENT_MOUSE_MOTION:
-      {
         handleMouseMotionEvent(myEvent.motion.x, myEvent.motion.y,
                                myEvent.motion.xrel, myEvent.motion.yrel);
         break;
-      }
 
       case SDL_EVENT_MOUSE_BUTTON_DOWN:
       case SDL_EVENT_MOUSE_BUTTON_UP:
@@ -138,8 +131,8 @@ void EventHandlerSDL::pollEvent()
 
       case SDL_EVENT_MOUSE_WHEEL:
       {
-        // TODO: SDL now uses float for mouse coords, but the core still
-        //       uses int throughout; maybe this is sufficient?
+        // SDL now uses float for mouse coords, but the core still
+        // uses int throughout; this is sufficient for our current needs
         float x{0.F}, y{0.F};
         SDL_GetMouseState(&x, &y);  // we need mouse position too
         if(myEvent.wheel.y < 0)
@@ -154,31 +147,27 @@ void EventHandlerSDL::pollEvent()
   #ifdef JOYSTICK_SUPPORT
       case SDL_EVENT_JOYSTICK_BUTTON_UP:
       case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
-      {
         handleJoyBtnEvent(myEvent.jbutton.which, myEvent.jbutton.button,
                           myEvent.jbutton.down);
         break;
-      }
 
       case SDL_EVENT_JOYSTICK_AXIS_MOTION:
-      {
         handleJoyAxisEvent(myEvent.jaxis.which, myEvent.jaxis.axis,
                            myEvent.jaxis.value);
         break;
-      }
 
       case SDL_EVENT_JOYSTICK_HAT_MOTION:
       {
-        int value = 0;
+        JoyHatMask value = JoyHatMask::NONE;
         const int v = myEvent.jhat.value;
         if(v == SDL_HAT_CENTERED)
-          value  = EVENT_HATCENTER_M;
+          value  = JoyHatMask::CENTER;
         else
         {
-          if(v & SDL_HAT_UP)    value |= EVENT_HATUP_M;
-          if(v & SDL_HAT_DOWN)  value |= EVENT_HATDOWN_M;
-          if(v & SDL_HAT_LEFT)  value |= EVENT_HATLEFT_M;
-          if(v & SDL_HAT_RIGHT) value |= EVENT_HATRIGHT_M;
+          if(v & SDL_HAT_UP)    value |= JoyHatMask::UP;
+          if(v & SDL_HAT_DOWN)  value |= JoyHatMask::DOWN;
+          if(v & SDL_HAT_LEFT)  value |= JoyHatMask::LEFT;
+          if(v & SDL_HAT_RIGHT) value |= JoyHatMask::RIGHT;
         }
 
         handleJoyHatEvent(myEvent.jhat.which, myEvent.jhat.hat, value);
@@ -186,22 +175,21 @@ void EventHandlerSDL::pollEvent()
       }
 
       case SDL_EVENT_JOYSTICK_ADDED:
-      {
         addPhysicalJoystick(std::make_shared<JoystickSDL>(myEvent.jdevice.which));
         break;
-      }
+
       case SDL_EVENT_JOYSTICK_REMOVED:
-      {
         removePhysicalJoystick(myEvent.jdevice.which);
         break;
-      }
   #endif
 
       case SDL_EVENT_QUIT:
-      {
         handleEvent(Event::Quit);
         break;
-      }
+
+      case SDL_EVENT_DROP_FILE:
+        handleDropfileEvent(myEvent.drop.data);
+        break;
 
       case SDL_EVENT_WINDOW_SHOWN:
         handleSystemEvent(SystemEvent::WINDOW_SHOWN);
@@ -214,11 +202,11 @@ void EventHandlerSDL::pollEvent()
         break;
       case SDL_EVENT_WINDOW_MOVED:
         handleSystemEvent(SystemEvent::WINDOW_MOVED,
-                          myEvent.window.data1, myEvent.window.data1);
+                          myEvent.window.data1, myEvent.window.data2);
         break;
       case SDL_EVENT_WINDOW_RESIZED:
         handleSystemEvent(SystemEvent::WINDOW_RESIZED,
-                          myEvent.window.data1, myEvent.window.data1);
+                          myEvent.window.data1, myEvent.window.data2);
         break;
       case SDL_EVENT_WINDOW_MINIMIZED:
         handleSystemEvent(SystemEvent::WINDOW_MINIMIZED);
@@ -256,7 +244,7 @@ EventHandlerSDL::JoystickSDL::JoystickSDL(int idx)
 {
   ASSERT_MAIN_THREAD;
 
-  // NOLINTNEXTLINE: we want to initialize here, not in the member list
+  // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
   myStick = SDL_OpenJoystick(idx);
   if(myStick)
   {
@@ -266,8 +254,8 @@ EventHandlerSDL::JoystickSDL::JoystickSDL(int idx)
     // havoc with the idea that a joystick will always have the same name.
     // So we truncate the number.
     const char* const sdlname = SDL_GetJoystickName(myStick);
-    const string& desc = BSPF::startsWithIgnoreCase(sdlname, "XInput Controller")
-                         ? "XInput Controller" : sdlname;
+    const string desc = BSPF::startsWithIgnoreCase(sdlname, "XInput Controller")
+        ? "XInput Controller" : sdlname;
 
     initialize(SDL_GetJoystickID(myStick), desc,
                SDL_GetNumJoystickAxes(myStick),

@@ -18,6 +18,8 @@
 #include "CartE0.hxx"
 #include "CartE0Widget.hxx"
 
+using Common::Base;
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 CartridgeE0Widget::CartridgeE0Widget(
       GuiObject* boss, const GUI::Font& lfont, const GUI::Font& nfont,
@@ -30,45 +32,38 @@ CartridgeE0Widget::CartridgeE0Widget(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeE0Widget::description()
 {
-  std::ostringstream info;
-
-  info << "E0 cartridge,\n  eight 1K banks mapped into four segments\n"
-       << CartridgeEnhancedWidget::description();
-
-  return info.str();
+  return std::format("E0 cartridge,\n  eight 1K banks mapped into four segments\n{}",
+    CartridgeEnhancedWidget::description());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeE0Widget::romDescription()
 {
-  std::ostringstream info;
-
+  string info;
+  info.reserve(256);
   for(int seg = 0; seg < 4; ++seg)
   {
-    const uInt16 segmentOffset = seg << 10; // myCart.myBankShift;
-
-    info << "Segment #" << seg << " accessible @ $"
-      << Common::Base::HEX4 << (ADDR_BASE | segmentOffset)
-      << " - $" << (ADDR_BASE | (segmentOffset + /*myCart.myBankSize - 1*/ 0x3FF)) << ",\n";
-    if (seg < 3)
-      info << "  Hotspots " << hotspotStr(0, seg, true) << " - " << hotspotStr(7, seg, true) << "\n";
+    const uInt16 segmentOffset = seg << 10;
+    info += std::format("Segment #{} accessible @ ${} - ${},\n",
+      seg,
+      Base::hex4(ADDR_BASE | segmentOffset),
+      Base::hex4(ADDR_BASE | (segmentOffset + 0x3FF)));
+    if(seg < 3)
+      info += std::format("  Hotspots {} - {}\n",
+        hotspotStr(0, seg, true), hotspotStr(7, seg, true));
     else
-      info << "  Always points to last 1K bank of ROM\n";
+      info += "  Always points to last 1K bank of ROM\n";
   }
-  info << "Startup banks = 4 / 5 / 6 or undetermined";
-
-  return info.str();
+  info += "Startup banks = 4 / 5 / 6 or undetermined";
+  return info;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeE0Widget::hotspotStr(int bank, int segment, bool noBrackets)
 {
-  std::ostringstream info;
   const uInt16 hotspot = myCart.hotspot();
-
-  info << (noBrackets ? "" : "(")
-       << "$" << Common::Base::HEX1 << (hotspot + bank + segment * 8)
-       << (noBrackets ? "" : ")");
-
-  return info.str();
+  return std::format("{}${}{}",
+    noBrackets ? "" : "(",
+    Base::hex4(hotspot + bank + segment * 8),
+    noBrackets ? "" : ")");
 }

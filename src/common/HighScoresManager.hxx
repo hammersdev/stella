@@ -15,13 +15,13 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef HIGHSCORES_MANAGER_HXX
-#define HIGHSCORES_MANAGER_HXX
+#ifndef HIGH_SCORES_MANAGER_HXX
+#define HIGH_SCORES_MANAGER_HXX
 
 class OSystem;
 
 #include "Props.hxx"
-#include "json_lib.hxx"
+#include "json/json_lib.hxx"
 #include "FSNode.hxx"
 #include "repository/CompositeKeyValueRepository.hxx"
 #include "repository/CompositeKeyValueRepositoryNoop.hxx"
@@ -46,7 +46,7 @@ namespace HSM {
 
   static constexpr Int32 NO_VALUE = -1;
 
-  using ScoreAddresses = array<Int16, MAX_SCORE_ADDR>;
+  using ScoreAddresses = std::array<Int16, MAX_SCORE_ADDR>;
 
   static constexpr uInt32 NUM_RANKS = 10;
 
@@ -80,7 +80,7 @@ namespace HSM {
     string md5;
     ScoreEntry scores[NUM_RANKS];
   };
-} // namespace HSM
+}  // namespace HSM
 
 /**
   This class provides an interface to define, load and save scores. It is meant
@@ -88,13 +88,8 @@ namespace HSM {
 
   @author  Thomas Jentzsch
 */
-
 class HighScoresManager
 {
-  public:
-    // FIXME: Must be const char* and not string_view because of json & VC++2022
-    const char* HIGHSCORE_HEADER = "06050000highscores";
-
   public:
     explicit HighScoresManager(OSystem& osystem);
     virtual ~HighScoresManager() = default;
@@ -257,6 +252,8 @@ class HighScoresManager
     shared_ptr<CompositeKeyValueRepositoryAtomic> myHighscoreRepository
       = std::make_shared<CompositeKeyValueRepositoryNoop>();
 
+    static constexpr const char* HIGHSCORE_HEADER = "06050000highscores";
+
   private:
     // Following constructors and assignment operators not supported
     HighScoresManager() = delete;
@@ -266,4 +263,4 @@ class HighScoresManager
     HighScoresManager& operator=(HighScoresManager&&) = delete;
 };
 
-#endif
+#endif  // HIGH_SCORES_MANAGER_HXX

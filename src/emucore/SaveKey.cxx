@@ -21,6 +21,13 @@
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 SaveKey::SaveKey(Jack jack, const Event& event, const System& system,
+                 const FSNode& eepromfile, const onMessageCallback& callback)
+  : SaveKey(jack, event, system, eepromfile, callback, Controller::Type::SaveKey)
+{
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+SaveKey::SaveKey(Jack jack, const Event& event, const System& system,
                  const FSNode& eepromfile, const onMessageCallback& callback,
                  Type type)
   : Controller(jack, event, system, type),
@@ -31,16 +38,7 @@ SaveKey::SaveKey(Jack jack, const Event& event, const System& system,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-SaveKey::SaveKey(Jack jack, const Event& event, const System& system,
-                 const FSNode& eepromfile, const onMessageCallback& callback)
-  : SaveKey(jack, event, system, eepromfile, callback, Controller::Type::SaveKey)
-{
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-SaveKey::~SaveKey()  // NOLINT (we need an empty d'tor)
-{
-}
+SaveKey::~SaveKey() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool SaveKey::read(DigitalPin pin)

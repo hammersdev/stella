@@ -108,13 +108,10 @@ class AudioQueue
     // The fragment queue
     vector<Int16*> myFragmentQueue;
 
-    // All fragments, including the two fragments that are in circulation.
-    vector<Int16*> myAllFragments;
-
     // We allocate a consecutive slice of memory for the fragments.
     unique_ptr<Int16[]> myFragmentBuffer;
 
-    // The nubmer if queued fragments
+    // The number if queued fragments
     uInt32 mySize{0};
 
     // The next fragment.
@@ -141,4 +138,4 @@ class AudioQueue
     AudioQueue& operator=(AudioQueue&&) = delete;
 };
 
-#endif // AUDIO_QUEUE_HXX
+#endif  // AUDIO_QUEUE_HXX

@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGE3EX_HXX
-#define CARTRIDGE3EX_HXX
+#ifndef CARTRIDGE_3EX_HXX
+#define CARTRIDGE_3EX_HXX
 
 class System;
 class Settings;
@@ -25,7 +25,13 @@ class Settings;
 #include "Cart3E.hxx"
 
 /**
-  This is an enhanced version of 3E which supports up to 256KB RAM.
+  3EX ("3E eXtended") is an enhanced version of the 3E scheme that increases
+  the maximum RAM from 32K (32 banks x 1K) to 256K (512 banks x 512 bytes).
+  The bankswitching protocol is identical to 3E: write to $3E to map a RAM
+  bank into the lower 2K segment, write to $3F to map a ROM bank.  The 512
+  extended RAM banks are numbered 256-767, immediately after the 256 ROM bank
+  slots in the combined numbering space, so existing 3E code that targets only
+  ROM or the lower 32 RAM banks is fully compatible.
 
   @author  Thomas Jentzsch
 */
@@ -36,12 +42,11 @@ class Cartridge3EX : public Cartridge3E
     /**
       Create a new cartridge using the specified image and size
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
     */
-    Cartridge3EX(const ByteBuffer& image, size_t size, string_view md5,
+    Cartridge3EX(ByteSpan image, string_view md5,
                  const Settings& settings);
     ~Cartridge3EX() override = default;
 
@@ -66,4 +71,4 @@ class Cartridge3EX : public Cartridge3E
     Cartridge3EX& operator=(Cartridge3EX&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_3EX_HXX

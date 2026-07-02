@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef HIGHSCORE_DIALOG_HXX
-#define HIGHSCORE_DIALOG_HXX
+#ifndef HIGH_SCORES_DIALOG_HXX
+#define HIGH_SCORES_DIALOG_HXX
 
 class CommandSender;
 class DialogContainer;
@@ -28,10 +28,9 @@ namespace GUI {
 }  // namespace GUI
 class Serializer;
 
-#include "OptionsMenu.hxx"
 #include "Dialog.hxx"
 #include "HighScoresManager.hxx"
-#include "json_lib.hxx"
+#include "json/json_lib.hxx"
 
 using json = nlohmann::json;
 
@@ -122,4 +121,4 @@ class HighScoresDialog : public Dialog
     HighScoresDialog& operator=(HighScoresDialog&&) = delete;
 };
 
-#endif
+#endif  // HIGH_SCORES_DIALOG_HXX

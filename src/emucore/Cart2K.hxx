@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGE2K_HXX
-#define CARTRIDGE2K_HXX
+#ifndef CARTRIDGE_2K_HXX
+#define CARTRIDGE_2K_HXX
 
 class System;
 
@@ -27,11 +27,11 @@ class System;
 #endif
 
 /**
-  This is the standard Atari 2K cartridge.  These cartridges are not
-  bankswitched, however, the data repeats twice in the 2600's 4K cartridge
-  addressing space.  For 'Sub2K' ROMs (ROMs less than 2K in size), the
-  data repeats in intervals based on the size of the ROM (which will
-  always be a power of 2).
+  This is the standard Atari 2K cartridge, used by many of the earliest 2600
+  titles (1977-1979).  These cartridges are not bankswitched; the single 2K
+  image is mirrored twice to fill the 4K cartridge address window ($1000-$1FFF).
+  For 'Sub2K' ROMs (images smaller than 2K, always a power-of-2 in size), the
+  data repeats at power-of-2 intervals to fill the same window.
 
   @author  Stephen Anthony, Thomas Jentzsch
 */
@@ -43,13 +43,12 @@ class Cartridge2K : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image (<= 2048 bytes)
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    Cartridge2K(const ByteBuffer& image, size_t size, string_view md5,
+    Cartridge2K(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 2_KB);
     ~Cartridge2K() override = default;
 
@@ -85,4 +84,4 @@ class Cartridge2K : public CartridgeEnhanced
     Cartridge2K& operator=(Cartridge2K&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_2K_HXX

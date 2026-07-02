@@ -63,7 +63,6 @@ PaddleWidget::PaddleWidget(GuiObject* boss, const GUI::Font& font, int x, int y,
 
     new StaticTextWidget(boss, font, xpos, ypos + 2, p0string);
 
-    //ypos += lineHeight;
     myP0Resistance = new SliderWidget(boss, font, xpos, ypos);
     myP0Resistance->setEnabled(false);
     myP0Resistance->setFlags(Widget::FLAG_INVISIBLE);
@@ -75,7 +74,6 @@ PaddleWidget::PaddleWidget(GuiObject* boss, const GUI::Font& font, int x, int y,
     xpos = x;  ypos += _lineHeight * 2.25;
     new StaticTextWidget(boss, font, xpos, ypos + 2, p1string);
 
-    //ypos += lineHeight;
     myP1Resistance = new SliderWidget(boss, font, xpos, ypos);
     myP1Resistance->setEnabled(false);
     myP1Resistance->setFlags(Widget::FLAG_INVISIBLE);
@@ -85,15 +83,15 @@ PaddleWidget::PaddleWidget(GuiObject* boss, const GUI::Font& font, int x, int y,
                                   "Fire", kP1Fire);
   }
   myP0Resistance->setMinValue(0);
-  myP0Resistance->setMaxValue(uInt32{Paddles::MAX_RESISTANCE});
-  myP0Resistance->setStepValue(uInt32{Paddles::MAX_RESISTANCE / 100});
+  myP0Resistance->setMaxValue(uInt32{AnalogReadout::MAX_POT_RESISTANCE});
+  myP0Resistance->setStepValue(uInt32{AnalogReadout::MAX_POT_RESISTANCE / 100});
   myP0Resistance->setTarget(this);
 
   myP0Fire->setTarget(this);
 
   myP1Resistance->setMinValue(0);
-  myP1Resistance->setMaxValue(uInt32{Paddles::MAX_RESISTANCE});
-  myP1Resistance->setStepValue(uInt32{Paddles::MAX_RESISTANCE / 100});
+  myP1Resistance->setMaxValue(uInt32{AnalogReadout::MAX_POT_RESISTANCE});
+  myP1Resistance->setStepValue(uInt32{AnalogReadout::MAX_POT_RESISTANCE / 100});
   myP1Resistance->setTarget(this);
 
   myP1Fire->setTarget(this);
@@ -107,9 +105,9 @@ PaddleWidget::PaddleWidget(GuiObject* boss, const GUI::Font& font, int x, int y,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void PaddleWidget::loadConfig()
 {
-  myP0Resistance->setValue(static_cast<Int32>(Paddles::MAX_RESISTANCE -
+  myP0Resistance->setValue(static_cast<Int32>(AnalogReadout::MAX_POT_RESISTANCE -
       getPin(Controller::AnalogPin::Nine).resistance));
-  myP1Resistance->setValue(static_cast<Int32>(Paddles::MAX_RESISTANCE -
+  myP1Resistance->setValue(static_cast<Int32>(AnalogReadout::MAX_POT_RESISTANCE -
       getPin(Controller::AnalogPin::Five).resistance));
   myP0Fire->setState(!getPin(Controller::DigitalPin::Four));
   myP1Fire->setState(!getPin(Controller::DigitalPin::Three));
@@ -123,11 +121,11 @@ void PaddleWidget::handleCommand(
   {
     case kP0Changed:
       setPin(Controller::AnalogPin::Nine,
-             AnalogReadout::connectToVcc(Paddles::MAX_RESISTANCE - myP0Resistance->getValue()));
+             AnalogReadout::connectToVcc(AnalogReadout::MAX_POT_RESISTANCE - myP0Resistance->getValue()));
       break;
     case kP1Changed:
       setPin(Controller::AnalogPin::Five,
-             AnalogReadout::connectToVcc(Paddles::MAX_RESISTANCE - myP1Resistance->getValue()));
+             AnalogReadout::connectToVcc(AnalogReadout::MAX_POT_RESISTANCE - myP1Resistance->getValue()));
       break;
     case kP0Fire:
       setPin(Controller::DigitalPin::Four, !myP0Fire->getState());

@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGECDF_WIDGET_HXX
-#define CARTRIDGECDF_WIDGET_HXX
+#ifndef CARTRIDGE_CDF_WIDGET_HXX
+#define CARTRIDGE_CDF_WIDGET_HXX
 
 class PopUpWidget;
 class CheckboxWidget;
@@ -96,8 +96,20 @@ class CartridgeCDFWidget : public CartridgeARMWidget
     bool isCDFJ() const;
     bool isCDFJplus() const;
 
-    static string describeCDFVersion(CartridgeCDF::CDFSubtype subtype);
+    static constexpr string_view describeCDFVersion(
+        CartridgeCDF::CDFSubtype subtype) {
+      switch(subtype)
+      {
+        using enum CartridgeCDF::CDFSubtype;
+        case CDF0:      return "CDF (v0)";
+        case CDF1:      return "CDF (v1)";
+        case CDFJ:      return "CDFJ";
+        case CDFJplus:  return "CDFJ+";
+        default:        throw std::runtime_error("unreachable");
+      }
+    }
 
+  private:
     // Following constructors and assignment operators not supported
     CartridgeCDFWidget() = delete;
     CartridgeCDFWidget(const CartridgeCDFWidget&) = delete;
@@ -106,4 +118,4 @@ class CartridgeCDFWidget : public CartridgeARMWidget
     CartridgeCDFWidget& operator=(CartridgeCDFWidget&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_CDF_WIDGET_HXX

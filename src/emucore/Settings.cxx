@@ -33,28 +33,16 @@
   #include "DebuggerDialog.hxx"
 #endif
 
-//#if defined(BSPF_WINDOWS)
-//#include <windows.hxx>
-//#endif
-
-#if defined(BSPF_UNIX) || defined(BSPF_MACOS)
-  #include <cstdio>
-  #include <sys/ioctl.h>
-  #include <unistd.h>
-#endif
-
 #include "Settings.hxx"
 #include "repository/KeyValueRepositoryNoop.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Settings::Settings()
-  : myRespository{std::make_shared<KeyValueRepositoryNoop>()}
+  : myRepository{std::make_shared<KeyValueRepositoryNoop>()}
 {
   // If no version is recorded with the persisted settings, we set it to zero
   setPermanent(SETTINGS_VERSION_KEY, 0);
   setPermanent("stella.version", "6.2.1");
-
-  //setTemporary("minimal_ui", 1); // enable for minimal UI testing only
 
   // Video-related options
   setPermanent("video", "");
@@ -160,9 +148,12 @@ Settings::Settings()
   setPermanent("snapname", "int");
   setPermanent("sssingle", "false");
   setPermanent("ss1x", "false");
+  setPermanent("sscrop", "false");
   setPermanent("ssinterval", "2");
   setPermanent("autoslot", "false");
   setPermanent("saveonexit", "none");
+  setPermanent("statedir", "");
+  setPermanent("statewithrom", "false");
 
   // Config files and paths
   setPermanent("romdir", "");
@@ -243,6 +234,7 @@ Settings::Settings()
   setPermanent("dis.gfxformat", "2");
   setPermanent("dis.showaddr", "true");
   setPermanent("dis.relocate", "false");
+  setPermanent("dis.color", "");
   setPermanent("dev.rwportbreak", "true");
   setPermanent("dev.wrportbreak", "true");
 #endif
@@ -301,6 +293,9 @@ Settings::Settings()
   setPermanent("dev.tia.pllatehmove", "true");
   setPermanent("dev.tia.mslatehmove", "true");
   setPermanent("dev.tia.bllatehmove", "true");
+  setPermanent("dev.tia.pllaterespx", "true");
+  setPermanent("dev.tia.mslaterespx", "true");
+  setPermanent("dev.tia.bllaterespx", "true");
   setPermanent("dev.tia.delaypfbits", "true");
   setPermanent("dev.tia.delaypfcolor", "true");
   setPermanent("dev.tia.pfscoreglitch", "true");
@@ -331,21 +326,22 @@ Settings::Settings()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Settings::setRepository(shared_ptr<KeyValueRepository> repository)
 {
-  myRespository = std::move(repository);
+  myRepository = std::move(repository);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Settings::load(const Options& options)
 {
-  const Options fromFile = myRespository->load();
-  for (const auto& opt: fromFile)
-    setValue(opt.first, opt.second, false);
+  // Load from repository (std::map)
+  const auto fromFile = myRepository->load();
 
-  migrate();
+  // Apply file settings (no persistence writes)
+  for(const auto& [key, value]: fromFile)
+    setValue(key, value, false);
 
-  // Apply commandline options, which override those from settings file
-  for(const auto& opt: options)
-    setValue(opt.first, opt.second, false);
+  // Apply command-line overrides (still non-persistent)
+  for(const auto& [key, value]: options)
+    setValue(key, value, false);
 
   // Finally, validate some settings, so the rest of the codebase
   // can assume the values are valid
@@ -355,168 +351,102 @@ void Settings::load(const Options& options)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Settings::save()
 {
-  myRespository->save(myPermanentSettings);
+  // Convert unordered_map → map only at the boundary
+  KVRMap out;
+  out.insert(myPermanentSettings.begin(), myPermanentSettings.end());
+  myRepository->save(out);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Settings::validate()
 {
-  const float f = getFloat("speed");
-  if (f <= 0) setValue("speed", "1.0");
+  auto clampSetting = [&](string_view key, int lo, int hi, int def) {
+    int v = getInt(key);
+    BSPF::clamp(v, lo, hi, def);
+    setValue(key, v);
+  };
+  auto requireOneOf = [&](string_view key,
+                          std::initializer_list<string_view> valid,
+                          string_view def) {
+    string_view s = getString(key);
+    if(std::ranges::none_of(valid, [&](string_view v){ return s == v; }))
+      setValue(key, def);
+  };
 
-  int i = getInt("tia.vsizeadjust");
-  if(i < -5 || i > 5)  setValue("tia.vsizeadjust", 0);
+  if (getFloat("speed") <= 0) setValue("speed", "1.0");
 
-  string s = getString("tia.dbgcolors");
+  clampSetting("tia.vsizeadjust", -5, 5, 0);
+
+  string s{getString("tia.dbgcolors")};
   std::ranges::sort(s);
-  if(s != "bgopry")  setValue("tia.dbgcolors", "roygpb");
+  if(s != "bgopry") setValue("tia.dbgcolors", "roygpb");
 
   if(PhosphorHandler::toPhosphorMode(getString(PhosphorHandler::SETTING_MODE)) == PhosphorHandler::ByRom)
     setValue(PhosphorHandler::SETTING_MODE, PhosphorHandler::VALUE_BYROM);
-
-  i = getInt(PhosphorHandler::SETTING_BLEND);
-  if(i < 0 || i > 100)
+  if(const int v = getInt(PhosphorHandler::SETTING_BLEND); v < 0 || v > 100)
     setValue(PhosphorHandler::SETTING_BLEND, PhosphorHandler::DEFAULT_BLEND);
 
-  s = getString("tv.scanmask");
-  if(s != TIASurface::SETTING_STANDARD
-      && s != TIASurface::SETTING_THIN
-      && s != TIASurface::SETTING_PIXELS
-      && s != TIASurface::SETTING_APERTURE
-      && s != TIASurface::SETTING_MAME)
-    setValue("tv.scanmask", TIASurface::SETTING_STANDARD);
+  requireOneOf("tv.scanmask", {
+    TIASurface::SETTING_STANDARD, TIASurface::SETTING_THIN,
+    TIASurface::SETTING_PIXELS,   TIASurface::SETTING_APERTURE,
+    TIASurface::SETTING_MAME
+  }, TIASurface::SETTING_STANDARD);
+  clampSetting("tv.filter", 0, 5, 0);
 
-  i = getInt("tv.filter");
-  if(i < 0 || i > 5)  setValue("tv.filter", "0");
-
-#ifdef GUI_SUPPORT
-  i = getInt("dev.tv.jitter_sense");
-  if(i < JitterEmulation::MIN_SENSITIVITY || i > JitterEmulation::MAX_SENSITIVITY)
-    setValue("dev.tv.jitter_sense", JitterEmulation::DEV_SENSITIVITY);
-
-  i = getInt("dev.tv.jitter_recovery");
-  if(i < JitterEmulation::MIN_RECOVERY || i > JitterEmulation::MAX_RECOVERY)
-    setValue("dev.tv.jitter_recovery", JitterEmulation::DEV_RECOVERY);
-#endif
-
-  int size = getInt("dev.tm.size");
-  if(size < 20 || size > 1000)
-  {
-    setValue("dev.tm.size", 20);
-    size = 20;
-  }
-
-  i = getInt("dev.tm.uncompressed");
-  if(i < 0 || i > size) setValue("dev.tm.uncompressed", size);
-
-  /*i = getInt("dev.tm.interval");
-  if(i < 0 || i > 5) setValue("dev.tm.interval", 0);
-
-  i = getInt("dev.tm.horizon");
-  if(i < 0 || i > 6) setValue("dev.tm.horizon", 1);*/
+  requireOneOf("palette", {
+    PaletteHandler::SETTING_STANDARD, PaletteHandler::SETTING_Z26,
+    PaletteHandler::SETTING_USER,     PaletteHandler::SETTING_CUSTOM
+  }, PaletteHandler::SETTING_STANDARD);
 
 #ifdef GUI_SUPPORT
-  i = getInt("plr.tv.jitter_sense");
-  if(i < JitterEmulation::MIN_SENSITIVITY || i > JitterEmulation::MAX_SENSITIVITY)
-    setValue("plr.tv.jitter_sense", JitterEmulation::PLR_SENSITIVITY);
-
-  i = getInt("plr.tv.jitter_recovery");
-  if(i < 1 || i > 20) setValue("plr.tv.jitter_recovery", JitterEmulation::PLR_RECOVERY);
+  clampSetting("dev.tv.jitter_sense",    JitterEmulation::MIN_SENSITIVITY, JitterEmulation::MAX_SENSITIVITY, JitterEmulation::DEV_SENSITIVITY);
+  clampSetting("dev.tv.jitter_recovery", JitterEmulation::MIN_RECOVERY,    JitterEmulation::MAX_RECOVERY,    JitterEmulation::DEV_RECOVERY);
+  clampSetting("plr.tv.jitter_sense",    JitterEmulation::MIN_SENSITIVITY, JitterEmulation::MAX_SENSITIVITY, JitterEmulation::PLR_SENSITIVITY);
+  clampSetting("plr.tv.jitter_recovery", 1, 20,                                                              JitterEmulation::PLR_RECOVERY);
 #endif
 
-  size = getInt("plr.tm.size");
-  if(size < 20 || size > 1000)
-  {
-    setValue("plr.tm.size", 20);
-    size = 20;
-  }
-
-  i = getInt("plr.tm.uncompressed");
-  if(i < 0 || i > size) setValue("plr.tm.uncompressed", size);
-
-  /*i = getInt("plr.tm.interval");
-  if(i < 0 || i > 5) setValue("plr.tm.interval", 3);
-
-  i = getInt("plr.tm.horizon");
-  if(i < 0 || i > 6) setValue("plr.tm.horizon", 5);*/
+  clampSetting("dev.tm.size", 20, 1000, 20);
+  clampSetting("dev.tm.uncompressed", 0, getInt("dev.tm.size"), getInt("dev.tm.size"));
+  clampSetting("plr.tm.size", 20, 1000, 20);
+  clampSetting("plr.tm.uncompressed", 0, getInt("plr.tm.size"), getInt("plr.tm.size"));
 
 #ifdef SOUND_SUPPORT
   AudioSettings::normalize(*this);
 #endif
 
-  setValue("joydeadzone", BSPF::clamp(getInt("joydeadzone"),
-           Controller::MIN_DIGITAL_DEADZONE, Joystick::MAX_DIGITAL_DEADZONE));
+  setValue("joydeadzone",   BSPF::clamp(getInt("joydeadzone"),   Controller::MIN_DIGITAL_DEADZONE, Joystick::MAX_DIGITAL_DEADZONE));
+  setValue("adeadzone",     BSPF::clamp(getInt("adeadzone"),     Controller::MIN_ANALOG_DEADZONE,  Controller::MAX_ANALOG_DEADZONE));
+  setValue("psense",        BSPF::clamp(getInt("psense"),        Paddles::MIN_ANALOG_SENSE,        Paddles::MAX_ANALOG_SENSE));
+  setValue("plinear",       BSPF::clamp(getInt("plinear"),       Paddles::MIN_ANALOG_LINEARITY,    Paddles::MAX_ANALOG_LINEARITY));
+  setValue("dejitter.base", BSPF::clamp(getInt("dejitter.base"), Paddles::MIN_DEJITTER,            Paddles::MAX_DEJITTER));
+  setValue("dejitter.diff", BSPF::clamp(getInt("dejitter.diff"), Paddles::MIN_DEJITTER,            Paddles::MAX_DEJITTER));
+  setValue("dsense",        BSPF::clamp(getInt("dsense"),        Paddles::MIN_DIGITAL_SENSE,       Paddles::MAX_DIGITAL_SENSE));
+  setValue("msense",        BSPF::clamp(getInt("msense"),        Controller::MIN_MOUSE_SENSE,       Controller::MAX_MOUSE_SENSE));
 
-  setValue("adeadzone", BSPF::clamp(getInt("adeadzone"),
-           Controller::MIN_ANALOG_DEADZONE, Controller::MAX_ANALOG_DEADZONE));
+  clampSetting("cursor",     0, 3,  2);
+  clampSetting("tsense",     1, 20, 10);
+  clampSetting("dcsense",    1, 20, 10);
+  clampSetting("ssinterval", 1, 10, 2);
+  clampSetting("loglevel",   static_cast<int>(Logger::Level::MIN),
+                             static_cast<int>(Logger::Level::MAX),
+                             static_cast<int>(Logger::Level::INFO));
+  if(getInt("romviewer") < 0) setValue("romviewer", 0);
 
-  setValue("psense", BSPF::clamp(getInt("psense"),
-           Paddles::MIN_ANALOG_SENSE, Paddles::MAX_ANALOG_SENSE));
-
-  setValue("plinear", BSPF::clamp(getInt("plinear"),
-           Paddles::MIN_ANALOG_LINEARITY, Paddles::MAX_ANALOG_LINEARITY));
-
-  setValue("dejitter.base", BSPF::clamp(getInt("dejitter.base"),
-           Paddles::MIN_DEJITTER, Paddles::MAX_DEJITTER));
-
-  setValue("dejitter.diff", BSPF::clamp(getInt("dejitter.diff"),
-           Paddles::MIN_DEJITTER, Paddles::MAX_DEJITTER));
-
-  setValue("dsense", BSPF::clamp(getInt("dsense"),
-           Paddles::MIN_DIGITAL_SENSE, Paddles::MAX_DIGITAL_SENSE));
-
-  setValue("msense", BSPF::clamp(getInt("msense"),
-           Controller::MIN_MOUSE_SENSE, Controller::MAX_MOUSE_SENSE));
-
-  i = getInt("cursor");
-  if(i < 0 || i > 3)
-    setValue("cursor", "2");
-
-  i = getInt("tsense");
-  if(i < 1 || i > 20)
-    setValue("tsense", "10");
-
-  i = getInt("dcsense");
-  if(i < 1 || i > 20)
-    setValue("dcsense", "10");
-
-  i = getInt("ssinterval");
-  if(i < 1)        setValue("ssinterval", "2");
-  else if(i > 10)  setValue("ssinterval", "10");
-
-  s = getString("palette");
-  if(s != PaletteHandler::SETTING_STANDARD
-     && s != PaletteHandler::SETTING_Z26
-     && s != PaletteHandler::SETTING_USER
-     && s != PaletteHandler::SETTING_CUSTOM)
-    setValue("palette", PaletteHandler::SETTING_STANDARD);
-
-  s = getString("launcherfont");
-  if(s != "small" && s != "low_medium" && s != "medium" && s != "large"
-     && s != "large12" && s != "large14" && s != "large16")
-    setValue("launcherfont", "medium");
-
-  s = getString("dbg.fontsize");
-  if(s != "small" && s != "medium" && s != "large")
-    setValue("dbg.fontsize", "medium");
-
-  i = getInt("romviewer");
-  if(i < 0) setValue("romviewer", "0");
-
-  i = getInt("loglevel");
-  if(i < static_cast<int>(Logger::Level::MIN) || i > static_cast<int>(Logger::Level::MAX))
-    setValue("loglevel", static_cast<int>(Logger::Level::INFO));
+  requireOneOf("launcherfont", {"small", "low_medium", "medium", "large",
+                                "large12", "large14", "large16"}, "medium");
+  requireOneOf("dbg.fontsize", {"small", "medium", "large"}, "medium");
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Settings::usage()
 {
   std::stringstream buf;
-  buf << "\nStella version " << STELLA_VERSION
+  buf
+    << "\nStella version " << STELLA_VERSION
     << "\n\n"
     << "Usage: stella [options ...] romfile\n"
     << "       Run without any options or romfile to use the ROM launcher\n"
-    << "       Consult the manual for more in-depth information\n\n"
+    << "       Consult the User's Guide for more in-depth information\n\n"
     << "Valid options are:\n\n"
     << "  -video        <type>         Type is one of the following:\n"
   #ifdef BSPF_WINDOWS
@@ -574,161 +504,168 @@ void Settings::usage()
     << "                                        frames to buffer\n"
     << "  -audio.stereo             <1|0>      Enable stereo mode for all ROMs\n\n"
   #endif
-    << "  -tia.zoom        <zoom>       Use the specified zoom level (windowed mode)\n"
-    << "                                 for TIA image\n"
-    << "  -tia.vsizeadjust <-5..5>      Adjust the vertical display size [percent]\n"
-    << "  -tia.inter       <1|0>        Enable interpolated (smooth) scaling for TIA\n"
-    << "                                 image\n"
-    << "  -tia.fs_stretch  <1|0>        Stretch TIA image to fill fullscreen mode\n"
-    << "  -tia.fs_refresh  <1|0>        Try to adapt display refresh rate to game's FPS\n"
-    << "  -tia.fs_overscan <0-10>       Add overscan to TIA image in fullscreen mode\n"
-    << "  -tia.dbgcolors   <string>     Debug colors to use for each object (see manual\n"
-    << "                                 for description)\n"
-    << "  -tia.correct_aspect <1|0>     Enable aspect ratio correct scaling\n\n"
-    << "  -tv.filter    <0-5>           Set TV effects off (0) or to specified mode\n"
-    << "                                 (1-5)\n"
-    << "  -tv.phosphor  <byrom|always|> When to use phosphor mode\n"
+    << "  -tia.zoom        <zoom>        Use the specified zoom level (windowed mode)\n"
+    << "                                  for TIA image\n"
+    << "  -tia.vsizeadjust <-5..5>       Adjust the vertical display size [percent]\n"
+    << "  -tia.inter       <1|0>         Enable interpolated (smooth) scaling for TIA\n"
+    << "                                  image\n"
+    << "  -tia.fs_stretch  <1|0>         Stretch TIA image to fill fullscreen mode\n"
+    << "  -tia.fs_refresh  <1|0>         Try to adapt display refresh rate to game's FPS\n"
+    << "  -tia.fs_overscan <0-10>        Add overscan to TIA image in fullscreen mode\n"
+    << "  -tia.dbgcolors   <string>      Debug colors to use for each object (see User's\n"
+    << "                                   Guide for description)\n"
+    << "  -tia.correct_aspect <1|0>      Enable aspect ratio correct scaling\n\n"
+    << "  -tv.filter    <0-5>            Set TV effects off (0) or to specified mode\n"
+    << "                                  (1-5)\n"
+    << "  -tv.phosphor  <byrom|always|>  When to use phosphor mode\n"
     << "                 autoon|auto\n"
-    << "  -tv.phosblend <0-100>         Set default blend level in phosphor mode\n"
-    << "  -tv.scanlines <0-100>         Set scanline intensity to percentage\n"
-    << "                                 (0 disables completely)\n"
-    << "  -tv.scanmask  <standard|      Use the specified scanline mask\n"
+    << "  -tv.phosblend <0-100>          Set default blend level in phosphor mode\n"
+    << "  -tv.scanlines <0-100>          Set scanline intensity to percentage\n"
+    << "                                  (0 disables completely)\n"
+    << "  -tv.scanmask  <standard|       Use the specified scanline mask\n"
     << "                 thin|pixel|\n"
     << "                 mame>\n"
-    << "  -tv.sharpness   <-1.0 - 1.0>  Set TV effects custom sharpness\n"
-    << "  -tv.resolution  <-1.0 - 1.0>  Set TV effects custom resolution\n"
-    << "  -tv.artifacts   <-1.0 - 1.0>  Set TV effects custom artifacts\n"
-    << "  -tv.fringing    <-1.0 - 1.0>  Set TV effects custom fringing\n"
-    << "  -tv.bleed       <-1.0 - 1.0>  Set TV effects custom bleed\n\n"
-    << "  -cheat        <code>         Use the specified cheatcode (see manual for\n"
-    << "                                description)\n"
-    << "  -loglevel     <0|1|2>        Set level of logging during application run\n\n"
-    << "  -logtoconsole <1|0>          Log output to console/commandline\n"
-    << "  -joydeadzone  <0-29>         Sets digital 'dead zone' area for analog joysticks\n"
-    << "  -joyallow4    <1|0>          Allow all 4 directions on a joystick to be\n"
-    << "                                pressed simultaneously\n"
+    << "  -tv.sharpness   <-1.0 - 1.0>   Set TV effects custom sharpness\n"
+    << "  -tv.resolution  <-1.0 - 1.0>   Set TV effects custom resolution\n"
+    << "  -tv.artifacts   <-1.0 - 1.0>   Set TV effects custom artifacts\n"
+    << "  -tv.fringing    <-1.0 - 1.0>   Set TV effects custom fringing\n"
+    << "  -tv.bleed       <-1.0 - 1.0>   Set TV effects custom bleed\n\n"
+    << "  -cheat        <code>           Use the specified cheatcode (see User's Guide\n"
+    << "                                  for description)\n"
+    << "  -loglevel     <0|1|2>          Set level of logging during application run\n\n"
+    << "  -logtoconsole <1|0>            Log output to console/commandline\n"
+    << "  -joydeadzone  <0-29>           Sets digital 'dead zone' area for analog joysticks\n"
+    << "  -joyallow4    <1|0>            Allow all 4 directions on a joystick to be\n"
+    << "                                  pressed simultaneously\n"
     << "  -usemouse     <always|\n"
     << "                 analog|\n"
-    << "                 never>        Use mouse as a controller as specified by ROM\n"
-    << "                                properties in given mode(see manual)\n"
-    << "  -grabmouse      <1|0>        Locks the mouse cursor in the TIA window\n"
-    << "  -cursor         <0,1,2,3>    Set cursor state in UI/emulation modes\n"
-    << "  -adeadzone      <0-29>       Sets analog 'dead zone' area for analog joysticks\n"
-    << "  -plinear        <25-100>     Sets paddle linearity\n"
-    << "  -dejitter.base  <0-10>       Strength of analog paddle value averaging\n"
-    << "  -dejitter.diff  <0-10>       Strength of analog paddle reaction to fast movements\n"
-    << "  -psense         <0-30>       Sensitivity of analog paddle movement\n"
-    << "  -dsense         <1-20>       Sensitivity of digital emulated paddle movement\n"
-    << "  -msense         <1-20>       Sensitivity of mouse emulated paddle movement\n"
-    << "  -tsense         <1-20>       Sensitivity of mouse emulated trackball movement\n"
-    << "  -dcsense        <1-20>       Sensitivity of digital emulated driving controller\n"
-    << "                                movement\n"
-    << "  -autofire     <1|0>          Enable fire button autofire\n"
-    << "  -autofirerate <0-30>         Set fire button's autofire rate (0 means off)\n"
-    << "  -saport       <lr|rl>        How to assign virtual ports to multiple\n"
-    << "                                Stelladaptor/2600-daptors\n"
-    << "  -modcombo     <1|0>          Enable modifier key combos\n"
-    << "                                (Control-Q for quit may not work when disabled!)\n"
-    << "  -fastscbios   <1|0>          Disable Supercharger BIOS progress loading bars\n"
-    << "  -threads      <1|0>          Whether to using multi-threading during\n"
-    << "                                emulation\n"
-    << "  -snapsavedir  <path>         The directory to save snapshot files to\n"
-    << "  -snaploaddir  <path>         The directory to load snapshot files from\n"
-    << "  -snapname     <int|rom>      Name snapshots according to internal database or\n"
-    << "                                ROM\n"
-    << "  -sssingle     <1|0>          Generate single snapshot instead of many\n"
-    << "  -ss1x         <1|0>          Generate TIA snapshot in 1x mode (ignore\n"
-    << "                                scaling/effects)\n"
-    << "  -ssinterval   <number>       Number of seconds between snapshots in\n"
-    << "                                continuous snapshot mode\n\n"
-    << "  -saveonexit   <none|current| Automatically save state(s) when exiting\n"
-    << "                 all>           emulation\n"
-    << "  -autoslot     <0|1>          Automatically change to next save slot when\n"
-    << "                                state saving\n\n"
-    << "  -rominfo      <rom>          Display detailed information for the given ROM\n"
-    << "  -listrominfo                 Display contents of stella.pro, one line per ROM\n"
-    << "                                entry\n\n"
-    << "  -exitlauncher <0|1>          On exiting a ROM, go back to the ROM launcher\n"
-    << "  -launcherpos  <XxY>          Sets the window position in windowed launcher\n"
-    << "                                mode\n"
-    << "  -launcherdisplay <number>    Sets the display for the ROM launcher\n"
-    << "  -launcherres  <WxH>          The resolution to use in ROM launcher mode\n"
-    << "  -launcherfont <small|        Use the specified font in the ROM launcher\n"
+    << "                 never>          Use mouse as a controller as specified by ROM\n"
+    << "                                  properties in given mode(see User's Guide)\n"
+    << "  -grabmouse      <1|0>          Locks the mouse cursor in the TIA window\n"
+    << "  -cursor         <0,1,2,3>      Set cursor state in UI/emulation modes\n"
+    << "  -adeadzone      <0-29>         Sets analog 'dead zone' area for analog joysticks\n"
+    << "  -plinear        <25-100>       Sets paddle linearity\n"
+    << "  -dejitter.base  <0-10>         Strength of analog paddle value averaging\n"
+    << "  -dejitter.diff  <0-10>         Strength of analog paddle reaction to fast movements\n"
+    << "  -psense         <0-30>         Sensitivity of analog paddle movement\n"
+    << "  -dsense         <1-20>         Sensitivity of digital emulated paddle movement\n"
+    << "  -msense         <1-20>         Sensitivity of mouse emulated paddle movement\n"
+    << "  -tsense         <1-20>         Sensitivity of mouse emulated trackball movement\n"
+    << "  -dcsense        <1-20>         Sensitivity of digital emulated driving controller\n"
+    << "                                  movement\n"
+    << "  -autofire     <1|0>            Enable fire button autofire\n"
+    << "  -autofirerate <0-30>           Set fire button's autofire rate (0 means off)\n"
+    << "  -saport       <lr|rl>          How to assign virtual ports to multiple\n"
+    << "                                  Stelladaptor/2600-daptors\n"
+    << "  -modcombo     <1|0>            Enable modifier key combos\n"
+    << "                                  (Control-Q for quit may not work when disabled!)\n"
+    << "  -fastscbios   <1|0>            Disable Supercharger BIOS progress loading bars\n"
+    << "  -threads      <1|0>            Whether to using multi-threading during\n"
+    << "                                  emulation\n"
+    << "  -snapsavedir  <path>           The directory to save snapshot files to\n"
+    << "  -snaploaddir  <path>           The directory to load snapshot files from\n"
+    << "  -snapname     <int|rom>        Name snapshots according to internal database or ROM\n"
+    << "  -sssingle     <1|0>            Generate single snapshot instead of many\n"
+    << "  -ss1x         <1|0>            Generate TIA snapshot in 1x mode (ignore\n"
+    << "                                  scaling/effects)\n"
+    << "  -sscrop       <1|0>            Automatically crop black borders from\n"
+    << "                                  snapshots\n"
+    << "  -ssinterval   <number>         Number of seconds between snapshots in\n"
+    << "                                  continuous snapshot mode\n\n"
+    << "  -saveonexit   <none|current|   Automatically save state(s) when exiting\n"
+    << "                 all>             emulation\n"
+    << "  -autoslot     <0|1>            Automatically change to next save slot when\n"
+    << "                                  state saving\n"
+    << "  -statedir     <path>           The directory to load/save state files from/to\n"
+    << "  -statewithrom <0|1>            Load/save state files in the current ROM's\n"
+    << "                                  directory\n\n"
+    << "  -rominfo      <rom>            Display detailed information for the given ROM\n"
+    << "  -listrominfo                   Display contents of stella.pro, one line per ROM\n"
+    << "                                  entry\n\n"
+    << "  -exitlauncher <0|1>            On exiting a ROM, go back to the ROM launcher\n"
+    << "  -launcherpos  <XxY>            Sets the window position in windowed launcher\n"
+    << "                                  mode\n"
+    << "  -launcherdisplay <number>      Sets the display for the ROM launcher\n"
+    << "  -launcherres  <WxH>            The resolution to use in ROM launcher mode\n"
+    << "  -launcherfont <small|          Use the specified font in the ROM launcher\n"
     << "                 low_medium|\n"
     << "                 medium|large|\n"
     << "                 large12|large14|\n"
     << "                 large16>\n"
-    << "  -romviewer    <float>        Show ROM info viewer at given zoom level in ROM\n"
-    << "                                launcher (use 0 for off)\n"
-    << "  -launchersubdirs    <0|1>    Show files from subdirectories too\n"
-    << "  -launcherextensions <0|1>    Display file extensions in launcher\n"
-    << "  -launcherbuttons    <0|1>    Display bottom buttons in launcher\n"
-    << "  -favorites          <0|1>    Enable virtual favorite directories in launcher\n"
-    << "  -altsorting         <0|1>    Alternative sorting in virtual folders\n"
-    << "  -maxrecentroms      <number> Number of ROMs tracked in 'Recently played'\n"
-    << "  -romdir             <dir>    Set the path where the ROM launcher will start\n"
-    << "  -followlauncher     <0|1>    Default ROM path follows launcher navigation\n"
-    << "  -userdir            <dir>    Set the path to save user files to\n"
-    << "  -saveuserdir        <0|1>    Update user path when navigating in browser\n"
-    << "  -bezel.dir          <dir>    Set the path to load bezels from\n"
-    << "  -lastrom            <name>   Last played ROM, automatically selected in\n"
-    << "                                launcher\n"
-    << "  -romloadcount  <number>       Number of ROM to load next from multicard\n"
-    << "  -uipalette     <standard|     Set GUI theme\n"
+    << "  -romviewer    <float>          Show ROM info viewer at given zoom level in ROM\n"
+    << "                                  launcher (use 0 for off)\n"
+    << "  -launchersubdirs    <0|1>      Show files from subdirectories too\n"
+    << "  -launcherextensions <0|1>      Display file extensions in launcher\n"
+    << "  -launcherbuttons    <0|1>      Display bottom buttons in launcher\n"
+    << "  -favorites          <0|1>      Enable virtual favorite directories in launcher\n"
+    << "  -altsorting         <0|1>      Alternative sorting in virtual folders\n"
+    << "  -maxrecentroms      <number>   Number of ROMs tracked in 'Recently played'\n"
+    << "  -romdir             <dir>      Set the path where the ROM launcher will start\n"
+    << "  -followlauncher     <0|1>      Default ROM path follows launcher navigation\n"
+    << "  -userdir            <dir>      Set the path to save user files to\n"
+    << "  -saveuserdir        <0|1>      Update user path when navigating in browser\n"
+    << "  -bezel.dir          <dir>      Set the path to load bezels from\n"
+    << "  -lastrom            <name>     Last played ROM, automatically selected in\n"
+    << "                                  launcher\n"
+    << "  -romloadcount  <number>         Number of ROM to load next from multicard\n"
+    << "  -uipalette     <standard|       Set GUI theme\n"
     << "                  classic|\n"
     << "                  light|dark>\n"
-    << "  -uipalette2    <standard|     Set alternative GUI theme\n"
+    << "  -uipalette2    <standard|      Set alternative GUI theme\n"
     << "                  classic|\n"
     << "                  light|dark>\n"
-    << "  -altuipalette  <0|1>          Enable alternative GUI theme\n"
-    << "  -autouipalette <0|1>          Switch GUI theme automatically\n"
+    << "  -altuipalette  <0|1>           Enable alternative GUI theme\n"
+    << "  -autouipalette <0|1>           Switch GUI theme automatically\n"
 
-    << "  -hidpi        <0|1>          Enable HiDPI mode\n"
-    << "  -dialogfont   <small|        Use the specified font in the dialogs\n"
+    << "  -hidpi        <0|1>            Enable HiDPI mode\n"
+    << "  -dialogfont   <small|          Use the specified font in the dialogs\n"
     << "                 low_medium|\n"
     << "                 medium|large|\n"
     << "                 large12|large14|\n"
     << "                 large16>\n"
-    << "  -dialogpos    <0..4>         Display all dialogs at given positions\n"
-    << "  -confirmexit  <0|1>          Display a confirm dialog when exiting emulation\n"
-    << "  -autopause    <0|1>          Pause/continue emulation when focus is lost/gained\n"
-    << "  -listdelay    <delay>        Time to wait between keypresses in list widgets\n"
-    << "                                (300-1000)\n"
-    << "  -mwheel       <lines>        Number of lines the mouse wheel will scroll in\n"
-    << "                                UI\n"
-    << "  -mdouble      <speed>        Mouse double click speed in UI\n"
-    << "  -ctrldelay    <delay>        Delay before controller input is repeated in UI\n"
-    << "  -ctrlrate     <rate>         Rate per second of repeated controller input in\n"
-    << "                                UI\n"
-    << "  -basic_settings <0|1>        Display only a basic settings dialog\n"
-    << "  -avoxport     <name>         The name of the serial port where an AtariVox is\n"
-    << "                                connected\n"
-    << "  -holdreset                   Start the emulator with the Game Reset switch\n"
-    << "                                held down\n"
-    << "  -holdselect                  Start the emulator with the Game Select switch\n"
-    << "                                held down\n"
-    << "  -holdjoy0     <U,D,L,R,F>    Start the emulator with the left joystick\n"
-    << "                                direction/fire button held down\n"
-    << "  -holdjoy1     <U,D,L,R,F>    Start the emulator with the right joystick\n"
-    << "                                direction/fire button held down\n"
-    << "  -maxres       <WxH>          Used by developers to force the maximum size of\n"
-    << "                                the application window\n"
-    << "  -basedir  <path>             Override the base directory for all config files\n"
-    << "  -baseinappdir                Override the base directory for all config files\n"
-    << "                                by attempting to use the application directory\n"
-    << "  -plusroms.nick <nick>        Define a nickname for the PlusROMs backends.\n"
-    << "  -plusroms.id   <id>          Define a temporary ID for the PlusROMs backends.\n"
-    << "  -filterbstypes <0|1>         Filter bankswitch type list by ROM size.\n"
-    << "  -help                        Show the text you're now reading\n"
+    << "  -dialogpos    <0..4>           Display all dialogs at given positions\n"
+    << "  -confirmexit  <0|1>            Display a confirm dialog when exiting emulation\n"
+    << "  -autopause    <0|1>            Pause/continue emulation when focus is lost/gained\n"
+    << "  -listdelay    <delay>          Time to wait between keypresses in list widgets\n"
+    << "                                  (300-1000)\n"
+    << "  -mwheel       <lines>          Number of lines the mouse wheel will scroll in\n"
+    << "                                  UI\n"
+    << "  -mdouble      <speed>          Mouse double click speed in UI\n"
+    << "  -ctrldelay    <delay>          Delay before controller input is repeated in UI\n"
+    << "  -ctrlrate     <rate>           Rate per second of repeated controller input in\n"
+    << "                                  UI\n"
+    << "  -basic_settings <0|1>          Display only a basic settings dialog\n"
+    << "  -avoxport     <name>           The name of the serial port where an AtariVox is\n"
+    << "                                  connected\n"
+    << "  -holdreset                     Start the emulator with the Game Reset switch\n"
+    << "                                  held down\n"
+    << "  -holdselect                    Start the emulator with the Game Select switch\n"
+    << "                                  held down\n"
+    << "  -holdjoy0     <U,D,L,R,F>      Start the emulator with the left joystick\n"
+    << "                                  direction/fire button held down\n"
+    << "  -holdjoy1     <U,D,L,R,F>      Start the emulator with the right joystick\n"
+    << "                                  direction/fire button held down\n"
+    << "  -maxres       <WxH>            Used by developers to force the maximum size of\n"
+    << "                                  the application window\n"
+    << "  -basedir  <path>               Override the base directory for all config files\n"
+    << "  -baseinappdir                  Override the base directory for all config files\n"
+    << "                                  by attempting to use the application directory\n"
+    << "  -plusroms.nick <nick>          Define a nickname for the PlusROMs backends.\n"
+    << "  -plusroms.id   <id>            Define a temporary ID for the PlusROMs backends.\n"
+    << "  -filterbstypes <0|1>           Filter bankswitch type list by ROM size.\n"
+    << "  -help                          Show the text you're now reading\n"
   #ifdef DEBUGGER_SUPPORT
     << "\n The following options are meant for developers\n"
-    << " Arguments are more fully explained in the manual\n\n"
-    << "   -dis.resolve   <1|0>        Attempt to resolve code sections in disassembler\n"
-    << "   -dis.gfxformat <2|16>       Set base to use for displaying (P)GFX sections\n"
-    << "                                in disassembler\n"
-    << "   -dis.showaddr  <1|0>        Show opcode addresses in disassembler\n"
-    << "   -dis.relocate  <1|0>        Relocate calls out of address range in\n"
-    << "                                disassembler\n\n"
+    << " Arguments are more fully explained in the User's Guide\n\n"
+    << "   -dis.resolve   <1|0>          Attempt to resolve code sections in disassembler\n"
+    << "   -dis.gfxformat <2|16>         Set base to use for displaying (P)GFX sections\n"
+    << "                                  in disassembler\n"
+    << "   -dis.showaddr  <1|0>          Show opcode addresses in disassembler\n"
+    << "   -dis.relocate  <1|0>          Relocate calls out of address range in\n"
+    << "                                  disassembler\n"
+    << "   -dis.color     <list>         Comma-separated list of 14 palette indices\n"
+    << "                                  (0-15) or 255 (text colour) for disassembly\n"
+    << "                                  syntax highlighting (roles 1-14)\n\n"
     << "   -dbg.pos       <XxY>          Sets the window position in windowed debugger mode\n"
     << "   -dbg.display   <number>       Sets the display for the debugger\n"
     << "   -dbg.res       <WxH>          The resolution to use in debugger mode\n"
@@ -744,26 +681,28 @@ void Settings::usage()
     << "   -dbg.autosave  <0|1>          Automatically save breaks, traps etc.\n"
     << "   -dbg.script    <file>         Execute script file on debugger startup\n"
     << "   -break         <address>      Set a breakpoint at 'address'\n"
-    << "   -debug                        Start in debugger mode\n\n"
-    << "   -bs          <arg>          Sets the 'Cartridge.Type' (bankswitch) property\n"
-    << "   -type        <arg>          Same as using -bs\n"
-    << "   -startbank   <bank>         Sets the ROM's startup bank\n"
-    << "   -channels    <arg>          Sets the 'Cartridge.Sound' property\n"
-    << "   -ld          <arg>          Sets the 'Console.LeftDifficulty' property\n"
-    << "   -rd          <arg>          Sets the 'Console.RightDifficulty' property\n"
-    << "   -tv          <arg>          Sets the 'Console.TelevisionType' property\n"
-    << "   -sp          <arg>          Sets the 'Console.SwapPorts' property\n"
-    << "   -lc          <arg>          Sets the 'Controller.Left' property\n"
-    << "   -rc          <arg>          Sets the 'Controller.Right' property\n"
-    << "   -bc          <arg>          Same as using both -lc and -rc\n"
-    << "   -cp          <arg>          Sets the 'Controller.SwapPaddles' property\n"
-    << "   -pxcenter    <arg>          Sets the 'Controller.PaddlesXCenter' property\n"
-    << "   -pycenter    <arg>          Sets the 'Controller.PaddlesYCenter' property\n"
-    << "   -format      <arg>          Sets the 'Display.Format' property\n"
-    << "   -vcenter     <arg>          Sets the 'Display.vcenter' property\n"
-    << "   -pp          <arg>          Sets the 'Display.Phosphor' property\n"
-    << "   -ppblend     <arg>          Sets the 'Display.PPBlend' property\n"
-    << "   -bezelname   <arg>          Sets the 'Bezel.Name' property\n\n"
+    << "   -debug                        Start in debugger mode\n"
+    << "   -seed          <number>       Define the initial seed for Stella's RNG (1..)\n\n"
+
+    << "   -bs          <arg>            Sets the 'Cartridge.Type' (bankswitch) property\n"
+    << "   -type        <arg>            Same as using -bs\n"
+    << "   -startbank   <bank>           Sets the ROM's startup bank\n"
+    << "   -channels    <arg>            Sets the 'Cartridge.Sound' property\n"
+    << "   -ld          <arg>            Sets the 'Console.LeftDifficulty' property\n"
+    << "   -rd          <arg>            Sets the 'Console.RightDifficulty' property\n"
+    << "   -tv          <arg>            Sets the 'Console.TelevisionType' property\n"
+    << "   -sp          <arg>            Sets the 'Console.SwapPorts' property\n"
+    << "   -lc          <arg>            Sets the 'Controller.Left' property\n"
+    << "   -rc          <arg>            Sets the 'Controller.Right' property\n"
+    << "   -bc          <arg>            Same as using both -lc and -rc\n"
+    << "   -cp          <arg>            Sets the 'Controller.SwapPaddles' property\n"
+    << "   -pxcenter    <arg>            Sets the 'Controller.PaddlesXCenter' property\n"
+    << "   -pycenter    <arg>            Sets the 'Controller.PaddlesYCenter' property\n"
+    << "   -format      <arg>            Sets the 'Display.Format' property\n"
+    << "   -vcenter     <arg>            Sets the 'Display.vcenter' property\n"
+    << "   -pp          <arg>            Sets the 'Display.Phosphor' property\n"
+    << "   -ppblend     <arg>            Sets the 'Display.PPBlend' property\n"
+    << "   -bezelname   <arg>            Sets the 'Bezel.Name' property\n\n"
   #endif
 
     << " Various development related parameters for player settings mode\n\n"
@@ -807,7 +746,7 @@ void Settings::usage()
 #endif
     << "  -dev.thumb.trapfatal   <1|0>     Determines whether errors in ARM emulation\n"
     << "                                    throw an exception\n"
-    << "  -dev.arm.mips         <number>   Limit emulation speed to simulate ARM CPU used.\n"
+    << "  -dev.arm.mips          <number>  Limit emulation speed to simulate ARM CPU used.\n"
 #ifdef DEBUGGER_SUPPORT
     << "  -dev.thumb.inccycles   <1|0>     Determines whether ARM emulation cycles\n"
     << "                                    increase system cycles\n"
@@ -831,116 +770,61 @@ void Settings::usage()
     << "  -dev.tia.mslatehmove   <1|0>      Enable short late HMOVE for\n"
     << "                                    missiles\n"
     << "  -dev.tia.bllatehmove   <1|0>      Enable short late HMOVE for ball\n"
+    << "  -dev.tia.pllaterespx   <1|0>      Enable late RESPx for players\n"
+    << "  -dev.tia.mslaterespx   <1|0>      Enable late RESPx for missiles\n"
+    << "  -dev.tia.bllaterespx   <1|0>      Enable late RESPx for ball\n"
     << "  -dev.tia.delaypfbits   <1|0>      Enable extra delay cycle for PF bits access\n"
     << "  -dev.tia.delaypfcolor  <1|0>      Enable extra delay cycle for PF color\n"
     << "  -dev.tia.pfscoreglitch <1|0>      Enable PF score mode color glitch\n"
     << "  -dev.tia.delaybkcolor  <1|0>      Enable extra delay cycle for background color\n"
     << "  -dev.tia.delayplswap   <1|0>      Enable extra delay cycle for VDELP0/1 swap\n"
     << "  -dev.tia.delayblswap   <1|0>      Enable extra delay cycle for VDELBL swap\n"
+
     << "  -elf.dump              <1|0>      Dump ELF linkage information and write elf_executable_image.bin\n\n";
 
-#ifdef BSPF_WINDOWS
-//  int height = 25;
-//  CONSOLE_SCREEN_BUFFER_INFO csbi;
-//
-//  if(NULL != GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
-//    height = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
   cout << buf.view() << std::flush;
-#endif
-
-#if defined(BSPF_UNIX) || defined(BSPF_MACOS)
-  int height = 25;
-  struct winsize ws{};
-
-  ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
-
-  height = ws.ws_row;
-
-  int row = 0;
-  while(buf.good())
-  {
-    if(++row == height - 1)
-    {
-      row = 0;
-      cout << "Press \"Enter\"" << std::flush;
-      std::ignore = getchar();
-      cout << '\n';
-    }
-    string substr;
-    getline(buf, substr, '\n');
-    cout << substr << '\n';
-  }
-#endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 const Variant& Settings::value(string_view key) const
 {
   // Try to find the named setting and answer its value
-  auto it = myPermanentSettings.find(key);
-  if(it != myPermanentSettings.end())
+  if(auto it = myPermanentSettings.find(key); it != myPermanentSettings.end())
     return it->second;
-  else
-  {
-    it = myTemporarySettings.find(key);
-    if(it != myTemporarySettings.end())
-      return it->second;
-  }
+
+  if(auto it = myTemporarySettings.find(key); it != myTemporarySettings.end())
+    return it->second;
+
   return EmptyVariant();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Settings::setValue(string_view key, const Variant& value, bool persist)
 {
-  const auto it = myPermanentSettings.find(key);
+  auto* atomic = persist ? myRepository->atomic() : nullptr;
 
-  if(it != myPermanentSettings.end()) {
-    if (persist && it->second != value && myRespository->atomic())
-      myRespository->atomic()->save(key, value);
-    it->second = value;
+  if(const auto it = myPermanentSettings.find(key); it != myPermanentSettings.end())
+  {
+    if(it->second != value)
+    {
+      if(atomic)
+        atomic->save(key, value);
+
+      it->second = value;
+    }
   }
   else
-    myTemporarySettings[string{key}] = value;
+    myTemporarySettings.insert_or_assign(string(key), value);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Settings::setPermanent(string_view key, const Variant& value)
 {
-  myPermanentSettings[string{key}] = value;
+  myPermanentSettings.emplace(key, value);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Settings::setTemporary(string_view key, const Variant& value)
 {
-  myTemporarySettings[string{key}] = value;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Settings::migrateOne()
-{
-  const int version = getInt(SETTINGS_VERSION_KEY);
-  if (version >= SETTINGS_VERSION) return;
-
-  // NOLINTBEGIN: could be written as IF/ELSE, bugprone-branch-clone
-  switch (version) {
-    case 0:
-      #if defined BSPF_MACOS || defined DARWIN
-        setPermanent("video", "");
-      #endif
-      break;
-    default:
-      break;
-  }
-  // NOLINTEND
-
-  setPermanent(SETTINGS_VERSION_KEY, version + 1);
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Settings::migrate()
-{
-  while (getInt(SETTINGS_VERSION_KEY) < SETTINGS_VERSION) migrateOne();
-
-  if (myRespository->atomic())
-    myRespository->atomic()->save(SETTINGS_VERSION_KEY, SETTINGS_VERSION);
+  myTemporarySettings.emplace(key, value);
 }

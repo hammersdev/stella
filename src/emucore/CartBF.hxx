@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEBF_HXX
-#define CARTRIDGEBF_HXX
+#ifndef CARTRIDGE_BF_HXX
+#define CARTRIDGE_BF_HXX
 
 class System;
 
@@ -27,9 +27,12 @@ class System;
 #endif
 
 /**
-  Update of EF cartridge class used for Homestar Runner by Paul Slocum.
-  There are 64 4K banks (total of 256K ROM).
-  Accessing $1F80 - $1FBF switches to each bank.
+  BF is a further extension of the EF/DF family, providing 64 4K banks
+  (256K total).  Any access in $1F80-$1FBF switches to the bank whose number
+  equals the low 6 bits of the address (bank 0 at $1F80, bank 63 at $1FBF).
+  "BF" derives from this hotspot range.  The BFSC variant adds 128 bytes of
+  SuperChip RAM at the standard split window ($1000-$107F write, $1080-$10FF
+  read).
 
   @author  Mike Saarna, Thomas Jentzsch
 */
@@ -41,13 +44,12 @@ class CartridgeBF : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeBF(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeBF(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 256_KB);
     ~CartridgeBF() override = default;
 
@@ -72,6 +74,7 @@ class CartridgeBF : public CartridgeEnhanced
   #endif
 
     uInt16 hotspot() const override { return 0x1F80; }
+    bool supportsSaveDisassembly() const override { return true; }
 
   private:
     bool checkSwitchBank(uInt16 address, uInt8) override;
@@ -86,4 +89,4 @@ class CartridgeBF : public CartridgeEnhanced
     CartridgeBF& operator=(CartridgeBF&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_BF_HXX

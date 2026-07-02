@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef FBSURFACE_HXX
-#define FBSURFACE_HXX
+#ifndef FB_SURFACE_HXX
+#define FB_SURFACE_HXX
 
 class FrameBuffer;
 class TIASurface;
@@ -59,16 +59,6 @@ class FBSurface
       pixels = myPixels;
       pitch = myPitch;
     }
-
-    /**
-      This method is called to get a copy of the specified ARGB data from
-      the behind-the-scenes surface.
-
-      @param buffer  A copy of the pixel data in ARGB8888 format
-      @param pitch   The pitch (in bytes) for the pixel data
-      @param rect    The bounding rectangle for the buffer
-    */
-    void readPixels(uInt8* buffer, uInt32 pitch, const Common::Rect& rect) const;
 
     //////////////////////////////////////////////////////////////////////////
     // Note:  The drawing primitives below will work, but do not take
@@ -429,4 +419,4 @@ class FBSurface
     FBSurface& operator=(FBSurface&&) = delete;
 };
 
-#endif
+#endif  // FB_SURFACE_HXX

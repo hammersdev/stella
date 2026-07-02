@@ -18,7 +18,9 @@
 #ifndef FS_NODE_HXX
 #define FS_NODE_HXX
 
+#include <fstream>
 #include <functional>
+#include <initializer_list>
 
 #include "bspf.hxx"
 
@@ -64,7 +66,7 @@ class FSNode
     /** Function used to filter the file listing.  Returns true if the filename
         should be included, else false.*/
     using NameFilter = std::function<bool(const FSNode& node)>;
-    using CancelCheck = std::function<bool()> const;
+    using CancelCheck = std::function<bool()>;
 
     /**
      * Create a new pathless FSNode. Since there's no path associated
@@ -125,8 +127,8 @@ class FSNode
     bool exists() const;
 
     /**
-     * Return a list of child nodes of this and all sub-directories. If called on a node
-     * that does not represent a directory, false is returned.
+     * Return a list of child nodes of this and all sub-directories. If called on
+     * a node that does not represent a directory, false is returned.
      *
      * @return true if successful, false otherwise (e.g. when the directory
      *         does not exist).
@@ -150,10 +152,10 @@ class FSNode
                      const CancelCheck& isCancelled = []() { return false; }) const;
 
     /**
-     * Set/get a string representation of the name of the file. This is can be
+     * Set/get a string representation of the name of the file. This can be
      * used e.g. by detection code that relies on matching the name of a given
      * file. But it is *not* suitable for use with fopen / File::open, nor
-     * should it be archived.
+     * should it be archived.  It is meant to be used for display in the UI.
      *
      * @return the file name
      */
@@ -164,6 +166,8 @@ class FSNode
      * Return a string representation of the file which can be passed to fopen().
      * This will usually be a 'path' (hence the name of the method), but can
      * be anything that fulfills the above criterions.
+     * Ideally, you wouldn't use this to open a file, but instead request
+     * an appropriate FStream, described below.
      *
      * @return the 'path' represented by this filesystem node
      */
@@ -229,6 +233,24 @@ class FSNode
     bool isWritable() const;
 
     /**
+     * Test whether getName() ends with the given extension (case-insensitive).
+     * The extension should include the leading dot, e.g. ".zip".
+     */
+    bool hasExtension(string_view ext) const {
+      return BSPF::endsWithIgnoreCase(getName(), ext);
+    }
+
+    /**
+     * Test whether getName() ends with any of the given extensions (case-insensitive).
+     * Each extension should include the leading dot, e.g. {".zip", ".gz"}.
+     */
+    bool hasExtension(std::initializer_list<string_view> exts) const {
+      return std::ranges::any_of(exts, [this](string_view ext) {
+        return BSPF::endsWithIgnoreCase(getName(), ext);
+      });
+    }
+
+    /**
      * Create a directory from the current node path.
      *
      * @return bool true if the directory was created, false otherwise.
@@ -252,14 +274,14 @@ class FSNode
     /**
      * Read data (binary format) into the given buffer.
      *
-     * @param buffer  The buffer to contain the data (allocated in this method).
+     * @param buffer  The buffer to contain the data
      * @param size    The amount of data to read (0 means read all data).
      *
      * @return  The number of bytes read (0 in the case of failure)
      *          This method can throw exceptions, and should be used inside
      *          a try-catch block.
      */
-    size_t read(ByteBuffer& buffer, size_t size = 0) const;
+    size_t read(ByteArray& buffer, size_t size = 0) const;
 
     /**
      * Read data (text format) into the given stream.
@@ -276,33 +298,56 @@ class FSNode
      * Write data (binary format) from the given buffer.
      *
      * @param buffer  The buffer that contains the data.
-     * @param size    The size of the buffer.
      *
      * @return  The number of bytes written (0 in the case of failure)
      *          This method can throw exceptions, and should be used inside
      *          a try-catch block.
      */
-    size_t write(const ByteBuffer& buffer, size_t size) const;
+    size_t write(ByteSpan buffer) const;
 
     /**
-     * Write data (text format) from the given stream.
+     * Write data (binary format) from the given buffer.
      *
-     * @param buffer  The buffer stream that contains the data.
+     * @param buffer  The buffer that contains the data.
      *
      * @return  The number of bytes written (0 in the case of failure)
      *          This method can throw exceptions, and should be used inside
      *          a try-catch block.
      */
-    size_t write(const std::ostringstream& buffer) const;
+    size_t write(string_view buffer) const;
 
     /**
-     * The following methods are almost exactly the same as the various
-     * getXXXX() methods above.  Internally, they call the respective methods
-     * and replace the extension (if present) with the given one.  If no
-     * extension is present, the given one is appended instead.
+     * Get a node representing a sibling file with a different extension.
+     * More efficient than getPathWithExt() when the node is a ZIP, as it
+     * avoids re-parsing the path.
      */
-    string getNameWithExt(string_view ext = "") const;
-    string getPathWithExt(string_view ext = "") const;
+    FSNode getSiblingNode(string_view ext) const;
+
+    /**
+     * Returns the filename with its extension stripped.
+     */
+    string getBaseName() const;
+
+    /**
+     * Returns the filename with its extension replaced by ext.
+     * If ext is empty, the original string is returned.
+     */
+    string getNameWithExt(string_view ext) const;
+
+    /**
+     * Get a platform-specific stream based on the backend in use.
+     * Whenever possible, subsystems should ::read and ::write from this
+     * class, rather than requesting a stream themselves.
+     *
+     * See comments in AbstractFSNode below for more information.
+     *
+     * @return  The given stream type based on the backend being used.
+     *          The calling method is still responsible for checking
+     *          whether the stream was opened properly, etc.
+     */
+    std::ifstream openIFStream(std::ios::openmode mode = std::ios_base::binary) const;
+    std::ofstream openOFStream(std::ios::openmode mode = std::ios_base::binary) const;
+    std::fstream  openFStream (std::ios::openmode mode = std::ios_base::binary) const;
 
   private:
     explicit FSNode(const AbstractFSNodePtr& realNode);
@@ -454,14 +499,14 @@ class AbstractFSNode
     /**
      * Read data (binary format) into the given buffer.
      *
-     * @param buffer  The buffer to contain the data (allocated in this method).
+     * @param buffer  The buffer to contain the data
      * @param size    The amount of data to read (0 means read all data).
      *
      * @return  The number of bytes read (0 in the case of failure)
      *          This method can throw exceptions, and should be used inside
      *          a try-catch block.
      */
-    virtual size_t read(ByteBuffer& buffer, size_t size) const { return 0; }
+    virtual size_t read(ByteArray& buffer, size_t size) const { return 0; }
 
     /**
      * Read data (text format) into the given stream.
@@ -478,24 +523,45 @@ class AbstractFSNode
      * Write data (binary format) from the given buffer.
      *
      * @param buffer  The buffer that contains the data.
-     * @param size    The size of the buffer.
      *
      * @return  The number of bytes written (0 in the case of failure)
      *          This method can throw exceptions, and should be used inside
      *          a try-catch block.
      */
-    virtual size_t write(const ByteBuffer& buffer, size_t size) const { return 0; }
+    virtual size_t write(ByteSpan buffer) const { return 0; }
 
     /**
-     * Write data (text format) from the given stream.
+     * Write data (text format) from the given buffer.
      *
-     * @param buffer  The buffer stream that contains the data.
+     * @param buffer  The buffer that contains the data.
      *
      * @return  The number of bytes written (0 in the case of failure)
      *          This method can throw exceptions, and should be used inside
      *          a try-catch block.
      */
-    virtual size_t write(const std::ostringstream& buffer) const { return 0; }
+    virtual size_t write(string_view buffer) const { return 0; }
+
+
+    /**
+     * Return a node representing a sibling file with a different extension.
+     * Default implementation returns nullptr.
+     */
+    virtual AbstractFSNodePtr getSiblingNode(string_view ext) const { return nullptr; }
+
+    /**
+     * Get a platform-specific stream based on the backend in use.
+     * Some systems (notably Windows) use UTF-16 in filenames, and if we
+     * try to open a stream with a UTF-8 string, the open will fail.
+     * Whenever possible, subsystems should ::read and ::write from this
+     * class, rather than requesting a stream themselves.
+     *
+     * @return  The given stream type based on the backend being used.
+     *          The calling method is still responsible for checking
+     *          whether the stream was opened properly, etc.
+     */
+    virtual std::ifstream openIFStream(std::ios::openmode mode) const { return {}; }
+    virtual std::ofstream openOFStream(std::ios::openmode mode) const { return {}; }
+    virtual std::fstream  openFStream (std::ios::openmode mode) const { return {}; }
 
   protected:
     /**
@@ -506,7 +572,7 @@ class AbstractFSNode
      */
     static constexpr string_view lastPathComponent(string_view s)
     {
-      if(s.empty())  return EmptyString();
+      if(s.empty())  return s;
       const auto pos = s.find_last_of("/\\", s.size() - 2);
       return s.substr(pos + 1);
     }
@@ -519,10 +585,10 @@ class AbstractFSNode
      */
     static constexpr string_view stemPathComponent(string_view s)
     {
-      if(s.empty())  return EmptyString();
+      if(s.empty())  return s;
       const auto pos = s.find_last_of("/\\", s.size() - 2);
       return s.substr(0, pos + 1);
     }
 };
 
-#endif
+#endif  // FS_NODE_HXX

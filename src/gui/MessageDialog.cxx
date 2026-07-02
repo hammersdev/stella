@@ -54,7 +54,7 @@ void MessageDialog::loadConfig()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MessageDialog::handleCommand(CommandSender* sender, int cmd, int data, int id)
 {
-  switch (cmd)
+  switch(cmd)
   {
     case kOKCmd:
     case kCloseCmd:
@@ -82,9 +82,3 @@ void MessageDialog::setMessage(string_view title, string_view text,
 {
   setMessage(title, StringParser(text).stringList(), yesNo);
 }
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-string MessageDialog::myTitle;
-StringList MessageDialog::myText;
-bool MessageDialog::myYesNo = false;
-bool MessageDialog::myConfirmed = false;

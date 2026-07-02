@@ -26,7 +26,9 @@
 #include "FBSurface.hxx"
 #include "Font.hxx"
 #include "ScrollBarWidget.hxx"
+#include "Settings.hxx"
 #include "RomListSettings.hxx"
+#include "DisasmColorsDialog.hxx"
 #include "RomListWidget.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -50,13 +52,18 @@ RomListWidget::RomListWidget(GuiObject* boss, const GUI::Font& lfont,
   _h = h + 2;
 
   // Create scrollbar and attach to the list
-  // NOLINTNEXTLINE: we want to initialize here, not in the member list
+  // We want to initialize here, not in the member list
+  // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
   myScrollBar = new ScrollBarWidget(boss, lfont, _x + _w, _y,
                                     ScrollBarWidget::scrollBarWidth(_font), _h);
   myScrollBar->setTarget(this);
 
   // Add settings menu
   myMenu = std::make_unique<RomListSettings>(this, lfont);
+
+  // Disassembly colour dialog and initial colour map
+  myDisasmColorsDialog = std::make_unique<DisasmColorsDialog>(this, lfont);
+  loadDisasmColorMap();
 
   // Take advantage of a wide debugger window when possible
   const int fontWidth = lfont.getMaxCharWidth(),
@@ -72,7 +79,8 @@ RomListWidget::RomListWidget(GuiObject* boss, const GUI::Font& lfont,
   // rowheight is determined by largest item on a line,
   // possibly meaning that number of rows will change
   _lineHeight = std::max(_lineHeight, CheckboxWidget::boxSize(_font));
-  _rows = h / _lineHeight;  // NOLINT: must be initialized after _lineHeight
+  // The following must be initialized after _lineHeight
+  _rows = h / _lineHeight;  // NOLINT(cppcoreguidelines-prefer-member-initializer)
 
   // Create a CheckboxWidget for each row in the list
   for(int i = 0; i < _rows; ++i)
@@ -163,7 +171,7 @@ void RomListWidget::setHighlighted(int item)
     _highlightedItem = item;
 
     // Only scroll the list if we're about to pass the page boundary
-    if (_highlightedItem < _currentPos)
+    if(_highlightedItem < _currentPos)
       _currentPos = std::max(_currentPos - _rows, 0);
     else if(_highlightedItem == _currentPos + _rows)
       _currentPos += _rows;
@@ -203,21 +211,21 @@ void RomListWidget::recalc()
 void RomListWidget::scrollToCurrent(int item)
 {
   // Only do something if the current item is not in our view port
-  if (item < _currentPos)
+  if(item < _currentPos)
   {
     // it's above our view
     _currentPos = item;
   }
-  else if (item >= _currentPos + _rows )
+  else if(item >= _currentPos + _rows)
   {
     // it's below our view
     _currentPos = item - _rows + 1;
   }
 
   const int size = static_cast<int>(myDisasm->list.size());
-  if (_currentPos < 0 || _rows > size)
+  if(_currentPos < 0 || _rows > size)
     _currentPos = 0;
-  else if (_currentPos + _rows > size)
+  else if(_currentPos + _rows > size)
     _currentPos = size - _rows;
 
   myScrollBar->_currentPos = _currentPos;
@@ -229,7 +237,7 @@ void RomListWidget::scrollToCurrent(int item)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void RomListWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
-  if (!isEnabled())
+  if(!isEnabled())
     return;
 
   resetSelection();
@@ -247,12 +255,12 @@ void RomListWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
   {
     // First check whether the selection changed
     int newSelectedItem = findItem(x, y);
-    if (newSelectedItem > static_cast<int>(myDisasm->list.size()) - 1)
+    if(newSelectedItem > static_cast<int>(myDisasm->list.size()) - 1)
       newSelectedItem = -1;
 
-    if (_selectedItem != newSelectedItem)
+    if(_selectedItem != newSelectedItem)
     {
-      if (_editMode)
+      if(_editMode)
         abortEditMode();
       _selectedItem = newSelectedItem;
       setDirty();
@@ -265,7 +273,7 @@ void RomListWidget::handleMouseUp(int x, int y, MouseButton b, int clickCount)
 {
   // If this was a double click and the mouse is still over the selected item,
   // send the double click command
-  if (clickCount == 2 && (_selectedItem == findItem(x, y)))
+  if(clickCount == 2 && (_selectedItem == findItem(x, y)))
   {
     // Start edit mode
     if(isEditable() && !_editMode)
@@ -300,16 +308,16 @@ bool RomListWidget::handleKeyDown(StellaKey key, StellaMod mod)
   bool handled = true;
   const int oldSelectedItem = _selectedItem;
 
-  if (_editMode)
+  if(_editMode)
   {
     // Class EditableWidget handles all single-key presses for us
     handled = EditableWidget::handleKeyDown(key, mod);
   }
   else
   {
-    switch (key)
+    switch(key)
     {
-      case KBDK_SPACE:
+      case StellaKey::SPACE:
         // Snap list back to currently highlighted line
         if(_highlightedItem >= 0)
         {
@@ -323,7 +331,7 @@ bool RomListWidget::handleKeyDown(StellaKey key, StellaMod mod)
     }
   }
 
-  if (_selectedItem != oldSelectedItem)
+  if(_selectedItem != oldSelectedItem)
   {
     myScrollBar->draw();
     scrollToSelected();
@@ -336,8 +344,8 @@ bool RomListWidget::handleKeyDown(StellaKey key, StellaMod mod)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool RomListWidget::handleKeyUp(StellaKey key, StellaMod mod)
 {
-  if (key == _currentKeyDown)
-    _currentKeyDown = KBDK_UNKNOWN;
+  if(key == _currentKeyDown)
+    _currentKeyDown = StellaKey::UNKNOWN;
   return true;
 }
 
@@ -353,20 +361,20 @@ bool RomListWidget::handleEvent(Event::Type e)
   switch(e)
   {
     case Event::UISelect:
-      if (_selectedItem >= 0)
+      if(_selectedItem >= 0)
       {
-        if (isEditable())
+        if(isEditable())
           startEditMode();
       }
       break;
 
     case Event::UIUp:
-      if (_selectedItem > 0)
+      if(_selectedItem > 0)
         _selectedItem--;
       break;
 
     case Event::UIDown:
-      if (_selectedItem < static_cast<int>(myDisasm->list.size()) - 1)
+      if(_selectedItem < static_cast<int>(myDisasm->list.size()) - 1)
         _selectedItem++;
       break;
 
@@ -391,7 +399,7 @@ bool RomListWidget::handleEvent(Event::Type e)
       handled = false;
   }
 
-  if (_selectedItem != oldSelectedItem)
+  if(_selectedItem != oldSelectedItem)
   {
     myScrollBar->draw();
     scrollToSelected();
@@ -403,7 +411,7 @@ bool RomListWidget::handleEvent(Event::Type e)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void RomListWidget::handleCommand(CommandSender* sender, int cmd, int data, int id)
 {
-  switch (cmd)
+  switch(cmd)
   {
     case CheckboxWidget::kCheckActionCmd:
       // We let the parent class handle this
@@ -412,11 +420,20 @@ void RomListWidget::handleCommand(CommandSender* sender, int cmd, int data, int 
       break;
 
     case GuiObject::kSetPositionCmd:
-      if (_currentPos != data)
+      if(_currentPos != data)
       {
         _currentPos = data;
         setDirty();
       }
+      break;
+
+    case kDisasmColorsCmd:
+      myDisasmColorsDialog->open();
+      break;
+
+    case kDisasmColorsChangedCmd:
+      loadDisasmColorMap();
+      setDirty();
       break;
 
     default:
@@ -454,12 +471,12 @@ string RomListWidget::getToolTip(const Common::Point& pos) const
   const Common::Point& idx = getToolTipIndex(pos);
 
   if(idx.y < 0)
-    return EmptyString();
+    return {};
 
   const string bytes = myDisasm->list[idx.y].bytes;
 
   if(static_cast<Int32>(bytes.length()) < idx.x + 1)
-    return EmptyString();
+    return {};
 
   Int32 val = 0;
   if(bytes.length() == 8 && bytes[2] != ' ')
@@ -472,7 +489,7 @@ string RomListWidget::getToolTip(const Common::Point& pos) const
     // 1..3 hex values
     if(idx.x == 2)
       // Skip gap after first byte
-      return EmptyString();
+      return {};
 
     string valStr;
 
@@ -485,19 +502,19 @@ string RomListWidget::getToolTip(const Common::Point& pos) const
 
     val = static_cast<Int32>(stol(valStr, nullptr, 16));
   }
-  std::ostringstream buf;
 
-  buf << _toolTipText
-    << "$" << Common::Base::toString(val, Common::Base::Fmt::_16)
-    << " = #" << val;
+  string result = std::format("{}${} = #{}",
+    _toolTipText,
+    Common::Base::toString(val, Common::Base::Fmt::_16),
+    val);
   if(val < 0x100)
   {
     if(val >= 0x80)
-      buf << '/' << -(0x100 - val);
-    buf << " = %" << Common::Base::toString(val, Common::Base::Fmt::_2);
+      result += std::format("/{}", -(0x100 - val));
+    result += std::format(" = %{}",
+      Common::Base::toString(val, Common::Base::Fmt::_2));
   }
-
-  return buf.str();
+  return result;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -505,6 +522,52 @@ bool RomListWidget::changedToolTip(const Common::Point& oldPos,
                                    const Common::Point& newPos) const
 {
   return getToolTipIndex(oldPos) != getToolTipIndex(newPos);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void RomListWidget::loadDisasmColorMap()
+{
+  // Index 0 (Default role) always uses the UI text colour, never the palette
+  myDisasmColorMap[0] = CartDebug::DISASM_COLOR_TEXT;
+
+  const string raw = instance().settings().getString("dis.color");
+  if(raw.empty())
+  {
+    for(int i = 1; i <= CartDebug::NUM_DISASM_ROLES; ++i)
+      myDisasmColorMap[i] = CartDebug::ourDisasmThemes[0].map[i];
+    return;
+  }
+
+  std::istringstream ss(raw);
+  string token;
+  int i = 1;
+  while(i <= CartDebug::NUM_DISASM_ROLES && std::getline(ss, token, ','))
+  {
+    try
+    {
+      const auto v = static_cast<uInt8>(std::stoi(token));
+      myDisasmColorMap[i] = (v == CartDebug::DISASM_COLOR_TEXT || v <= 15)
+                            ? v
+                            : CartDebug::ourDisasmThemes[0].map[i];
+    }
+    catch(...)
+    {
+      myDisasmColorMap[i] = CartDebug::ourDisasmThemes[0].map[i];
+    }
+    ++i;
+  }
+  // Fill any roles not covered by a short/malformed string
+  for(; i <= CartDebug::NUM_DISASM_ROLES; ++i)
+    myDisasmColorMap[i] = CartDebug::ourDisasmThemes[0].map[i];
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ColorId RomListWidget::segColor(CartDebug::DisasmSegColor seg) const
+{
+  const uInt8 idx = myDisasmColorMap[static_cast<uInt8>(seg)];
+  return (idx == CartDebug::DISASM_COLOR_TEXT)
+         ? kTextColor
+         : static_cast<ColorId>(kDisasmBlack + idx);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -562,7 +625,7 @@ void RomListWidget::drawWidget(bool hilite)
 
     // Draw labels
     s.drawString(_font, dlist[pos].label, xpos, ypos, _labelWidth,
-                  dlist[pos].hllabel ? textColor : kColor);
+                  segColor(dlist[pos].labelColor));
 
     // Bytes are only editable if they represent code, graphics, or accessible data
     // Otherwise, the disassembly should get all remaining space
@@ -573,11 +636,11 @@ void RomListWidget::drawWidget(bool hilite)
       {
         // Draw mnemonic
         s.drawString(_font, dlist[pos].disasm.substr(0, 7), xpos + _labelWidth, ypos,
-                      7 * _fontWidth, textColor);
+                      7 * _fontWidth, segColor(dlist[pos].mnemonicColor));
         // Draw operand
         if(dlist[pos].disasm.length() > 8)
           s.drawString(_font, dlist[pos].disasm.substr(8), xpos + _labelWidth + 7 * _fontWidth, ypos,
-                        codeDisasmW - 7 * _fontWidth, textColor);
+                        codeDisasmW - 7 * _fontWidth, segColor(dlist[pos].operandColor));
         // Draw cycle count
         s.drawString(_font, dlist[pos].ccount, xpos + _labelWidth + codeDisasmW, ypos,
                       cycleCountW, textColor);
@@ -644,7 +707,7 @@ Common::Rect RomListWidget::getEditRect() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void RomListWidget::startEditMode()
 {
-  if (isEditable() && !_editMode && _selectedItem >= 0)
+  if(isEditable() && !_editMode && _selectedItem >= 0)
   {
     // Does this line represent an editable area?
     if(myDisasm->list[_selectedItem].bytes.empty())
@@ -671,7 +734,7 @@ void RomListWidget::startEditMode()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void RomListWidget::endEditMode()
 {
-  if (!_editMode)
+  if(!_editMode)
     return;
 
   // Send a message that editing finished with a return/enter key press

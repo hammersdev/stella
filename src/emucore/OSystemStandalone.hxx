@@ -38,7 +38,7 @@ class OSystemStandalone : public OSystem
 
     void initPersistence(FSNode& basedir) override;
 
-    string describePresistence() override;
+    string describePersistence() override;
 
     void getBaseDirectories(string& basedir, string& homedir,
                             bool useappdir, string_view usedir) override;
@@ -49,4 +49,4 @@ class OSystemStandalone : public OSystem
 
 };
 
-#endif // OSYSTEM_STANDALONE_HXX
+#endif  // OSYSTEM_STANDALONE_HXX

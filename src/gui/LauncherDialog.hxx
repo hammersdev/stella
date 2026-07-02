@@ -56,7 +56,6 @@ class LauncherDialog : public Dialog, CommandSender
       kFavChangedCmd   = 'favc',  // Favorite tracking changed
       kExtChangedCmd   = 'extc',  // File extension display changed
     };
-    using FileList = std::unordered_set<string>;
 
   public:
     LauncherDialog(OSystem& osystem, DialogContainer& parent,
@@ -198,7 +197,7 @@ class LauncherDialog : public Dialog, CommandSender
     RomImageWidget*   myRomImageWidget{nullptr};
     RomInfoWidget*    myRomInfoWidget{nullptr};
 
-    std::unordered_map<string,string> myMD5List;
+    std::unordered_map<string, string, BSPF::StringHash, std::equal_to<>> myMD5List;
 
     // Show a message about the dangers of using this function
     unique_ptr<GUI::MessageBox> myConfirmMsg;
@@ -233,4 +232,4 @@ class LauncherDialog : public Dialog, CommandSender
     LauncherDialog& operator=(LauncherDialog&&) = delete;
 };
 
-#endif
+#endif  // LAUNCHER_DIALOG_HXX

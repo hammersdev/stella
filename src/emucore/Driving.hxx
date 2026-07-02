@@ -58,9 +58,9 @@ class Driving : public Controller
     string name() const override { return "Driving"; }
 
     /**
-      Answers whether the controller is intrinsically an analog controller.
+      The driving controller is mouse-driven (digital gray code internally).
     */
-    bool isAnalog() const override { return true; }
+    bool usesMouse() const override { return true; }
 
     /**
       Determines how this controller will treat values received from the
@@ -89,6 +89,29 @@ class Driving : public Controller
                           more movement (10 represents the baseline)
     */
     static void setSensitivity(int sensitivity);
+
+  private:
+    /**
+      Update the button pin states.
+    */
+    void updateButtons();
+
+    /**
+      Update the axes pin states according to the keyboard
+      or joystick events currently set.
+    */
+    void updateControllerAxes();
+
+    /**
+      Update the axes pin states according to the Stelladaptor axes value
+      events currently set.
+    */
+    void updateStelladaptorAxes();
+
+    /**
+      Update the axes pin states according to mouse events currently set.
+    */
+    void updateMouseAxes();
 
   private:
     // Counter to iterate through the gray codes
@@ -123,36 +146,10 @@ class Driving : public Controller
 
     // User-defined sensitivity; adjustable since end-users may prefer different
     // speeds
-    static float SENSITIVITY;
+    static inline float SENSITIVITY = 1.F;
 
-  private:
-    /**
-      Update the button pin states.
-    */
-    void updateButtons();
-
-    /**
-      Update the button states from the mouse button events currently set.
-    */
-    void updateMouseButtons(bool& firePressed);
-
-    /**
-      Update the axes pin states according to the keyboard
-      or joystick events currently set.
-    */
-    void updateControllerAxes();
-
-    /**
-      Update the axes pin states according to the Stelladaptor axes value
-      events currently set.
-    */
-    void updateStelladaptorAxes();
-
-    /**
-      Update the axes pin states according to mouse events currently set.
-    */
-    void updateMouseAxes();
-
+    // Subdivisions of each gray code interval for high-resolution tracking
+    static constexpr float COUNTER_SCALE = 256.F;
 
   private:
     // Following constructors and assignment operators not supported
@@ -163,4 +160,4 @@ class Driving : public Controller
     Driving& operator=(Driving&&) = delete;
 };
 
-#endif
+#endif  // DRIVING_HXX

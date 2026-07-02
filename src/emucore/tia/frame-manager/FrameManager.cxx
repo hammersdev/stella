@@ -36,6 +36,8 @@ void FrameManager::onReset()
   myTotalFrames = 0;
   myVsyncLineCount = 0;
   myY = 0;
+  myVsyncPending = false;
+  myVsyncPendingLines = 0;
 
   myJitterEmulation.reset();
 }
@@ -46,12 +48,21 @@ void FrameManager::onNextLine()
   const State previousState = myState;
   ++myLineInState;
 
+  // Promote a pending VSYNC to real once it has lasted the minimum number of
+  // scanlines.  This matches real TV behaviour: pulses shorter than 2 full
+  // scanlines are completely invisible to the state machine.
+  if (myVsyncPending && ++myVsyncPendingLines >= 2) {
+    myVsyncPending = false;
+    setState(State::waitForVsyncEnd);
+  }
+
   switch (myState)
   {
     case State::waitForVsyncStart:
       if ((myCurrentFrameTotalLines > myFrameLines - 3) || myTotalFrames == 0)
       {
-        if (myVblank)
+        // if vertical blank is not enabled, bail out after too many frame  lines:
+        if (myVblank || myCurrentFrameTotalLines > Metrics::frameSizePAL * 2)
           ++myVsyncLineCount;
       }
 
@@ -60,7 +71,8 @@ void FrameManager::onNextLine()
       break;
 
     case State::waitForVsyncEnd:
-      if (myVblank)
+      // if vertical blank is not enabled, bail out after too many frame lines:
+      if (myVblank || myCurrentFrameTotalLines > Metrics::frameSizePAL * 2)
         ++myVsyncLineCount;
       if (myVsyncLineCount > Metrics::maxLinesVsync)
         setState(State::waitForFrameStart);
@@ -72,7 +84,7 @@ void FrameManager::onNextLine()
       const Int32 jitter =
         (myJitterEnabled && myTotalFrames > Metrics::initialGarbageFrames) ? myJitterEmulation.jitter() : 0;
 
-      if (myLineInState >= (myYStart + jitter)) setState(State::frame);
+      if (static_cast<Int32>(myLineInState) >= static_cast<Int32>(myYStart) + jitter) setState(State::frame);
       break;
     }
 
@@ -94,11 +106,8 @@ void FrameManager::onNextLine()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Int32 FrameManager::missingScanlines() const
 {
-  if (myLastY == myYStart + myY)
-    return 0;
-  else {
-    return myHeight - myY;
-  }
+  if (myLastY == myYStart + myY) return 0;
+  return myHeight - myY;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -136,17 +145,31 @@ void FrameManager::onSetVblank(uInt64 cycles)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameManager::onSetVsync(uInt64 cycles)
 {
-  if (myState == State::waitForVsyncEnd) {
+  if (myVsync) {
+    // VSYNC rising edge.  Don't commit to waitForVsyncEnd immediately — real
+    // TVs require at least 2 full scanlines of VSYNC before locking.  Record
+    // timing state and let onNextLine() promote this to waitForVsyncEnd once
+    // the minimum scanline count is reached.  Pulses shorter than 2 scanlines
+    // are ignored entirely.
+    if (myState == State::waitForVsyncEnd || myVsyncPending) return;
+
+    myVsyncStart = cycles;
+    myVblankStart = myVblank ? cycles : INT64_MAX;
+    myVblankCycles = 0;
+    myVsyncPending = true;
+    myVsyncPendingLines = 0;
+  }
+  else {
+    // VSYNC falling edge.
+    myVsyncPending = false;
+
+    if (myState != State::waitForVsyncEnd)
+      return;  // pulse never reached 2 scanlines
+
     myVsyncEnd = cycles;
     if(myVblankStart != INT64_MAX)
       myVblankCycles += cycles - myVblankStart;
     setState(State::waitForFrameStart);
-  }
-  else {
-    myVsyncStart = cycles;
-    myVblankStart = myVblank ? cycles : INT64_MAX;
-    myVblankCycles = 0;
-    setState(State::waitForVsyncEnd);
   }
 }
 
@@ -205,15 +228,12 @@ bool FrameManager::onSave(Serializer& out) const
   out.putInt(myY);
   out.putInt(myLastY);
 
-  out.putInt(myVblankLines);
-  out.putInt(myFrameLines);
-  out.putInt(myHeight);
-  out.putInt(myYStart);
   out.putInt(myVcenter);
-  out.putInt(myMaxVcenter);
   out.putInt(myVSizeAdjust);
 
   out.putBool(myJitterEnabled);
+  out.putBool(myVsyncPending);
+  out.putInt(myVsyncPendingLines);
 
   return true;
 }
@@ -229,16 +249,14 @@ bool FrameManager::onLoad(Serializer& in)
   myY = in.getInt();
   myLastY = in.getInt();
 
-  myVblankLines = in.getInt();
-  myFrameLines = in.getInt();
-  myHeight = in.getInt();
-  myYStart = in.getInt();
   myVcenter = in.getInt();
-  myMaxVcenter = in.getInt();
   myVSizeAdjust = in.getInt();
 
   myJitterEnabled = in.getBool();
+  myVsyncPending = in.getBool();
+  myVsyncPendingLines = in.getInt();
 
+  recalculateMetrics();
   return true;
 }
 
@@ -269,7 +287,9 @@ void FrameManager::recalculateMetrics() {
 
   myHeight = BSPF::clamp<uInt32>(roundf(static_cast<float>(baseHeight) * (1.F - myVSizeAdjust / 100.F)), 0, myFrameLines);
   myYStart = BSPF::clamp<uInt32>(ystartBase + (baseHeight - static_cast<Int32>(myHeight)) / 2 - myVcenter, 0, myFrameLines);
-  // TODO: why "- 1" here: ???
+  // The - 1 keeps myYStart >= 1 when vcenter is at its maximum, preventing
+  // waitForFrameStart from exiting on scanline 0 when a negative vsizeadjust
+  // makes myHeight exceed baseHeight and reduces centerOffset below maxVcenter.
   myMaxVcenter = BSPF::clamp<Int32>(ystartBase + (baseHeight - static_cast<Int32>(myHeight)) / 2 - 1, 0, TIAConstants::maxVcenter);
 
   //cout << "myVSizeAdjust " << myVSizeAdjust << " " << myHeight << '\n' << std::flush;

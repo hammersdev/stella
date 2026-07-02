@@ -19,20 +19,18 @@
 #include "CartGL.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CartridgeGL::CartridgeGL(const ByteBuffer& image, size_t size,
-                         string_view md5, const Settings& settings,
-                         size_t bsSize)
-  : CartridgeEnhanced(image, size, md5, settings, bsSize)
+CartridgeGL::CartridgeGL(ByteSpan image, string_view md5,
+                         const Settings& settings, size_t bsSize)
+  : CartridgeEnhanced(image, md5, settings, bsSize)
 {
   myBankShift = myRamBankShift = BANK_SHIFT;
   myRamSize = RAM_SIZE;
   myRamBankCount = RAM_BANKS;
 
-  if(size == 4_KB + 2_KB) // ROM containing RAM data?
+  if(image.size() == 6_KB) // ROM containing RAM data?
   {
-    myInitialRAM = std::make_unique<uInt8[]>(2_KB);
     // Copy the RAM image into a buffer for use in reset()
-    std::copy_n(image.get() + 4_KB, 2_KB, myInitialRAM.get());
+    myInitialRAM.assign(image.begin() + 4_KB, image.end());
   }
 }
 
@@ -50,11 +48,11 @@ void CartridgeGL::reset()
 
   myOrgAccess = mySystem->getPageAccess(0x1fc0);
 
-  initializeRAM(myRAM.get(), myRamSize);
-  if(myInitialRAM != nullptr)
+  initializeRAM(myRAM);
+  if(!myInitialRAM.empty())
   {
     // Copy the RAM image into my RAM buffer
-    std::copy_n(myInitialRAM.get(), 2_KB, myRAM.get());
+    std::copy_n(myInitialRAM.begin(), 2_KB, myRAM.begin());
   }
 }
 

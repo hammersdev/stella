@@ -24,6 +24,9 @@ class OSystem;
 #include "FBBackend.hxx"
 #include "FBSurfaceLIBRETRO.hxx"
 
+// Defined in libretro.cxx; posts an info-level notification to the frontend
+void libretro_show_message(const char* msg);
+
 /**
   This class implements a standard LIBRETRO framebuffer backend.  Most of
   the functionality is not used, since libretro has its own rendering system.
@@ -36,21 +39,10 @@ class FBBackendLIBRETRO : public FBBackend
     explicit FBBackendLIBRETRO(OSystem&) { }
     ~FBBackendLIBRETRO() override = default;
 
+    int scaleX(int x) const override { return x; }
+    int scaleY(int y) const override { return y; }
+
   protected:
-    /**
-      This method is called to map a given R/G/B triple to the screen palette.
-
-      @param r  The red component of the color.
-      @param g  The green component of the color.
-      @param b  The blue component of the color.
-    */
-    uInt32 mapRGB(uInt8 r, uInt8 g, uInt8 b) const override {
-      return (r << 16) | (g << 8) | b;
-    }
-    uInt32 mapRGBA(uInt8 r, uInt8 g, uInt8 b, uInt8 a) const override {
-      return (a << 24) | (r << 16) | (g << 8) | b;
-    }
-
     /**
       This method is called to query and initialize the video hardware
       for desktop and fullscreen resolution information.  Since several
@@ -60,12 +52,12 @@ class FBBackendLIBRETRO : public FBBackend
       @param windowedRes    Maximum resolution supported in windowed mode
       @param renderers      List of renderer names (internal name -> end-user name)
     */
-    void queryHardware(vector<Common::Size>& fullscreenRes,
-                       vector<Common::Size>& windowedRes,
+    void queryHardware(std::unordered_map<uInt32, Common::Size>& fullscreenRes,
+                       std::unordered_map<uInt32, Common::Size>& windowedRes,
                        VariantList& renderers) override
     {
-      fullscreenRes.emplace_back(1920, 1080);
-      windowedRes.emplace_back(1920, 1080);
+      fullscreenRes.emplace(0, Common::Size{1920, 1080});
+      windowedRes.emplace(0, Common::Size{1920, 1080});
 
       VarList::push_back(renderers, "software", "Software");
     }
@@ -78,7 +70,7 @@ class FBBackendLIBRETRO : public FBBackend
     */
     unique_ptr<FBSurface>
       createSurface(uInt32 w, uInt32 h, ScalingInterpolation,
-                    const uInt32*) const override
+                    const uInt32*) override
     {
       return std::make_unique<FBSurfaceLIBRETRO>(w, h);
     }
@@ -94,20 +86,42 @@ class FBBackendLIBRETRO : public FBBackend
     // description, if needed.
     //////////////////////////////////////////////////////////////////////
 
-    int scaleX(int x) const override { return x; }
-    int scaleY(int y) const override { return y; }
+    void showMessage(string_view message) override {
+      if(message != myLastMessage)
+      {
+        myLastMessage = message;
+        libretro_show_message(myLastMessage.c_str());
+      }
+    }
+    void showGaugeMessage(string_view message, string_view valueText,
+                          float /*value*/,
+                          float /*minValue*/, float /*maxValue*/) override {
+      const string combined = valueText.empty()
+        ? string{message}
+        : std::format("{}: {}", message, valueText);
+      if(combined != myLastMessage)
+      {
+        myLastMessage = combined;
+        libretro_show_message(myLastMessage.c_str());
+      }
+    }
     void setTitle(string_view) override { }
     void showCursor(bool) override { }
     bool fullScreen() const override { return true; }
-    void getRGB(uInt32, uInt8*, uInt8*, uInt8*) const override { }
-    void getRGBA(uInt32, uInt8*, uInt8*, uInt8*, uInt8*) const override { }
-    void getSurface(FBSurface&) const override { }
+    uInt32 rMask() const override { return 0x00FF0000; }
+    uInt32 gMask() const override { return 0x0000FF00; }
+    uInt32 bMask() const override { return 0x000000FF; }
+    uInt32 aMask() const override { return 0xFF000000; }
+    const FBSurface& compositedSurface() override {
+      static const FBSurfaceLIBRETRO tmp(0, 0); return tmp;
+    }
     bool isCurrentWindowPositioned() const override { return true; }
     Common::Point getCurrentWindowPos() const override { return Common::Point{}; }
     uInt32 getCurrentDisplayID() const override { return 0; }
     void clear() override { }
+    void flush() override { }
     bool setVideoMode(const VideoModeHandler::Mode&,
-                      int, const Common::Point&) override { return true; }
+                      uInt32, const Common::Point&) override { return true; }
     void grabMouse(bool) override { }
     void enableTextEvents(bool enable) override { }
     void renderToScreen() override { }
@@ -116,6 +130,8 @@ class FBBackendLIBRETRO : public FBBackend
     bool isDarkTheme() const override { return false; }
 
   private:
+    string myLastMessage;
+
     // Following constructors and assignment operators not supported
     FBBackendLIBRETRO() = delete;
     FBBackendLIBRETRO(const FBBackendLIBRETRO&) = delete;
@@ -124,4 +140,4 @@ class FBBackendLIBRETRO : public FBBackend
     FBBackendLIBRETRO& operator=(FBBackendLIBRETRO&&) = delete;
 };
 
-#endif
+#endif  // FB_BACKEND_LIBRETRO_HXX

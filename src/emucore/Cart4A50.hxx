@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGE4A50_HXX
-#define CARTRIDGE4A50_HXX
+#ifndef CARTRIDGE_4A50_HXX
+#define CARTRIDGE_4A50_HXX
 
 class System;
 
@@ -60,13 +60,11 @@ class Cartridge4A50 : public Cartridge
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
     */
-    Cartridge4A50(const ByteBuffer& image, size_t size, string_view md5,
-                  const Settings& settings);
+    Cartridge4A50(ByteSpan image, string_view md5, const Settings& settings);
     ~Cartridge4A50() override = default;
 
   public:
@@ -95,10 +93,9 @@ class Cartridge4A50 : public Cartridge
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span to the internal ROM image data
     */
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     /**
       Save the current state of this cart to the given Serializer.
@@ -213,7 +210,7 @@ class Cartridge4A50 : public Cartridge
 
   private:
     // The 128K ROM image of the cartridge
-    ByteBuffer myImage;
+    std::array<uInt8, 128_KB> myImage{};
 
     // The 32K of RAM on the cartridge
     std::array<uInt8, 32_KB> myRAM{};
@@ -244,4 +241,4 @@ class Cartridge4A50 : public Cartridge
     Cartridge4A50& operator=(Cartridge4A50&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_4A50_HXX

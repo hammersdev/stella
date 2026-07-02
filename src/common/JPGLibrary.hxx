@@ -23,14 +23,12 @@
 class OSystem;
 class FBSurface;
 
-#include <span>
-
 #include "Variant.hxx"
 #include "bspf.hxx"
 
 /**
   This class implements a thin wrapper around the nanojpeg library, and
-  abstracts all the irrelevant details other loading an actual image.
+  abstracts all the irrelevant details of loading an actual image.
 
   @author  Thomas Jentzsch
 */
@@ -57,30 +55,6 @@ class JPGLibrary
   private:
     OSystem& myOSystem;
 
-    // Holds the decoded bytes from the JPG file
-    static vector<std::byte> myFileBuffer;
-
-    /**
-      Load the decoded JPG data into the FBSurface.  The surface is
-      resized as necessary to accommodate the data.
-
-      @param surface  The FBSurface into which to place the JPG data
-      @param pixels   The decoded RGB pixel data
-      @param width    The image width in pixels
-      @param height   The image height in pixels
-    */
-    void loadImagetoSurface(FBSurface& surface, std::span<const uInt8> pixels,
-                            uInt32 width, uInt32 height);
-
-    /**
-      Read EXIF meta data chunks from the image.
-
-      @param file      The entire data of the JPG image
-      @param metaData  The meta data of the JPG image
-    */
-    static void readMetaData(std::span<const std::byte> file,
-                             VariantList& metaData);
-
   private:
     // Following constructors and assignment operators not supported
     JPGLibrary() = delete;
@@ -90,6 +64,6 @@ class JPGLibrary
     JPGLibrary& operator=(JPGLibrary&&) = delete;
 };
 
-#endif
+#endif  // JPG_LIBRARY_HXX
 
 #endif  // IMAGE_SUPPORT

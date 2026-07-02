@@ -23,11 +23,8 @@
 #include "repository/KeyValueRepositoryNoop.hxx"
 #include "repository/CompositeKeyValueRepositoryNoop.hxx"
 
-#ifdef _WIN32
-  const string SLASH = "\\";
-#else
-  const string SLASH = "/";
-#endif
+// Declared in libretro.cxx; provides the RetroArch save directory
+extern string libretro_save_dir;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 /**
   This class defines an OSystem object for libretro.
@@ -41,25 +38,6 @@ class OSystemLIBRETRO : public OSystem
   public:
     OSystemLIBRETRO() = default;
     ~OSystemLIBRETRO() override = default;
-
-    /**
-      Determine the base directory and home directory from the derived
-      class.  It can also use hints, as described below.
-
-      @param basedir  The base directory for all configuration files
-      @param homedir  The default directory to store various other files
-      @param useappdir  A hint that the base dir should be set to the
-                        app directory; not all ports can do this, so
-                        they are free to ignore it
-      @param usedir     A hint that the base dir should be set to this
-                        parameter; not all ports can do this, so
-                        they are free to ignore it
-    */
-    void getBaseDirectories(string& basedir, string& homedir,
-                            bool useappdir, string_view usedir) override
-    {
-      basedir = homedir = "." + SLASH;
-    }
 
     shared_ptr<KeyValueRepository>
     getSettingsRepository() override {
@@ -77,8 +55,31 @@ class OSystemLIBRETRO : public OSystem
     }
 
   protected:
+    /**
+      Determine the base directory and home directory from the derived
+      class.  It can also use hints, as described below.
+
+      @param basedir  The base directory for all configuration files
+      @param homedir  The default directory to store various other files
+      @param useappdir  A hint that the base dir should be set to the
+                        app directory; not all ports can do this, so
+                        they are free to ignore it
+      @param usedir     A hint that the base dir should be set to this
+                        parameter; not all ports can do this, so
+                        they are free to ignore it
+    */
+    void getBaseDirectories(string& basedir, string& homedir,
+                            bool useappdir, string_view usedir) override
+    {
+      // Use a Stella subdirectory under the RetroArch save directory; fall back to "./"
+      if(!libretro_save_dir.empty())
+        basedir = homedir = libretro_save_dir + "stella" + FSNode::PATH_SEPARATOR;
+      else
+        basedir = homedir = string(".") + FSNode::PATH_SEPARATOR;
+    }
+
     void initPersistence(FSNode& basedir) override { }
-    string describePresistence() override { return "none"; }
+    string describePersistence() override { return "none"; }
 
   private:
     // Following constructors and assignment operators not supported
@@ -88,4 +89,4 @@ class OSystemLIBRETRO : public OSystem
     OSystemLIBRETRO& operator=(OSystemLIBRETRO&&) = delete;
 };
 
-#endif
+#endif  // OSYSTEM_LIBRETRO_HXX

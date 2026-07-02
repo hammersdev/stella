@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEEF_HXX
-#define CARTRIDGEEF_HXX
+#ifndef CARTRIDGE_EF_HXX
+#define CARTRIDGE_EF_HXX
 
 class System;
 
@@ -27,9 +27,12 @@ class System;
 #endif
 
 /**
-  Cartridge class used for Homestar Runner by Paul Slocum.
-  There are 16 4K banks (total of 64K ROM).
-  Accessing $1FE0 - $1FEF switches to each bank.
+  Cartridge class used for Homestar Runner by Paul Slocum.  The scheme
+  provides 16 4K banks (64K total), selected by accessing any address in
+  the range $1FE0-$1FEF: the low 4 bits of the address determine the bank
+  number (bank 0 at $1FE0, bank 15 at $1FEF).  The name "EF" derives from
+  this hotspot range.  DF (32 banks) and BF (64 banks) are direct extensions
+  of this same scheme with a wider hotspot window.
 
   @author  Stephen Anthony, Thomas Jentzsch
 */
@@ -41,17 +44,21 @@ class CartridgeEF : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeEF(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeEF(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 64_KB);
     ~CartridgeEF() override = default;
 
   public:
+    /**
+      Reset device to its power-on state
+    */
+    void reset() override;
+
     /**
       Get a descriptor for the device name (used in error checking).
 
@@ -72,6 +79,7 @@ class CartridgeEF : public CartridgeEnhanced
   #endif
 
     uInt16 hotspot() const override { return 0x1FE0; }
+    bool supportsSaveDisassembly() const override { return true; }
 
   private:
     bool checkSwitchBank(uInt16 address, uInt8) override;
@@ -86,4 +94,4 @@ class CartridgeEF : public CartridgeEnhanced
     CartridgeEF& operator=(CartridgeEF&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_EF_HXX

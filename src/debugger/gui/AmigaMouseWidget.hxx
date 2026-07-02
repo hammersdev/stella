@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef AMIGAMOUSE_WIDGET_HXX
-#define AMIGAMOUSE_WIDGET_HXX
+#ifndef AMIGA_MOUSE_WIDGET_HXX
+#define AMIGA_MOUSE_WIDGET_HXX
 
 class Controller;
 
@@ -26,7 +26,8 @@ class AmigaMouseWidget : public PointingDeviceWidget
 {
   public:
     AmigaMouseWidget(GuiObject* boss, const GUI::Font& font, int x, int y,
-                     Controller& controller);
+                     Controller& controller)
+      : PointingDeviceWidget(boss, font, x, y, controller) { }
 
     ~AmigaMouseWidget() override = default;
 
@@ -35,7 +36,9 @@ class AmigaMouseWidget : public PointingDeviceWidget
       0b00, 0b10, 0b11, 0b01
     };
 
-    uInt8 getGrayCodeTable(int index, int direction) const override;
+    uInt8 getGrayCodeTable(int index, int /*direction*/) const override {
+      return myGrayCodeTable[index];
+    }
 
     // Following constructors and assignment operators not supported
     AmigaMouseWidget() = delete;
@@ -45,4 +48,4 @@ class AmigaMouseWidget : public PointingDeviceWidget
     AmigaMouseWidget& operator=(AmigaMouseWidget&&) = delete;
 };
 
-#endif
+#endif  // AMIGA_MOUSE_WIDGET_HXX

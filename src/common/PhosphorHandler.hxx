@@ -80,7 +80,7 @@ class PhosphorHandler
     bool myUsePhosphor{false};
 
     // Amount to blend when using phosphor effect
-    float myPhosphorPercent{0.50F};
+    float myPhosphorPercent{0.5F};
     bool myLUTInitialized{false};
 
     // Precalculated averaged phosphor colors
@@ -94,4 +94,4 @@ class PhosphorHandler
     PhosphorHandler& operator=(const PhosphorHandler&&) = delete;
 };
 
-#endif // PHOSPHOR_HANDLER_HXX
+#endif  // PHOSPHOR_HANDLER_HXX

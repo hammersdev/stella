@@ -1,9 +1,6 @@
 MODULE := src/debugger/gui
 
 MODULE_OBJS := \
-        src/debugger/gui/AmigaMouseWidget.o \
-        src/debugger/gui/AtariMouseWidget.o \
-        src/debugger/gui/AtariVoxWidget.o \
         src/debugger/gui/AudioWidget.o \
         src/debugger/gui/BoosterWidget.o \
         src/debugger/gui/Cart03E0Widget.o \
@@ -27,6 +24,7 @@ MODULE_OBJS := \
         src/debugger/gui/CartCMWidget.o \
         src/debugger/gui/CartCTYWidget.o \
         src/debugger/gui/CartCVWidget.o \
+        src/debugger/gui/CartDevCardWidget.o \
         src/debugger/gui/CartDFSCWidget.o \
         src/debugger/gui/CartDFWidget.o \
         src/debugger/gui/CartDPCPlusWidget.o \
@@ -67,6 +65,7 @@ MODULE_OBJS := \
         src/debugger/gui/DataGridWidget.o \
         src/debugger/gui/DebuggerDialog.o \
         src/debugger/gui/DelayQueueWidget.o \
+        src/debugger/gui/DisasmColorsDialog.o \
         src/debugger/gui/DrivingWidget.o \
         src/debugger/gui/FlashWidget.o \
         src/debugger/gui/GenesisWidget.o \
@@ -83,15 +82,13 @@ MODULE_OBJS := \
         src/debugger/gui/RomListSettings.o \
         src/debugger/gui/RomListWidget.o \
         src/debugger/gui/RomWidget.o \
-        src/debugger/gui/SaveKeyWidget.o \
         src/debugger/gui/TiaInfoWidget.o \
         src/debugger/gui/TiaOutputWidget.o \
         src/debugger/gui/TiaWidget.o \
         src/debugger/gui/TiaZoomWidget.o \
         src/debugger/gui/ToggleBitWidget.o \
         src/debugger/gui/TogglePixelWidget.o \
-        src/debugger/gui/ToggleWidget.o \
-        src/debugger/gui/TrakBallWidget.o
+        src/debugger/gui/ToggleWidget.o
 
 MODULE_TEST_OBJS =
 

@@ -37,28 +37,22 @@ namespace {
   constexpr bool BUS_STUFF_ON(uInt8 mode) { return (mode & 0x0F) == 0; }
   constexpr bool DIGITAL_AUDIO_ON(uInt8 mode) { return (mode & 0xF0) == 0; }
 
-  constexpr uInt32 getUInt32(const uInt8* _array, size_t _address) {
-    return static_cast<uInt32>(_array[_address + 0]        +
-                              (_array[_address + 1] << 8)  +
-                              (_array[_address + 2] << 16) +
-                              (_array[_address + 3] << 24));
-  }
-} // namespace
+}  // namespace
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CartridgeBUS::CartridgeBUS(const ByteBuffer& image, size_t size,
-                           string_view md5, const Settings& settings)
-  : CartridgeARM(settings, md5),
-    myImage{std::make_unique<uInt8[]>(32_KB)}
+CartridgeBUS::CartridgeBUS(ByteSpan image, string_view md5,
+                           const Settings& settings)
+  : CartridgeARM(settings, md5)
 {
   // Copy the ROM image into my buffer
-  std::copy_n(image.get(), std::min(32_KB, size), myImage.get());
+  const size_t size = image.size();
+  std::copy_n(image.data(), std::min(32_KB, size), myImage.data());
 
   // Detect cart version
   setupVersion();
 
-  // Pointer to BUS driver in RAM
-  myDriverImage = myRAM.data();
+  // Subspan for the BUS driver in RAM (always at start of myRAM)
+  myDriverImage = ByteMSpan{myRAM};
 
   const bool devSettings = settings.getBool("dev.settings");
 
@@ -68,14 +62,14 @@ CartridgeBUS::CartridgeBUS(const ByteBuffer& image, size_t size,
     createRomAccessArrays(24_KB);
 
     // Pointer to the program ROM (28K @ 0 byte offset)
-    myProgramImage = myImage.get() + 3_KB;
+    myProgramImage = ByteMSpan{myImage}.subspan(3_KB);
 
-    // Pointer to the display RAM
-    myDisplayImage = myRAM.data() + 0x0C00;
+    // Subspan for the display RAM (@ 0x0C00 offset)
+    myDisplayImage = ByteMSpan{myRAM}.subspan(0x0C00);
 
     // Create Thumbulator ARM emulator
     myThumbEmulator = std::make_unique<Thumbulator>(
-      reinterpret_cast<uInt16*>(myImage.get()),
+      reinterpret_cast<uInt16*>(myImage.data()),
       reinterpret_cast<uInt16*>(myRAM.data()),
       static_cast<uInt32>(32_KB),
       0x00000C00,
@@ -93,14 +87,14 @@ CartridgeBUS::CartridgeBUS(const ByteBuffer& image, size_t size,
     createRomAccessArrays(28_KB);
 
     // Pointer to the program ROM (28K @ 0 byte offset)
-    myProgramImage = myImage.get() + 4_KB;
+    myProgramImage = ByteMSpan{myImage}.subspan(4_KB);
 
-    // Pointer to the display RAM
-    myDisplayImage = myRAM.data() + 0x0800;
+    // Subspan for the display RAM (@ 0x0800 offset)
+    myDisplayImage = ByteMSpan{myRAM}.subspan(0x0800);
 
     // Create Thumbulator ARM emulator
     myThumbEmulator = std::make_unique<Thumbulator>(
-      reinterpret_cast<uInt16*>(myImage.get()),
+      reinterpret_cast<uInt16*>(myImage.data()),
       reinterpret_cast<uInt16*>(myRAM.data()),
       static_cast<uInt32>(32_KB),
       0x00000800,
@@ -113,12 +107,12 @@ CartridgeBUS::CartridgeBUS(const ByteBuffer& image, size_t size,
       this);
   }
 
-  this->setInitialState();  // NOLINT
+  this->setInitialState();  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
 
   myPlusROM = std::make_unique<PlusROM>(mySettings, *this);
 
   // Determine whether we have a PlusROM cart
-  myPlusROM->initialize(myImage, size);
+  myPlusROM->initialize(ByteSpan{myImage}.first(size));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -126,12 +120,12 @@ void CartridgeBUS::reset()
 {
   if (myBUSSubtype == BUSSubtype::BUS0)
   {
-    initializeRAM(myRAM.data() + 3_KB, 5_KB);
+    initializeRAM(ByteMSpan{myRAM}.subspan(3_KB, 5_KB));
     initializeStartBank(5); // BUS0 always starts in bank 5
   }
   else
   {
-    initializeRAM(myRAM.data() + 2_KB, 6_KB);
+    initializeRAM(ByteMSpan{myRAM}.subspan(2_KB, 6_KB));
     initializeStartBank(6); // BUS1+ always starts in bank 6
   }
 
@@ -150,9 +144,9 @@ void CartridgeBUS::setInitialState()
 {
   // Copy initial BUS driver to Harmony RAM
   if (myBUSSubtype == BUSSubtype::BUS0)
-    std::copy_n(myImage.get(), 3_KB, myDriverImage);
+    std::copy_n(myImage.data(), 3_KB, myDriverImage.begin());
   else
-    std::copy_n(myImage.get(), 2_KB, myDriverImage);
+    std::copy_n(myImage.data(), 2_KB, myDriverImage.begin());
 
   myMusicWaveformSize.fill(27);
 
@@ -201,7 +195,7 @@ inline void CartridgeBUS::updateMusicModeDataFetchers()
 
   // Let's update counters and flags of the music mode data fetchers
   if(wholeClocks > 0)
-    for(int x = 0; x <= 2; ++x)
+    for(size_t x = 0; x < myMusicCounters.size(); ++x)
       myMusicCounters[x] += myMusicFrequencies[x] * wholeClocks;
 }
 
@@ -835,9 +829,8 @@ bool CartridgeBUS::patch(uInt16 address, uInt8 value)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-const ByteBuffer& CartridgeBUS::getImage(size_t& size) const
+ByteSpan CartridgeBUS::getImage() const
 {
-  size = 32_KB;
   return myImage;
 }
 
@@ -871,25 +864,31 @@ uInt8 CartridgeBUS::busOverdrive(uInt16 address)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt32 CartridgeBUS::thumbCallback(uInt8 function, uInt32 value1, uInt32 value2)
 {
-  switch (function)
+  // Functions 0-3 use value1 as a music-voice index.  It arrives directly from
+  // an ARM register, so reject out-of-range values to avoid indexing the
+  // fixed-size music arrays out of bounds.
+  if(value1 >= myMusicFrequencies.size())
+    return 0;
+
+  switch(function)
   {
     case 0:
       // _SetNote - set the note/frequency
       myMusicFrequencies[value1] = value2;
       break;
 
+    case 1:
       // _ResetWave - reset counter,
       // used to make sure digital samples start from the beginning
-    case 1:
       myMusicCounters[value1] = 0;
       break;
 
-      // _GetWavePtr - return the counter
     case 2:
+      // _GetWavePtr - return the counter
       return myMusicCounters[value1];
 
-      // _SetWaveSize - set size of waveform buffer
     case 3:
+      // _SetWaveSize - set size of waveform buffer
       myMusicWaveformSize[value1] = value2;
       break;
 
@@ -903,10 +902,7 @@ uInt32 CartridgeBUS::thumbCallback(uInt8 function, uInt32 value1, uInt32 value2)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt8 CartridgeBUS::internalRamGetValue(uInt16 addr) const
 {
-  if(addr < internalRamSize())
-    return myRAM[addr];
-  else
-    return 0;
+  return (addr < internalRamSize()) ? myRAM[addr] : 0;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1001,56 +997,31 @@ bool CartridgeBUS::load(Serializer& in)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt32 CartridgeBUS::getDatastreamPointer(uInt8 index) const
 {
-  const uInt16 address = myDatastreamBase + index * 4;
-
-  return myRAM[address + 0]        +  // low byte
-        (myRAM[address + 1] << 8)  +
-        (myRAM[address + 2] << 16) +
-        (myRAM[address + 3] << 24) ;  // high byte
+  return getUInt32(myRAM.data(), myDatastreamBase + index * 4);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeBUS::setDatastreamPointer(uInt8 index, uInt32 value)
 {
-  const uInt16 address = myDatastreamBase + index * 4;
-
-  myRAM[address + 0] = value & 0xff;          // low byte
-  myRAM[address + 1] = (value >> 8) & 0xff;
-  myRAM[address + 2] = (value >> 16) & 0xff;
-  myRAM[address + 3] = (value >> 24) & 0xff;  // high byte
+  putUInt32(myRAM.data(), myDatastreamBase + index * 4, value);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt32 CartridgeBUS::getDatastreamIncrement(uInt8 index) const
 {
-  const uInt16 address = myDatastreamIncrementBase + index * 4;
-
-  return myRAM[address + 0]        +   // low byte
-        (myRAM[address + 1] << 8)  +
-        (myRAM[address + 2] << 16) +
-        (myRAM[address + 3] << 24) ;   // high byte
+  return getUInt32(myRAM.data(), myDatastreamIncrementBase + index * 4);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeBUS::setDatastreamIncrement(uInt8 index, uInt32 value)
 {
-  const uInt16 address = myDatastreamIncrementBase + index * 4;
-
-  myRAM[address + 0] = value & 0xff;          // low byte
-  myRAM[address + 1] = (value >> 8) & 0xff;
-  myRAM[address + 2] = (value >> 16) & 0xff;
-  myRAM[address + 3] = (value >> 24) & 0xff;  // high byte
+  putUInt32(myRAM.data(), myDatastreamIncrementBase + index * 4, value);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt32 CartridgeBUS::getAddressMap(uInt8 index) const
 {
-  const uInt16 address = myDatastreamMapBase + index * 4;
-
-  return myRAM[address + 0]        +   // low byte
-        (myRAM[address + 1] << 8)  +
-        (myRAM[address + 2] << 16) +
-        (myRAM[address + 3] << 24) ;   // high byte
+  return getUInt32(myRAM.data(), myDatastreamMapBase + index * 4);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1062,18 +1033,7 @@ uInt32 CartridgeBUS::getWaveform(uInt8 index) const
   // 0x40000840 for 2
   // ...
 
-//  return myBUSRAM[WAVEFORM + index*4 + 0]        +   // low byte
-//        (myBUSRAM[WAVEFORM + index*4 + 1] << 8)  +
-//        (myBUSRAM[WAVEFORM + index*4 + 2] << 16) +
-//        (myBUSRAM[WAVEFORM + index*4 + 3] << 24) -   // high byte
-//         0x40000800;
-
-  const uInt16 address = myWaveformBase + index * 4;
-
-  uInt32 result = myRAM[address + 0]        +  // low byte
-                 (myRAM[address + 1] << 8)  +
-                 (myRAM[address + 2] << 16) +
-                 (myRAM[address + 3] << 24);   // high byte
+  uInt32 result = getUInt32(myRAM.data(), myWaveformBase + index * 4);
 
   result -= 0x40000800;
 
@@ -1086,13 +1046,7 @@ uInt32 CartridgeBUS::getWaveform(uInt8 index) const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt32 CartridgeBUS::getSample()
 {
-  const uInt16 address = myWaveformBase;
-
-  const uInt32 result = myRAM[address + 0]        +  // low byte
-                       (myRAM[address + 1] << 8)  +
-                       (myRAM[address + 2] << 16) +
-                       (myRAM[address + 3] << 24);   // high byte
-  return result;
+  return getUInt32(myRAM.data(), myWaveformBase);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1104,13 +1058,7 @@ uInt32 CartridgeBUS::getWaveformSize(uInt8 index) const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeBUS::setAddressMap(uInt8 index, uInt32 value)
 {
-  const uInt16 address = myDatastreamMapBase + index * 4;
-
-  myRAM[address + 0] = value & 0xff;          // low byte
-  myRAM[address + 1] = (value >> 8) & 0xff;
-  myRAM[address + 2] = (value >> 16) & 0xff;
-  myRAM[address + 3] = (value >> 24) & 0xff;  // high byte
-
+  putUInt32(myRAM.data(), myDatastreamMapBase + index * 4, value);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1145,7 +1093,7 @@ uInt32 CartridgeBUS::scanBUSDriver(uInt32 searchValue)
 {
   // original BUS driver is 3K in size. Later BUS drivers are 2K in size.
   for (int i = 0; i < 3072; i += 4)
-    if (getUInt32(myImage.get(), i) == searchValue)
+    if (getUInt32(myImage.data(), i) == searchValue)
       return i;
 
   return 0xFFFFFFFF;
@@ -1201,16 +1149,11 @@ string CartridgeBUS::name() const
 {
   switch(myBUSSubtype)
   {
-    case BUSSubtype::BUS0:
-      return "CartridgeBUS0";
-    case BUSSubtype::BUS1:
-      return "CartridgeBUS1";
-    case BUSSubtype::BUS2:
-      return "CartridgeBUS2";
-    case BUSSubtype::BUS3:
-      return "CartridgeBUS3";
-    default:
-      return "Unsupported BUS";
+    case BUSSubtype::BUS0:  return "CartridgeBUS0";
+    case BUSSubtype::BUS1:  return "CartridgeBUS1";
+    case BUSSubtype::BUS2:  return "CartridgeBUS2";
+    case BUSSubtype::BUS3:  return "CartridgeBUS3";
+    default:                return "Unsupported BUS";
   }
 }
 

@@ -21,25 +21,18 @@
 AudioQueue::AudioQueue(uInt32 fragmentSize, uInt32 capacity, bool isStereo)
   : myFragmentSize{fragmentSize},
     myIsStereo{isStereo},
-    myFragmentQueue{capacity},
-    myAllFragments{capacity + 2}
+    myFragmentQueue{capacity}
 {
-  const uInt8 sampleSize = myIsStereo ? 2 : 1;
+  const uInt32 sampleSize = myIsStereo ? 2U : 1U;
+  const size_t fragmentStride = static_cast<size_t>(myFragmentSize) * sampleSize;
 
-  myFragmentBuffer = std::make_unique<Int16[]>(
-      static_cast<size_t>(myFragmentSize) * sampleSize * (capacity + 2));
+  myFragmentBuffer = std::make_unique<Int16[]>(fragmentStride * (capacity + 2));
 
   for (uInt32 i = 0; i < capacity; ++i)
-    myFragmentQueue[i] = myAllFragments[i] = myFragmentBuffer.get() +
-      static_cast<size_t>(myFragmentSize) * sampleSize * i;
+    myFragmentQueue[i] = myFragmentBuffer.get() + fragmentStride * i;
 
-  myAllFragments[capacity] = myFirstFragmentForEnqueue =
-    myFragmentBuffer.get() + static_cast<size_t>(myFragmentSize) * sampleSize *
-    capacity;
-
-  myAllFragments[capacity + 1] = myFirstFragmentForDequeue =
-    myFragmentBuffer.get() + static_cast<size_t>(myFragmentSize) * sampleSize *
-    (capacity + 1);
+  myFirstFragmentForEnqueue = myFragmentBuffer.get() + fragmentStride * capacity;
+  myFirstFragmentForDequeue = myFragmentBuffer.get() + fragmentStride * (capacity + 1);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -73,7 +66,7 @@ Int16* AudioQueue::enqueue(Int16* fragment)
 {
   const std::scoped_lock guard(myMutex);
 
-  Int16* newFragment = nullptr;  // NOLINT (must not be const)
+  Int16* newFragment = nullptr;
 
   if (!fragment) {
     if (!myFirstFragmentForEnqueue) throw std::runtime_error("enqueue called empty");
@@ -84,15 +77,15 @@ Int16* AudioQueue::enqueue(Int16* fragment)
     return newFragment;
   }
 
-  const auto capacity = static_cast<uInt8>(myFragmentQueue.size());
-  const uInt8 fragmentIndex = (myNextFragment + mySize) % capacity;
+  const auto cap = static_cast<uInt32>(myFragmentQueue.size());
+  const uInt32 fragmentIndex = (myNextFragment + mySize) % cap;
 
-  newFragment = myFragmentQueue.at(fragmentIndex);
-  myFragmentQueue.at(fragmentIndex) = fragment;
+  newFragment = myFragmentQueue[fragmentIndex];
+  myFragmentQueue[fragmentIndex] = fragment;
 
-  if (mySize < capacity) ++mySize;
+  if (mySize < cap) ++mySize;
   else {
-    myNextFragment = (myNextFragment + 1) % capacity;
+    myNextFragment = (myNextFragment + 1) % cap;
     if (!myIgnoreOverflows) myOverflowLogger.log();
   }
 
@@ -113,11 +106,12 @@ Int16* AudioQueue::dequeue(Int16* fragment)
     myFirstFragmentForDequeue = nullptr;
   }
 
-  Int16* nextFragment = myFragmentQueue.at(myNextFragment);  // NOLINT (must not be const)
-  myFragmentQueue.at(myNextFragment) = fragment;
+  Int16* nextFragment = myFragmentQueue[myNextFragment];
+  myFragmentQueue[myNextFragment] = fragment;
 
   --mySize;
-  myNextFragment = (myNextFragment + 1) % myFragmentQueue.size();
+  if (++myNextFragment == myFragmentQueue.size())
+    myNextFragment = 0;
 
   return nextFragment;
 }

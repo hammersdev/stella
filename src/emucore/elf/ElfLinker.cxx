@@ -23,6 +23,7 @@
 
 #include "ElfLinker.hxx"
 
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
 namespace {
   std::optional<ElfLinker::SegmentType> determineSegmentType(const ElfFile::Section& section)
   {
@@ -168,7 +169,7 @@ ElfLinker::RelocatedSymbol ElfLinker::findRelocatedSymbol(string_view name) cons
     if (!myRelocatedSymbols[i])
       ElfSymbolResolutionError::raise("symbol could not be relocated");
 
-    return myRelocatedSymbols[i].value();  // NOLINT: we know the value is valid
+    return myRelocatedSymbols[i].value();
   }
 
   ElfSymbolResolutionError::raise("symbol not found");
@@ -239,8 +240,11 @@ void ElfLinker::relocateSections()
 
     uInt32& segmentSize = getSegmentSizeRef(*segmentType);
 
-    if (segmentSize % section.align)
-      segmentSize = (segmentSize / section.align + 1) * section.align;
+    // A section alignment of 0 (or 1) means no constraint; guard against a
+    // crafted ELF that would otherwise trigger a divide-by-zero here
+    const uInt32 align = section.align ? section.align : 1;
+    if (segmentSize % align)
+      segmentSize = (segmentSize / align + 1) * align;
 
     myRelocatedSections[i] = {*segmentType, segmentSize};
     segmentSize += section.size;
@@ -251,8 +255,9 @@ void ElfLinker::relocateSections()
     const auto& section = sections[i];
 
     if (section.type == ElfFile::SHT_NOBITS) {
-      if (myDataSize % section.align)
-        myDataSize = (myDataSize / section.align + 1) * section.align;
+      const uInt32 align = section.align ? section.align : 1;
+      if (myDataSize % align)
+        myDataSize = (myDataSize / align + 1) * align;
 
       myRelocatedSections[i] = {SegmentType::data, myDataSize};
       myDataSize += section.size;
@@ -413,7 +418,7 @@ void ElfLinker::copyInitArrays(vector<uInt32>& initArray, const std::unordered_m
   const auto& sections = myElf.getSections();
 
   // Copy init arrays
-  for (const auto [iSection, offset]: relocatedInitArrays) {
+  for (const auto& [iSection, offset]: relocatedInitArrays) {
     const auto& section = sections[iSection];
 
     for (size_t i = 0; i < section.size; i += 4)
@@ -425,7 +430,7 @@ void ElfLinker::copyInitArrays(vector<uInt32>& initArray, const std::unordered_m
 void ElfLinker::applyRelocationToSection(const ElfFile::Relocation& relocation, size_t iSection)
 {
   const auto& targetSection = myElf.getSections()[iSection];
-  const auto& targetSectionRelocated = myRelocatedSections[iSection].value(); // NOLINT
+  const auto& targetSectionRelocated = myRelocatedSections[iSection].value();
   const auto& symbol = myElf.getSymbols()[relocation.symbol];
   const auto& relocatedSymbol = myRelocatedSymbols[relocation.symbol];
 
@@ -529,3 +534,4 @@ void ElfLinker::applyRelocationsToInitArrays(uInt8 initArrayType, vector<uInt32>
     }
   }
 }
+// NOLINTEND(bugprone-unchecked-optional-access)

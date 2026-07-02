@@ -18,7 +18,7 @@
 #ifndef FS_NODE_POSIX_HXX
 #define FS_NODE_POSIX_HXX
 
-#include "FSNode.hxx"
+#include <optional>
 
 #ifdef BSPF_MACOS
   #include <sys/types.h>
@@ -32,6 +32,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <unistd.h>
+
+#include "FSNode.hxx"
 
 /*
  * Implementation of the Stella file system API based on POSIX (for Linux
@@ -62,8 +64,8 @@ class FSNodePOSIX : public AbstractFSNode
     void setName(string_view name) override { _displayName = name; }
     const string& getPath() const override { return _path; }
     string getShortPath() const override;
-    bool isDirectory() const override { return _isDirectory; }
-    bool isFile() const override      { return _isFile;      }
+    bool isDirectory() const override { return _kind == NodeKind::Directory; }
+    bool isFile()      const override { return _kind == NodeKind::File;      }
     bool isReadable() const override  { return access(_path.c_str(), R_OK) == 0; }
     bool isWritable() const override  { return access(_path.c_str(), W_OK) == 0; }
     bool makeDir() override;
@@ -74,20 +76,30 @@ class FSNodePOSIX : public AbstractFSNode
     AbstractFSNodePtr getParent() const override;
     bool getChildren(AbstractFSList& list, ListMode mode) const override;
 
+    std::ifstream openIFStream(std::ios::openmode mode) const override {
+      return std::ifstream(_path, mode);
+    }
+    std::ofstream openOFStream(std::ios::openmode mode) const override {
+      return std::ofstream(_path, mode);
+    }
+    std::fstream openFStream(std::ios::openmode mode) const override {
+      return std::fstream(_path, mode);
+    }
+
   private:
     /**
-     * Set the _isDirectory/_isFile/_size flags using stat().
+     * Set the _kind/_size flags using stat().
      *
      * @return  Success/failure of stat() function
      */
     bool setFlags();
 
-    static const string& homeDir();
-
   private:
+    enum class NodeKind : uInt8 { Invalid, File, Directory };
+
     string _path, _displayName;
-    bool _isFile{false}, _isDirectory{true};
-    mutable size_t _size{0};
+    NodeKind _kind{NodeKind::Directory};
+    mutable std::optional<size_t> _size{std::nullopt};
 };
 
-#endif
+#endif  // FS_NODE_POSIX_HXX

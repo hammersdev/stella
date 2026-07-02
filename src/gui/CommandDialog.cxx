@@ -39,13 +39,12 @@ CommandDialog::CommandDialog(OSystem& osystem, DialogContainer& parent)
             VBORDER      = Dialog::vBorder(),
             HBORDER      = Dialog::hBorder(),
             VGAP         = Dialog::vGap();
-            //INDENT       = Dialog::indent();
   const int HGAP      = Dialog::buttonGap(),
             rowHeight = buttonHeight + VGAP;
   // Set real dimensions
   _w = 3 * (buttonWidth + HGAP) - HGAP + HBORDER * 2;
   _h = 6 * rowHeight - VGAP + VBORDER * 2 + _th;
-  ButtonWidget* bw = nullptr;  // NOLINT (erroneously marked as const)
+  ButtonWidget* bw = nullptr;
   WidgetArray wid;
   int xoffset = HBORDER, yoffset = VBORDER + _th;
 
@@ -259,11 +258,8 @@ void CommandDialog::processCancel()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CommandDialog::updateSlot(int slot)
 {
-  std::ostringstream buf;
-  buf << " " << slot;
-
-  mySaveStateButton->setLabel("Save State" + buf.str());
-  myLoadStateButton->setLabel("Load State" + buf.str());
+  mySaveStateButton->setLabel(std::format("Save State {}", slot));
+  myLoadStateButton->setLabel(std::format("Load State {}", slot));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -275,9 +271,8 @@ void CommandDialog::updateTVFormat()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CommandDialog::updatePalette()
 {
-  string palette, label;
-
-  palette = instance().settings().getString("palette");
+  const string& palette = instance().settings().getString("palette");
+  string label;
   if(BSPF::equalsIgnoreCase(palette, PaletteHandler::SETTING_STANDARD))
     label = "Stella Palette";
   else if(BSPF::equalsIgnoreCase(palette, PaletteHandler::SETTING_Z26))

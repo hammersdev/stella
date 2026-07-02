@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef AUDIO_PARAMTERS_HXX
-#define AUDIO_PARAMTERS_HXX
+#ifndef AUDIO_SETTINGS_HXX
+#define AUDIO_SETTINGS_HXX
 
 #include "bspf.hxx"
 
@@ -58,12 +58,13 @@ class AudioSettings
     static constexpr ResamplingQuality DEFAULT_RESAMPLING_QUALITY   = ResamplingQuality::lanczos_2;
     static constexpr bool DEFAULT_STEREO                            = false;
     static constexpr uInt32 DEFAULT_VOLUME                          = 80;
-    static constexpr uInt32 DEFAULT_DEVICE                          = 0;
     static constexpr bool DEFAULT_ENABLED                           = true;
     static constexpr uInt32 DEFAULT_DPC_PITCH                       = 20000;
 
     static constexpr int MAX_BUFFER_SIZE = 10;
     static constexpr int MAX_HEADROOM    = 10;
+
+    static constexpr uInt32 MIN_DPC_PITCH = 10000;
 
   public:
 
@@ -87,8 +88,6 @@ class AudioSettings
 
     uInt32 volume() const;
 
-    uInt32 device() const;
-
     bool enabled() const;
 
     uInt32 dpcPitch() const;
@@ -111,8 +110,6 @@ class AudioSettings
 
     void setVolume(uInt32 volume);
 
-    void setDevice(uInt32 device);
-
     void setEnabled(bool isEnabled);
 
     void setPersistent(bool isPersistent);
@@ -125,7 +122,7 @@ class AudioSettings
 
   private:
 
-    Settings& mySettings;  // NOLINT: we want a reference here
+    Settings& mySettings;
 
     Preset myPreset{Preset::custom};
 
@@ -139,4 +136,4 @@ class AudioSettings
     bool myIsPersistent{true};
 };
 
-#endif // AUDIO_PARAMTERS_HXX
+#endif  // AUDIO_SETTINGS_HXX

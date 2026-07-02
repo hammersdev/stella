@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEENHANCED_HXX
-#define CARTRIDGEENHANCED_HXX
+#ifndef CARTRIDGE_ENHANCED_HXX
+#define CARTRIDGE_ENHANCED_HXX
 
 class System;
 
@@ -28,7 +28,15 @@ class System;
 #endif
 
 /**
-  Enhanced cartridge base class used for multiple cart types.
+  Base class for the majority of bankswitching cartridge types in Stella.
+  CartridgeEnhanced provides the common infrastructure shared by nearly all
+  schemes: ROM/RAM bank management, page-table mapping into the System address
+  space, optional SuperChip (SC) RAM integration, PlusROM network support,
+  and the standard peek/poke dispatch.
+
+  Concrete subclasses implement their specific scheme by overriding
+  checkSwitchBank() (called on every bus access) and, when needed, hotspot()
+  to declare the address range that triggers bank changes.
 
   @author  Thomas Jentzsch
 */
@@ -40,15 +48,13 @@ class CartridgeEnhanced : public Cartridge
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeEnhanced(const ByteBuffer& image, size_t size,
-                      string_view md5, const Settings& settings,
-                      size_t bsSize);
+    CartridgeEnhanced(ByteSpan image, string_view md5,
+                      const Settings& settings, size_t bsSize);
     ~CartridgeEnhanced() override = default;
 
   public:
@@ -141,10 +147,9 @@ class CartridgeEnhanced : public Cartridge
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span to the internal ROM image data
     */
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     /**
       Save the current state of this cart to the given Serializer.
@@ -183,8 +188,10 @@ class CartridgeEnhanced : public Cartridge
 
       @return  The first hotspot address (usually in ROM) space or 0
     */
-    virtual uInt16 hotspot() const { return 0; }
+    uInt16 hotspot() const override { return 0; }
     // TODO: handle cases where there the hotspots cover multiple pages
+
+    uInt32 internalRamSize() const override { return static_cast<uInt32>(myRamSize); }
 
     /**
       Answer whether this is a PlusROM cart.  Note that until the
@@ -258,20 +265,17 @@ class CartridgeEnhanced : public Cartridge
     // Flag, true if write port is at high and read port is at low address
     bool myRamWpHigh{RAM_HIGH_WP};
 
-    // Pointer to a dynamically allocated ROM image of the cartridge
-    ByteBuffer myImage{nullptr};
+    // Dynamically allocated ROM image of the cartridge
+    ByteArray myImage;
 
     // Contains the offset into the ROM image for each of the bank segments
-    DWordBuffer myCurrentSegOffset{nullptr};
+    uIntArray myCurrentSegOffset;
 
     // Indicates whether to use direct ROM peeks or not
     bool myDirectPeek{true};
 
-    // Pointer to a dynamically allocated RAM area of the cartridge
-    ByteBuffer myRAM{nullptr};
-
-    // The size of the ROM image
-    size_t mySize{0};
+    // The RAM area of the cartridge (may be empty)
+    ByteArray myRAM;
 
     // Handle PlusROM functionality, if available
     unique_ptr<PlusROM> myPlusROM;
@@ -343,7 +347,7 @@ class CartridgeEnhanced : public Cartridge
     */
     uInt16 ramAddressSegmentOffset(uInt16 address) const {
       return static_cast<uInt16>(
-        (myCurrentSegOffset[((address & ROM_MASK) >> myBankShift) % myBankSegs] - mySize)
+        (myCurrentSegOffset[((address & ROM_MASK) >> myBankShift) % myBankSegs] - myImage.size())
         >> (myBankShift - myRamBankShift));
     }
 
@@ -356,4 +360,4 @@ class CartridgeEnhanced : public Cartridge
     CartridgeEnhanced& operator=(CartridgeEnhanced&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_ENHANCED_HXX

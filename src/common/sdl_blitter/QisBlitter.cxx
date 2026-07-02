@@ -19,6 +19,10 @@
 #include "ThreadDebugging.hxx"
 #include "QisBlitter.hxx"
 
+namespace {
+  constexpr float ALPHA_SCALE = 255.F / 100.F;
+}  // namespace
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 QisBlitter::QisBlitter(FBBackendSDL& fb)
   : myFB{fb}
@@ -78,13 +82,17 @@ void QisBlitter::free()
 
   ASSERT_MAIN_THREAD;
 
-  const std::array<SDL_Texture*, 3> textures = {
-    mySrcTexture, myIntermediateTexture, mySecondaryIntermediateTexture
-  };
-  for (SDL_Texture* texture: textures) {
-    if (!texture) continue;
-
-    SDL_DestroyTexture(texture);
+  if (mySrcTexture) {
+    SDL_DestroyTexture(mySrcTexture);
+    mySrcTexture = nullptr;
+  }
+  if (myIntermediateTexture) {
+    SDL_DestroyTexture(myIntermediateTexture);
+    myIntermediateTexture = nullptr;
+  }
+  if (mySecondaryIntermediateTexture) {
+    SDL_DestroyTexture(mySecondaryIntermediateTexture);
+    mySecondaryIntermediateTexture = nullptr;
   }
 
   myTexturesAreAllocated = false;
@@ -99,18 +107,13 @@ void QisBlitter::blit(SDL_Surface& surface)
 
   SDL_Texture* intermediateTexture = myIntermediateTexture;
 
-  if(myStaticData == nullptr) {
+  if (myStaticData == nullptr) {
     SDL_UpdateTexture(mySrcTexture, &mySrcRect, surface.pixels, surface.pitch);
 
     blitToIntermediate();
 
-    myIntermediateTexture = mySecondaryIntermediateTexture;
-    mySecondaryIntermediateTexture = intermediateTexture;
-
-//     std::swap(mySrcTexture, mySecondarySrcTexture);
-    SDL_Texture* temporary = mySrcTexture;
-    mySrcTexture = mySecondarySrcTexture;
-    mySecondarySrcTexture = temporary;
+    std::swap(myIntermediateTexture, mySecondaryIntermediateTexture);
+    std::swap(mySrcTexture, mySecondarySrcTexture);
   }
 
   SDL_RenderTexture(myFB.renderer(), intermediateTexture,
@@ -127,9 +130,6 @@ void QisBlitter::blitToIntermediate()
   r.x = r.y = 0.F;
 
   SDL_SetRenderTarget(myFB.renderer(), myIntermediateTexture);
-
-  SDL_SetRenderDrawColor(myFB.renderer(), 0, 0, 0, 255);
-  SDL_RenderClear(myFB.renderer());
 
   SDL_RenderTexture(myFB.renderer(), mySrcTexture, &r, &myIntermediateFRect);
 
@@ -199,7 +199,7 @@ void QisBlitter::recreateTexturesIfNecessary()
 
     if (myEnableBlend) {
       SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
-      SDL_SetTextureAlphaMod(texture, myBlendLevel * 2.55);
+      SDL_SetTextureAlphaMod(texture, myBlendLevel * ALPHA_SCALE);
     } else {
       SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE);
     }

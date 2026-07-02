@@ -35,15 +35,7 @@ CartridgeBUSWidget::CartridgeBUSWidget(
   int xpos = HBORDER, ypos = VBORDER;
   int ds2_rows = 0;
 
-//  if (cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS0)
-//  {
-//    int lwidth = _font.getStringWidth("Unsupported version of BUS"); // get width of the widest label
-//    new StaticTextWidget(boss, _font, xpos, ypos, lwidth,
-//                         myFontHeight, "Unsupported version of BUS", TextAlign::Left);
-//    return;
-//  }
-
-  if (cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
+  if(cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
   {
     ds2_rows = 2;
     myDatastreamCount = 18;
@@ -55,7 +47,7 @@ CartridgeBUSWidget::CartridgeBUSWidget(
   }
 
   VariantList items;
-  if (cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS0)
+  if(cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS0)
   {
     VarList::push_back(items, "0 ($FFF6)");
     VarList::push_back(items, "1 ($FFF7)");
@@ -107,7 +99,7 @@ CartridgeBUSWidget::CartridgeBUSWidget(
     myDatastreamLabels[row]->setLabel(Common::Base::toString(row * 4, Common::Base::Fmt::_16_2));
   }
 
-  if (cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
+  if(cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
   {
     lwidth = _font.getStringWidth("Write Data (stream 16)");
     myDatastreamLabels[4] =
@@ -193,7 +185,7 @@ CartridgeBUSWidget::CartridgeBUSWidget(
   myMusicWaveforms->setEditable(false);
 
   const int xpossp = xpos + myMusicWaveforms->getWidth() + INDENT;
-  if (cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
+  if(cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
   {
     const int lwidth2 = _font.getStringWidth("Sample Pointer ");
     new StaticTextWidget(boss, _font, xpossp, ypos, lwidth2,
@@ -214,14 +206,13 @@ CartridgeBUSWidget::CartridgeBUSWidget(
   myMusicWaveformSizes->setTarget(this);
   myMusicWaveformSizes->setEditable(false);
 
-
   // BUS stuff and Digital Audio flags
   xpos = 10;  ypos += myLineHeight + VGAP;
   myBusOverdrive = new CheckboxWidget(boss, _font, xpos, ypos, "BUS Overdrive enabled");
   myBusOverdrive->setTarget(this);
   myBusOverdrive->setEditable(false);
 
-  if (cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
+  if(cart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
   {
     myDigitalSample = new CheckboxWidget(boss, _font, xpossp, ypos, "Digital Sample mode");
     myDigitalSample->setTarget(this);
@@ -259,7 +250,7 @@ void CartridgeBUSWidget::saveOldState()
     // F = Fractional
 
     myOldState.datastreampointers.push_back(myCart.getDatastreamPointer(i)>>12);
-    if (i < 16)
+    if(i < 16)
       myOldState.datastreamincrements.push_back(myCart.getDatastreamIncrement(i));
     else
       myOldState.datastreamincrements.push_back(0x100);
@@ -281,8 +272,8 @@ void CartridgeBUSWidget::saveOldState()
     myOldState.mwavesizes.push_back(myCart.getWaveformSize(i));
   }
 
-  for(uInt32 i = 0; i < internalRamSize(); ++i)
-    myOldState.internalram.push_back(myCart.myRAM[i]);
+  myOldState.internalram.assign(myCart.myRAM.data(),
+                                myCart.myRAM.data() + internalRamSize());
 
   myOldState.samplepointer.push_back(myCart.getSample());
 
@@ -292,9 +283,6 @@ void CartridgeBUSWidget::saveOldState()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeBUSWidget::loadConfig()
 {
-//  if (myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS0)
-//    return;
-
   myBank->setSelectedIndex(myCart.getBank());
 
   // Get registers, using change tracking
@@ -302,7 +290,11 @@ void CartridgeBUSWidget::loadConfig()
   IntArray vlist;
   BoolArray changed;
 
-  alist.clear();  vlist.clear();  changed.clear();
+  const auto clearAll = [&]() {
+    alist.clear(); vlist.clear(); changed.clear();
+  };
+
+  clearAll();
   for(int i = 0; i < 16; ++i)
   {
     // Pointers are stored as:
@@ -321,7 +313,7 @@ void CartridgeBUSWidget::loadConfig()
   }
   myDatastreamPointers->setList(alist, vlist, changed);
 
-  alist.clear();  vlist.clear();  changed.clear();
+  clearAll();
   for(int i = 16; i < myDatastreamCount; ++i)
   {
     const Int32 pointervalue = myCart.getDatastreamPointer(i) >> 12;
@@ -330,7 +322,7 @@ void CartridgeBUSWidget::loadConfig()
   }
   myDatastreamPointers2->setList(alist, vlist, changed);
 
-  alist.clear();  vlist.clear();  changed.clear();
+  clearAll();
   for(int i = 0; i < 16; ++i)
   {
     const Int32 incrementvalue = myCart.getDatastreamIncrement(i);
@@ -339,7 +331,7 @@ void CartridgeBUSWidget::loadConfig()
   }
   myDatastreamIncrements->setList(alist, vlist, changed);
 
-  alist.clear();  vlist.clear();  changed.clear();
+  clearAll();
   for(int i = 16; i < myDatastreamCount; ++i)
   {
     constexpr Int32 incrementvalue = 0x100;
@@ -348,7 +340,7 @@ void CartridgeBUSWidget::loadConfig()
   }
   myDatastreamIncrements2->setList(alist, vlist, changed);
 
-  alist.clear();  vlist.clear();  changed.clear();
+  clearAll();
   for(int i = 0; i < 37; ++i) // only 37 map values
   {
     const Int32 mapvalue = myCart.getAddressMap(i);
@@ -363,7 +355,7 @@ void CartridgeBUSWidget::loadConfig()
   }
   myAddressMaps->setList(alist, vlist, changed);
 
-  alist.clear();  vlist.clear();  changed.clear();
+  clearAll();
   for(int i = 0; i < 3; ++i)
   {
     alist.push_back(0);  vlist.push_back(myCart.myMusicCounters[i]);
@@ -372,7 +364,7 @@ void CartridgeBUSWidget::loadConfig()
   }
   myMusicCounters->setList(alist, vlist, changed);
 
-  alist.clear();  vlist.clear();  changed.clear();
+  clearAll();
   for(int i = 0; i < 3; ++i)
   {
     alist.push_back(0);  vlist.push_back(myCart.myMusicFrequencies[i]);
@@ -381,7 +373,7 @@ void CartridgeBUSWidget::loadConfig()
   }
   myMusicFrequencies->setList(alist, vlist, changed);
 
-  alist.clear();  vlist.clear();  changed.clear();
+  clearAll();
   for(int i = 0; i < 3; ++i)
   {
     alist.push_back(0);  vlist.push_back(myCart.getWaveform(i) >> 5);
@@ -390,7 +382,7 @@ void CartridgeBUSWidget::loadConfig()
   }
   myMusicWaveforms->setList(alist, vlist, changed);
 
-  alist.clear();  vlist.clear();  changed.clear();
+  clearAll();
   for(int i = 0; i < 3; ++i)
   {
     alist.push_back(0);  vlist.push_back(myCart.getWaveformSize(i));
@@ -399,9 +391,9 @@ void CartridgeBUSWidget::loadConfig()
   }
   myMusicWaveformSizes->setList(alist, vlist, changed);
 
-  if (myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
+  if(myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
   {
-    alist.clear();  vlist.clear();  changed.clear();
+    clearAll();
     alist.push_back(0);  vlist.push_back(myCart.getSample());
     changed.push_back(std::cmp_not_equal(myCart.getSample(),
                                          myOldState.samplepointer[0]));
@@ -409,21 +401,21 @@ void CartridgeBUSWidget::loadConfig()
   }
 
   myBusOverdrive->setState((myCart.myMode & 0x0f) == 0);
-  if (myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
+  if(myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
     myDigitalSample->setState((myCart.myMode & 0xf0) == 0);
 
-  if ((myCart.myMode & 0xf0) == 0)
+  if((myCart.myMode & 0xf0) == 0)
   {
     myMusicWaveforms->setCrossed(true);
     myMusicWaveformSizes->setCrossed(true);
-    if (myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
+    if(myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
       mySamplePointer->setCrossed(false);
   }
   else
   {
     myMusicWaveforms->setCrossed(false);
     myMusicWaveformSizes->setCrossed(false);
-    if (myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
+    if(myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS3)
       mySamplePointer->setCrossed(true);
   }
 
@@ -448,26 +440,14 @@ void CartridgeBUSWidget::handleCommand(CommandSender* sender,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeBUSWidget::bankState()
 {
-  std::ostringstream& buf = buffer();
-
-  if (myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS0)
-  {
-    static constexpr std::array<string_view, 6> spot = {
-      "$FFF6", "$FFF7", "$FFF8", "$FFF9", "$FFFA", "$FFFB"
-    };
-    buf << "Bank = " << std::dec << myCart.getBank()
-        << ", hotspot = " << spot[myCart.getBank()];
-  }
-  else
-  {
-    static constexpr std::array<string_view, 7> spot = {
-      "$FFF5", "$FFF6", "$FFF7", "$FFF8", "$FFF9", "$FFFA", "$FFFB"
-    };
-    buf << "Bank = " << std::dec << myCart.getBank()
-        << ", hotspot = " << spot[myCart.getBank()];
-  }
-
-  return buf.str();
+  const uInt16 bank = myCart.getBank();
+  const bool isBUS0 = myCart.myBUSSubtype == CartridgeBUS::BUSSubtype::BUS0;
+  static constexpr std::array<string_view, 7> allSpots = {
+    "$FFF5", "$FFF6", "$FFF7", "$FFF8", "$FFF9", "$FFFA", "$FFFB"
+  };
+  // BUS0 starts at index 1 ($FFF6), others start at index 0 ($FFF5)
+  return std::format("Bank = {}, hotspot = {}",
+    bank, allSpots[bank + (isBUS0 ? 1 : 0)]);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -485,16 +465,14 @@ uInt32 CartridgeBUSWidget::internalRamRPort(int start)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeBUSWidget::internalRamDescription()
 {
-  std::ostringstream desc;
-  desc << "$0000 - $07FF - BUS driver\n"
-       << "                not accessible to 6507\n"
-       << "$0800 - $17FF - 4K Data Stream storage\n"
-       << "                indirectly accessible to 6507\n"
-       << "                via BUS's Data Stream registers\n"
-       << "$1800 - $1FFF - 2K C variable storage and stack\n"
-       << "                not accessible to 6507";
-
-  return desc.str();
+  return
+    "$0000 - $07FF - BUS driver\n"
+    "                not accessible to 6507\n"
+    "$0800 - $17FF - 4K Data Stream storage\n"
+    "                indirectly accessible to 6507\n"
+    "                via BUS's Data Stream registers\n"
+    "$1800 - $1FFF - 2K C variable storage and stack\n"
+    "                not accessible to 6507";
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

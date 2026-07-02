@@ -18,6 +18,8 @@
 #ifndef STACK_HXX
 #define STACK_HXX
 
+#include <cassert>
+
 #include "bspf.hxx"
 
 /**
@@ -99,4 +101,4 @@ class FixedStack
 
 } // namespace Common
 
-#endif
+#endif  // STACK_HXX

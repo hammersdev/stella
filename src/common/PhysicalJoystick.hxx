@@ -21,7 +21,7 @@
 #include "Event.hxx"
 #include "EventHandlerConstants.hxx"
 #include "JoyMap.hxx"
-#include "json_lib.hxx"
+#include "json/json_lib.hxx"
 
 /**
   An abstraction of a physical (real) joystick in Stella.
@@ -51,7 +51,7 @@ class PhysicalJoystick
     };
 
     PhysicalJoystick() = default;
-    ~PhysicalJoystick() = default;
+    virtual ~PhysicalJoystick() = default;
 
     nlohmann::json getMap() const;
     bool setMap(const nlohmann::json& map);
@@ -104,7 +104,7 @@ class PhysicalJoystick
       };
 
       for(uInt8 i = 0; i < static_cast<uInt8>(PhysicalJoystick::Port::NUM_PORTS); ++i)
-        if (BSPF::equalsIgnoreCase(portName, NAMES[i]))
+        if(BSPF::equalsIgnoreCase(portName, NAMES[i]))
           return PhysicalJoystick::Port{i};
 
       return PhysicalJoystick::Port::AUTO;
@@ -123,4 +123,4 @@ class PhysicalJoystick
     PhysicalJoystick& operator=(PhysicalJoystick&&) = delete;
 };
 
-#endif
+#endif  // PHYSICAL_JOYSTICK_HXX

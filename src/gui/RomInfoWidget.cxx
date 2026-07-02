@@ -94,17 +94,16 @@ void RomInfoWidget::parseProperties(const FSNode& node, bool full)
   myUrl = myProperties.get(PropType::Cart_Url);
 
   // Now add some info for the message box below the image
-  myRomInfo.push_back("Name: " + myProperties.get(PropType::Cart_Name));
+  myRomInfo.push_back(std::format("Name: {}", myProperties.get(PropType::Cart_Name)));
 
   string value;
-
-  if(value = myProperties.get(PropType::Cart_Manufacturer); value != EmptyString())
+  if(value = myProperties.get(PropType::Cart_Manufacturer); !value.empty())
     myRomInfo.push_back("Manufacturer: " + value);
-  if(value = myProperties.get(PropType::Cart_ModelNo); value != EmptyString())
+  if(value = myProperties.get(PropType::Cart_ModelNo); !value.empty())
     myRomInfo.push_back("Model: " + value);
-  if(value = myProperties.get(PropType::Cart_Rarity); value != EmptyString())
+  if(value = myProperties.get(PropType::Cart_Rarity); !value.empty())
     myRomInfo.push_back("Rarity: " + value);
-  if(value = myProperties.get(PropType::Cart_Note); value != EmptyString())
+  if(value = myProperties.get(PropType::Cart_Note); !value.empty())
     myRomInfo.push_back("Note: " + value);
 
   if(full)
@@ -112,31 +111,32 @@ void RomInfoWidget::parseProperties(const FSNode& node, bool full)
     const bool swappedPorts = myProperties.get(PropType::Console_SwapPorts) == "YES";
 
     // Load the image for controller and bankswitch type auto detection
-    string left = myProperties.get(PropType::Controller_Left);
-    string right = myProperties.get(PropType::Controller_Right);
+    string left{myProperties.get(PropType::Controller_Left)};
+    string right{myProperties.get(PropType::Controller_Right)};
     const Controller::Type leftType = Controller::getType(left);
     const Controller::Type rightType = Controller::getType(right);
-    string bsDetected = myProperties.get(PropType::Cart_Type);
+    string bsDetected{myProperties.get(PropType::Cart_Type)};
     bool isPlusCart = false;
-    size_t size = 0;
+    ByteArray image;
+
     try
     {
       if(node.exists() && !node.isDirectory())
       {
         string md5;
-        if(const ByteBuffer image = instance().openROM(node, md5, size); image != nullptr)
+        image = instance().openROM(node, md5);
+        if(!image.empty())
         {
-          Logger::debug(myProperties.get(PropType::Cart_Name) + ":");
-          left = ControllerDetector::detectName(image, size, leftType,
+          Logger::debug(std::format("{}:", myProperties.get(PropType::Cart_Name)));
+          left = ControllerDetector::detectName(image, leftType,
             !swappedPorts ? Controller::Jack::Left : Controller::Jack::Right,
               instance().settings());
-          right = ControllerDetector::detectName(image, size, rightType,
+          right = ControllerDetector::detectName(image, rightType,
             !swappedPorts ? Controller::Jack::Right : Controller::Jack::Left,
               instance().settings());
           if(bsDetected == "AUTO")
-            bsDetected = Bankswitch::typeToName(CartDetector::autodetectType(image, size));
-
-          isPlusCart = CartDetector::isProbablyPlusROM(image, size);
+            bsDetected = Bankswitch::typeToName(CartDetector::autodetectType(image));
+          isPlusCart = CartDetector::isProbablyPlusROM(image);
         }
       }
     }
@@ -146,32 +146,33 @@ void RomInfoWidget::parseProperties(const FSNode& node, bool full)
       // failed for any reason
       left = right = "";
     }
+
     if(!left.empty() && !right.empty())
       myRomInfo.push_back("Controllers: " + (left + " (left), " + right + " (right)"));
 
     if(!bsDetected.empty())
     {
-      std::ostringstream buf;
-
       // Display actual ROM size in developer mode
+      string sizeSuffix;
       if(instance().settings().getBool("dev.settings"))
       {
-        buf << " - ";
-        if(size < 1_KB)
-          buf << size << "B";
-        else
-          buf << (std::round(size / static_cast<float>(1_KB))) << "K";
+        const size_t size = image.size();
+        sizeSuffix = size < 1_KB
+          ? std::format(" - {}B", size)
+          : std::format(" - {}K", std::lround(size / static_cast<float>(1_KB)));
       }
-      myRomInfo.push_back("Type: " + Bankswitch::typeToDesc(Bankswitch::nameToType(bsDetected))
-                          + (isPlusCart ? " - PlusROM" : "")
-                          + buf.str());
+      myRomInfo.push_back(std::format("Type: {}{}{}",
+          Bankswitch::typeToDesc(Bankswitch::nameToType(bsDetected)),
+          isPlusCart ? " - PlusROM" : "",
+          sizeSuffix));
     }
+
 #if defined(DEBUG_BUILD) && defined(IMAGE_SUPPORT)
     // Debug bezel properties:
     if(myProperties.get(PropType::Bezel_Name).empty())
       myRomInfo.push_back("*Bezel: " + Bezel::getName(instance().bezelDir().getPath(), myProperties));
     else
-      myRomInfo.push_back(" Bezel: " + myProperties.get(PropType::Bezel_Name));
+      myRomInfo.push_back(std::format(" Bezel: {}", myProperties.get(PropType::Bezel_Name)));
 #endif
   }
 
@@ -207,8 +208,8 @@ void RomInfoWidget::drawWidget(bool hilite)
   int ypos = _y + 5;
   for(const auto& info : myRomInfo)
   {
-    if(info.length() * _font.getMaxCharWidth() <= static_cast<size_t>(_w - 16))
-
+    if(info.length() * _font.getMaxCharWidth() <=
+       static_cast<size_t>(std::max(_w - 16, 0)))
     {
       // 1 line for next entry
       if(ypos + _font.getFontHeight() > _h + _y)
@@ -217,13 +218,13 @@ void RomInfoWidget::drawWidget(bool hilite)
     else
     {
       // assume 2 lines for next entry
-      if(ypos + _font.getLineHeight() + _font.getFontHeight() > _h + _y )
+      if(ypos + _font.getLineHeight() + _font.getFontHeight() > _h + _y)
         break;
     }
 
     int lines = 0;
 
-    if(BSPF::startsWithIgnoreCase(info, "Name: ") && myUrl != EmptyString())
+    if(BSPF::startsWithIgnoreCase(info, "Name: ") && !myUrl.empty())
     {
       lines = s.drawString(_font, info, xpos, ypos, _w - 16, _font.getFontHeight() * 3,
                            _textcolor, TextAlign::Left, 0, true, kNone,

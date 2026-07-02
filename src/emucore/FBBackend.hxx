@@ -20,6 +20,8 @@
 
 class FBSurface;
 
+#include <unordered_map>
+
 #include "Rect.hxx"
 #include "Variant.hxx"
 #include "FrameBufferConstants.hxx"
@@ -62,8 +64,8 @@ class FBBackend
       @param windowedRes    Maximum resolution supported in windowed mode
       @param renderers      List of renderer names (internal name -> end-user name)
     */
-    virtual void queryHardware(vector<Common::Size>& fullscreenRes,
-                               vector<Common::Size>& windowedRes,
+    virtual void queryHardware(std::unordered_map<uInt32, Common::Size>& fullscreenRes,
+                               std::unordered_map<uInt32, Common::Size>& windowedRes,
                                VariantList& renderers) = 0;
 
     /**
@@ -76,12 +78,20 @@ class FBBackend
       @return  False on any errors, else true
     */
     virtual bool setVideoMode(const VideoModeHandler::Mode& mode,
-                              int winIdx, const Common::Point& winPos) = 0;
+                              uInt32 winIdx, const Common::Point& winPos) = 0;
 
     /**
       Clear the framebuffer.
     */
     virtual void clear() = 0;
+
+    /**
+      Flush pending render commands without presenting.  Used to ensure a
+      clean command-queue boundary before clear() in dialog rendering, so
+      any preceding geometry from the previous frame lands in its own
+      command queue rather than sharing a queue with the subsequent clear.
+    */
+    virtual void flush() = 0;
 
     /**
       Updates window title.
@@ -134,44 +144,12 @@ class FBBackend
     virtual bool isDarkTheme() const = 0;
 
     /**
-      This method is called to retrieve the R/G/B data from the given pixel.
-
-      @param pixel  The pixel containing R/G/B data
-      @param r      The red component of the color
-      @param g      The green component of the color
-      @param b      The blue component of the color
+      Retrieve the R/G/B/A masks from the FrameBuffer backend renderer.
     */
-    virtual void getRGB(uInt32 pixel, uInt8* r, uInt8* g, uInt8* b) const = 0;
-
-    /**
-      This method is called to retrieve the R/G/B/A data from the given pixel.
-
-      @param pixel  The pixel containing R/G/B data
-      @param r      The red component of the color
-      @param g      The green component of the color
-      @param b      The blue component of the color
-      @param a      The alpha component of the color.
-    */
-    virtual void getRGBA(uInt32 pixel, uInt8* r, uInt8* g, uInt8* b, uInt8* a) const = 0;
-
-    /**
-      This method is called to map a given R/G/B triple to the screen palette.
-
-      @param r  The red component of the color.
-      @param g  The green component of the color.
-      @param b  The blue component of the color.
-    */
-    virtual uInt32 mapRGB(uInt8 r, uInt8 g, uInt8 b) const = 0;
-
-    /**
-      This method is called to map a given R/G/B triple to the screen palette.
-
-      @param r  The red component of the color.
-      @param g  The green component of the color.
-      @param b  The blue component of the color.
-      @param a  The alpha component of the color.
-    */
-    virtual uInt32 mapRGBA(uInt8 r, uInt8 g, uInt8 b, uInt8 a) const = 0;
+    virtual uInt32 rMask() const = 0;
+    virtual uInt32 gMask() const = 0;
+    virtual uInt32 bMask() const = 0;
+    virtual uInt32 aMask() const = 0;
 
     /**
       This method is called to get a copy of the viewable framebuffer area
@@ -179,9 +157,9 @@ class FBBackend
       that may be in use; it should return the actual data as it is currently
       seen onscreen.
 
-      @param surface  The surface used to store the current framebuffer.
+      @return  The surface used to store the current framebuffer.
     */
-    virtual void getSurface(FBSurface& surface) const = 0;
+    virtual const FBSurface& compositedSurface() = 0;
 
     /**
       This method is called to query if the current window is not
@@ -221,12 +199,27 @@ class FBBackend
           uInt32 h,
           ScalingInterpolation inter = ScalingInterpolation::none,
           const uInt32* data = nullptr
-    ) const = 0;
+    ) = 0;
 
     /**
       This method is called to provide information about the backend.
     */
     virtual string about() const = 0;
+
+    /**
+      Sends a text message to the native display system for onscreen
+      notification.  Backends with their own notification channel (e.g.
+      libretro) override this; the default is a no-op.
+    */
+    virtual void showMessage(string_view) { }
+
+    /**
+      Sends a gauge message to the native display system.  The default
+      is a no-op; backends that support notifications should override both
+      this and showMessage.
+    */
+    virtual void showGaugeMessage(string_view, string_view,
+                                  float, float = 0.F, float = 100.F) { }
 
   private:
     // Following constructors and assignment operators not supported
@@ -236,4 +229,4 @@ class FBBackend
     FBBackend& operator=(FBBackend&&) = delete;
 };
 
-#endif
+#endif  // FB_BACKEND_HXX

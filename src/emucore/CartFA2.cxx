@@ -19,24 +19,13 @@
 #include "CartFA2.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CartridgeFA2::CartridgeFA2(const ByteBuffer& image, size_t size,
-                           string_view md5, const Settings& settings,
-                           size_t bsSize)
-  : CartridgeFA(image, size, md5, settings, bsSize)
+CartridgeFA2::CartridgeFA2(ByteSpan image, string_view md5,
+                           const Settings& settings, size_t bsSize)
+  : CartridgeFA(image, md5, settings, bsSize)
 {
   // 29/32K version of FA2 has valid data @ 1K - 29K
-  const uInt8* img_ptr = image.get();
-  if(size >= 29_KB)
-  {
-    img_ptr += 1_KB;
-    mySize = 28_KB;
-  }
-
-  // Allocate array for the ROM image
-  myImage = std::make_unique<uInt8[]>(mySize);
-
-  // Copy the ROM image into my buffer
-  std::copy_n(img_ptr, mySize, myImage.get());
+  if(image.size() >= 29_KB)
+    myImage.assign(image.begin() + 1_KB, image.begin() + 29_KB);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -57,7 +46,7 @@ uInt8 CartridgeFA2::peek(uInt16 address)
   if((address & ROM_MASK) == 0x0FF4)
   {
     // Load/save RAM to/from Harmony cart flash
-    if(mySize == 28_KB && !hotspotsLocked())
+    if(myImage.size() == 28_KB && !hotspotsLocked())
       return ramReadWrite();
   }
 
@@ -70,7 +59,7 @@ bool CartridgeFA2::poke(uInt16 address, uInt8 value)
   if((address & ROM_MASK) == 0x0FF4)
   {
     // Load/save RAM to/from Harmony cart flash
-    if(mySize == 28_KB && !hotspotsLocked())
+    if(myImage.size() == 28_KB && !hotspotsLocked())
       ramReadWrite();
     return false;
   }
@@ -120,11 +109,11 @@ uInt8 CartridgeFA2::ramReadWrite()
       {
         try
         {
-          serializer.getByteArray(std::span{myRAM.get(), myRamSize});
+          serializer.getByteArray(myRAM);
         }
         catch(...)
         {
-          std::fill_n(myRAM.get(), myRamSize, 0);
+          std::ranges::fill(myRAM, 0);
         }
         myRamAccessTimeout += 500;  // Add 0.5 ms delay for read
       }
@@ -132,7 +121,7 @@ uInt8 CartridgeFA2::ramReadWrite()
       {
         try
         {
-          serializer.putByteArray(std::span{myRAM.get(), myRamSize});
+          serializer.putByteArray(myRAM);
         }
         catch(...)
         {
@@ -172,7 +161,7 @@ void CartridgeFA2::flash(uInt8 operation)
     {
       try
       {
-        std::array<uInt8, 256> buf = {};
+        std::array<uInt8, 256> buf{};
         serializer.putByteArray(buf);
       }
       catch(...)
@@ -185,18 +174,18 @@ void CartridgeFA2::flash(uInt8 operation)
     {
       try
       {
-        serializer.getByteArray(std::span{myRAM.get(), myRamSize});
+        serializer.getByteArray(myRAM);
       }
       catch(...)
       {
-        std::fill_n(myRAM.get(), myRamSize, 0);
+        std::ranges::fill(myRAM, 0);
       }
     }
     else if(operation == 2)  // write
     {
       try
       {
-        serializer.putByteArray(std::span{myRAM.get(), myRamSize});
+        serializer.putByteArray(myRAM);
       }
       catch(...)
       {

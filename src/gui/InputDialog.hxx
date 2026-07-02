@@ -91,7 +91,6 @@ class InputDialog : public Dialog
     TabWidget* myTab{nullptr};
 
     EventMappingWidget* myEventMapper{nullptr};
-//    EventMappingWidget* myMenuEventMapper{nullptr};
 
     CheckboxWidget*   mySAPort{nullptr};
 
@@ -138,4 +137,4 @@ class InputDialog : public Dialog
     InputDialog& operator=(InputDialog&&) = delete;
 };
 
-#endif
+#endif  // INPUT_DIALOG_HXX

@@ -22,13 +22,13 @@
 #include "CartCTY.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CartridgeCTY::CartridgeCTY(const ByteBuffer& image, size_t size,
-                           string_view md5, const Settings& settings)
-  : Cartridge(settings, md5),
-    myImage{std::make_unique<uInt8[]>(32_KB)}
+CartridgeCTY::CartridgeCTY(ByteSpan image, string_view md5,
+                           const Settings& settings)
+  : Cartridge(settings, md5)
 {
   // Copy the ROM image into my buffer
-  std::copy_n(image.get(), std::min(32_KB, size), myImage.get());
+  const size_t size = image.size();
+  std::copy_n(image.data(), std::min(32_KB, size), myImage.data());
   createRomAccessArrays(32_KB);
 
   // Default to no tune data in case user is utilizing an old ROM
@@ -36,10 +36,10 @@ CartridgeCTY::CartridgeCTY(const ByteBuffer& image, size_t size,
 
   // Extract tune data if it exists
   if(size > 32_KB)
-    std::copy_n(image.get() + 32_KB, size - 32_KB, myTuneData.begin());
+    std::copy_n(image.data() + 32_KB, size - 32_KB, myTuneData.begin());
 
-  // Point to the first tune
-  myFrequencyImage = myTuneData.data();
+  // Subspan pointing to the first tune
+  myFrequencyImage = myTuneData;
 
   myMusicCounters.fill(0);
   myMusicFrequencies.fill(0);
@@ -48,7 +48,9 @@ CartridgeCTY::CartridgeCTY(const ByteBuffer& image, size_t size,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeCTY::reset()
 {
-  initializeRAM(myRAM.data(), myRAM.size());
+  Cartridge::reset();
+
+  initializeRAM(myRAM);
   initializeStartBank(1);
 
   myRAM[0] = myRAM[1] = myRAM[2] = myRAM[3] = 0xFF;
@@ -296,9 +298,8 @@ bool CartridgeCTY::patch(uInt16 address, uInt8 value)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-const ByteBuffer& CartridgeCTY::getImage(size_t& size) const
+ByteSpan CartridgeCTY::getImage() const
 {
-  size = 32_KB;
   return myImage;
 }
 
@@ -318,7 +319,7 @@ bool CartridgeCTY::save(Serializer& out) const
     out.putDouble(myFractionalClocks);
     out.putIntArray(myMusicCounters);
     out.putIntArray(myMusicFrequencies);
-    out.putLong(myFrequencyImage - myTuneData.data()); // FIXME - storing pointer diff!
+    out.putLong(myFrequencyImage.data() - myTuneData.data());
   }
   catch(...)
   {
@@ -346,7 +347,7 @@ bool CartridgeCTY::load(Serializer& in)
     myFractionalClocks = in.getDouble();
     in.getIntArray(myMusicCounters);
     in.getIntArray(myMusicFrequencies);
-    myFrequencyImage = myTuneData.data() + in.getLong();
+    myFrequencyImage = ByteSpan{myTuneData}.subspan(in.getLong());
   }
   catch(...)
   {
@@ -451,7 +452,7 @@ void CartridgeCTY::loadTune(uInt8 index)
   // Each tune is offset by 4096 bytes
   // Instead of copying non-modifiable data around (as would happen on the
   // Harmony), we simply point to the appropriate tune
-  myFrequencyImage = myTuneData.data() + (index << 12);
+  myFrequencyImage = ByteSpan{myTuneData}.subspan(index << 12);
 
   // Reset to beginning of tune
   myTunePosition = 0;

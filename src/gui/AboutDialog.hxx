@@ -42,7 +42,6 @@ class AboutDialog : public Dialog
   private:
     void updateStrings(int page, int lines, string& title);
     void displayInfo();
-    static string getUrl(string_view text);
 
   private:
     ButtonWidget* myWhatsNewButton{nullptr};
@@ -54,8 +53,8 @@ class AboutDialog : public Dialog
     vector<string> myDescStr;
 
     int myPage{1};
-    int myNumPages{4};
-    int myLinesPerPage{13};
+    static constexpr int myNumPages{4};
+    static constexpr int myLinesPerPage{13};
 
     unique_ptr<WhatsNewDialog> myWhatsNewDialog;
 
@@ -72,4 +71,4 @@ class AboutDialog : public Dialog
     AboutDialog& operator=(AboutDialog&&) = delete;
 };
 
-#endif
+#endif  // ABOUT_DIALOG_HXX

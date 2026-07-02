@@ -20,7 +20,7 @@
 #include "PropsSet.hxx"
 #include "EventHandler.hxx"
 #include "PKeyboardHandler.hxx"
-#include "json_lib.hxx"
+#include "json/json_lib.hxx"
 
 using json = nlohmann::json;
 
@@ -32,11 +32,11 @@ using json = nlohmann::json;
 #endif
 
 #if defined(BSPF_MACOS) || defined(MACOS_KEYS)
-static constexpr int MOD3 = KBDM_GUI;
-static constexpr int CMD = KBDM_GUI;
-static constexpr int OPTION = KBDM_ALT;
+static constexpr auto MOD3   = StellaMod::GUI;
+static constexpr auto CMD    = StellaMod::GUI;
+static constexpr auto OPTION = StellaMod::ALT;
 #else
-static constexpr int MOD3 = KBDM_ALT;
+static constexpr auto MOD3   = StellaMod::ALT;
 #endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -79,7 +79,7 @@ PhysicalKeyboardHandler::PhysicalKeyboardHandler(OSystem& system, EventHandler& 
 #ifdef DEBUG_BUILD
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void PhysicalKeyboardHandler::verifyDefaultMapping(
-  PhysicalKeyboardHandler::EventMappingArray mapping, EventMode mode, string_view name)
+  EventMappingSpan mapping, EventMode mode, string_view name)
 {
   for(const auto& item1 : mapping)
     for(const auto& item2 : mapping)
@@ -152,10 +152,10 @@ void PhysicalKeyboardHandler::setDefaultKey(EventMapping map, Event::Type event,
   // Swap Y and Z for QWERTZ keyboards
   if(mode == EventMode::kEditMode && myHandler.isQwertz())
   {
-    if(map.key == KBDK_Z)
-      map.key = KBDK_Y;
-    else if(map.key == KBDK_Y)
-      map.key = KBDK_Z;
+    if(map.key == StellaKey::Z)
+      map.key = StellaKey::Y;
+    else if(map.key == StellaKey::Y)
+      map.key = StellaKey::Z;
   }
 #endif
 
@@ -166,13 +166,13 @@ void PhysicalKeyboardHandler::setDefaultKey(EventMapping map, Event::Type event,
     if (myKeyMap.getEventMapping(map.event, mode).empty() &&
         !isMappingUsed(mode, map))
     {
-      addMapping(map.event, mode, map.key, static_cast<StellaMod>(map.mod));
+      addMapping(map.event, mode, map.key, map.mod);
     }
   }
   else if (eraseAll || map.event == event)
   {
     //myKeyMap.eraseEvent(map.event, mode);
-    addMapping(map.event, mode, map.key, static_cast<StellaMod>(map.mod));
+    addMapping(map.event, mode, map.key, map.mod);
   }
 }
 
@@ -193,38 +193,37 @@ void PhysicalKeyboardHandler::setDefaultMapping(Event::Type event, EventMode mod
   switch(mode)
   {
     case EventMode::kEmulationMode:
-      for (const auto& item: DefaultCommonMapping)
-        setDefaultKey(item, event, EventMode::kCommonMode, updateDefaults);
-      // put all controller events into their own mode's mappings
-      for (const auto& item: DefaultJoystickMapping)
-        setDefaultKey(item, event, EventMode::kJoystickMode, updateDefaults);
-      for (const auto& item: DefaultPaddleMapping)
-        setDefaultKey(item, event, EventMode::kPaddlesMode, updateDefaults);
-      for (const auto& item: DefaultKeyboardMapping)
-        setDefaultKey(item, event, EventMode::kKeyboardMode, updateDefaults);
-      for (const auto& item: DefaultDrivingMapping )
-        setDefaultKey(item, event, EventMode::kDrivingMode, updateDefaults);
-      for (const auto& item : CompuMateMapping)
-        setDefaultKey(item, event, EventMode::kCompuMateMode, updateDefaults);
+      applyDefaultMappings(DefaultCommonMapping, event,
+                           EventMode::kCommonMode, updateDefaults);
+      applyDefaultMappings(DefaultJoystickMapping, event,
+                           EventMode::kJoystickMode, updateDefaults);
+      applyDefaultMappings(DefaultPaddleMapping, event,
+                           EventMode::kPaddlesMode, updateDefaults);
+      applyDefaultMappings(DefaultKeyboardMapping, event,
+                           EventMode::kKeyboardMode, updateDefaults);
+      applyDefaultMappings(DefaultDrivingMapping, event,
+                           EventMode::kDrivingMode, updateDefaults);
+      applyDefaultMappings(CompuMateMapping, event,
+                           EventMode::kCompuMateMode, updateDefaults);
       break;
 
     case EventMode::kMenuMode:
-      for (const auto& item: DefaultMenuMapping)
-        setDefaultKey(item, event, EventMode::kMenuMode, updateDefaults);
+      applyDefaultMappings(DefaultMenuMapping, event,
+                           EventMode::kMenuMode, updateDefaults);
       break;
 
   #ifdef GUI_SUPPORT
     case EventMode::kEditMode:
       // Edit mode events are always set because they are not saved
-      for(const auto& item: FixedEditMapping)
-        setDefaultKey(item, event, EventMode::kEditMode);
+      applyDefaultMappings(FixedEditMapping, event,
+                           EventMode::kEditMode, false);
       break;
   #endif
   #ifdef DEBUGGER_SUPPORT
     case EventMode::kPromptMode:
       // Edit mode events are always set because they are not saved
-      for(const auto& item : FixedPromptMapping)
-        setDefaultKey(item, event, EventMode::kPromptMode);
+      applyDefaultMappings(FixedPromptMapping, event,
+                           EventMode::kPromptMode, false);
       break;
   #endif
 
@@ -267,7 +266,7 @@ void PhysicalKeyboardHandler::defineControllerMappings(
 EventMode PhysicalKeyboardHandler::getMode(const Properties& properties,
                                            PropType propType)
 {
-  const string& propName = properties.get(propType);
+  string_view propName = properties.get(propType);
 
   if(!propName.empty())
     return getMode(Controller::getType(propName));
@@ -418,6 +417,14 @@ void PhysicalKeyboardHandler::enableMapping(Event::Type event, EventMode mode)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void PhysicalKeyboardHandler::applyDefaultMappings(EventMappingSpan mappings,
+  Event::Type event, EventMode mode, bool updateDefaults)
+{
+  for (const auto& item : mappings)
+    setDefaultKey(item, event, mode, updateDefaults);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 EventMode PhysicalKeyboardHandler::getEventMode(Event::Type event, EventMode mode)
 {
   if (mode == EventMode::kEmulationMode)
@@ -541,21 +548,6 @@ bool PhysicalKeyboardHandler::addMapping(Event::Type event, EventMode mode,
 void PhysicalKeyboardHandler::handleEvent(StellaKey key, StellaMod mod,
                                           bool pressed, bool repeated)
 {
-#ifdef BSPF_UNIX
-  // Swallow KBDK_TAB under certain conditions
-  // See comments on 'myAltKeyCounter' for more information
-  if(myAltKeyCounter > 1 && key == KBDK_TAB)
-  {
-    myAltKeyCounter = 0;
-    return;
-  }
-  if (key == KBDK_TAB && pressed && StellaModTest::isAlt(mod))
-  {
-    // Swallow Alt-Tab, but remember that it happened
-    myAltKeyCounter = 1;
-    return;
-  }
-#endif
 
   const EventHandlerState estate = myHandler.state();
 
@@ -610,547 +602,573 @@ void PhysicalKeyboardHandler::toggleModKeys(bool toggle)
     myOSystem.settings().setValue("modcombo", modCombo);
   }
 
-  std::ostringstream ss;
-  ss << "Modifier key combos ";
-  ss << (modCombo ? "enabled" : "disabled");
-  myOSystem.frameBuffer().showTextMessage(ss.view());
+  myOSystem.frameBuffer().showTextMessage(
+    std::format("Modifier key combos {}", modCombo ? "enabled" : "disabled")
+  );
 }
 
-// NOLINTBEGIN(bugprone-throwing-static-initialization)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-PhysicalKeyboardHandler::EventMappingArray
-PhysicalKeyboardHandler::DefaultCommonMapping = {
-  { Event::ConsoleSelect,            KBDK_F1 },
-  { Event::ConsoleReset,             KBDK_F2 },
-  { Event::ConsoleColor,             KBDK_F3 },
-  { Event::Console7800Pause,         KBDK_F3, MOD3 },
-  { Event::ConsoleLeftDiffA,         KBDK_F5 },
-  { Event::ConsoleRightDiffA,        KBDK_F7 },
-  { Event::SaveState,                KBDK_F9 },
-  { Event::SaveAllStates,            KBDK_F9, MOD3 },
-  { Event::PreviousState,            KBDK_F10, KBDM_SHIFT },
-  { Event::NextState,                KBDK_F10 },
-  { Event::ToggleAutoSlot,           KBDK_F10, MOD3 },
-  { Event::LoadState,                KBDK_F11 },
-  { Event::LoadAllStates,            KBDK_F11, MOD3 },
-  { Event::TakeSnapshot,             KBDK_F12 },
+const PhysicalKeyboardHandler::EventMappingSpan
+PhysicalKeyboardHandler::DefaultCommonMapping = []() noexcept {
+  static constexpr EventMapping data[] = {
+    { Event::ConsoleSelect,            StellaKey::F1 },
+    { Event::ConsoleReset,             StellaKey::F2 },
+    { Event::ConsoleColor,             StellaKey::F3 },
+    { Event::Console7800Pause,         StellaKey::F3, MOD3 },
+    { Event::ConsoleLeftDiffA,         StellaKey::F5 },
+    { Event::ConsoleRightDiffA,        StellaKey::F7 },
+    { Event::SaveState,                StellaKey::F9 },
+    { Event::SaveAllStates,            StellaKey::F9, MOD3 },
+    { Event::PreviousState,            StellaKey::F10, StellaMod::SHIFT },
+    { Event::NextState,                StellaKey::F10 },
+    { Event::ToggleAutoSlot,           StellaKey::F10, MOD3 },
+    { Event::LoadState,                StellaKey::F11 },
+    { Event::LoadAllStates,            StellaKey::F11, MOD3 },
+    { Event::TakeSnapshot,             StellaKey::F12 },
   #ifdef BSPF_MACOS
-  { Event::TogglePauseMode,          KBDK_P, KBDM_SHIFT | MOD3 },
+    { Event::TogglePauseMode,          StellaKey::P, StellaMod::SHIFT | MOD3 },
   #else
-  { Event::TogglePauseMode,          KBDK_PAUSE },
+    { Event::TogglePauseMode,          StellaKey::PAUSE },
   #endif
-  { Event::OptionsMenuMode,          KBDK_TAB },
-  { Event::CmdMenuMode,              KBDK_BACKSLASH },
-  { Event::ToggleBezel,              KBDK_B, KBDM_CTRL },
-  { Event::TimeMachineMode,          KBDK_T, KBDM_SHIFT },
-  { Event::DebuggerMode,             KBDK_GRAVE },
-  { Event::PlusRomsSetupMode,        KBDK_P, KBDM_SHIFT | KBDM_CTRL | MOD3 },
-  { Event::ExitMode,                 KBDK_ESCAPE },
+    { Event::OptionsMenuMode,          StellaKey::TAB },
+    { Event::CmdMenuMode,              StellaKey::BACKSLASH },
+    { Event::ToggleBezel,              StellaKey::B, StellaMod::CTRL },
+    { Event::TimeMachineMode,          StellaKey::T, StellaMod::SHIFT },
+    { Event::DebuggerMode,             StellaKey::GRAVE },
+    { Event::PlusRomsSetupMode,        StellaKey::P, StellaMod::SHIFT | StellaMod::CTRL | MOD3 },
+    { Event::ExitMode,                 StellaKey::ESCAPE },
   #ifdef BSPF_MACOS
-  { Event::Quit,                     KBDK_Q, MOD3 },
+    { Event::Quit,                     StellaKey::Q, MOD3 },
   #else
-  { Event::Quit,                     KBDK_Q, KBDM_CTRL },
+    { Event::Quit,                     StellaKey::Q, StellaMod::CTRL },
   #endif
-  { Event::ReloadConsole,            KBDK_R, KBDM_CTRL },
-  { Event::PreviousMultiCartRom,     KBDK_R, KBDM_SHIFT | KBDM_CTRL },
+    { Event::ReloadConsole,            StellaKey::R, StellaMod::CTRL },
+    { Event::PreviousMultiCartRom,     StellaKey::R, StellaMod::SHIFT | StellaMod::CTRL },
 
-  { Event::VidmodeDecrease,          KBDK_MINUS, MOD3 },
-  { Event::VidmodeIncrease,          KBDK_EQUALS, MOD3 },
-  { Event::VCenterDecrease,          KBDK_PAGEUP, MOD3 },
-  { Event::VCenterIncrease,          KBDK_PAGEDOWN, MOD3 },
-  { Event::VSizeAdjustDecrease,      KBDK_PAGEDOWN, KBDM_SHIFT | MOD3 },
-  { Event::VSizeAdjustIncrease,      KBDK_PAGEUP, KBDM_SHIFT | MOD3 },
-  { Event::ToggleCorrectAspectRatio, KBDK_C, KBDM_SHIFT | KBDM_CTRL },
-  { Event::VolumeDecrease,           KBDK_LEFTBRACKET, MOD3 },
-  { Event::VolumeIncrease,           KBDK_RIGHTBRACKET, MOD3 },
-  { Event::SoundToggle,              KBDK_RIGHTBRACKET, KBDM_CTRL },
+    { Event::VidmodeDecrease,          StellaKey::MINUS, MOD3 },
+    { Event::VidmodeIncrease,          StellaKey::EQUALS, MOD3 },
+    { Event::VCenterDecrease,          StellaKey::PAGEUP, MOD3 },
+    { Event::VCenterIncrease,          StellaKey::PAGEDOWN, MOD3 },
+    { Event::VSizeAdjustDecrease,      StellaKey::PAGEDOWN, StellaMod::SHIFT | MOD3 },
+    { Event::VSizeAdjustIncrease,      StellaKey::PAGEUP, StellaMod::SHIFT | MOD3 },
+    { Event::ToggleCorrectAspectRatio, StellaKey::C, StellaMod::SHIFT | StellaMod::CTRL },
+    { Event::VolumeDecrease,           StellaKey::LEFTBRACKET, MOD3 },
+    { Event::VolumeIncrease,           StellaKey::RIGHTBRACKET, MOD3 },
+    { Event::SoundToggle,              StellaKey::RIGHTBRACKET, StellaMod::CTRL },
 
-  { Event::ToggleFullScreen,         KBDK_RETURN, MOD3 },
-  { Event::ToggleAdaptRefresh,       KBDK_R, MOD3 },
-  { Event::OverscanDecrease,         KBDK_PAGEDOWN, KBDM_SHIFT },
-  { Event::OverscanIncrease,         KBDK_PAGEUP, KBDM_SHIFT },
-  { Event::PreviousVideoMode,        KBDK_1, KBDM_SHIFT | MOD3 },
-  { Event::NextVideoMode,            KBDK_1, MOD3 },
-  { Event::PreviousAttribute,        KBDK_2, KBDM_SHIFT | MOD3 },
-  { Event::NextAttribute,            KBDK_2, MOD3 },
-  { Event::DecreaseAttribute,        KBDK_3, KBDM_SHIFT | MOD3 },
-  { Event::IncreaseAttribute,        KBDK_3, MOD3 },
-  { Event::PhosphorDecrease,         KBDK_4, KBDM_SHIFT | MOD3 },
-  { Event::PhosphorIncrease,         KBDK_4, MOD3 },
-  { Event::TogglePhosphor,           KBDK_P, MOD3 },
-  //{ Event::PhosphorModeDecrease,     KBDK_P, KBDM_SHIFT | KBDM_CTRL | MOD3 },
-  { Event::PhosphorModeIncrease,     KBDK_P, KBDM_CTRL | MOD3 },
-  { Event::ScanlinesDecrease,        KBDK_5, KBDM_SHIFT | MOD3 },
-  { Event::ScanlinesIncrease,        KBDK_5, MOD3 },
-  { Event::PreviousScanlineMask,     KBDK_6, KBDM_SHIFT | MOD3 },
-  { Event::NextScanlineMask,         KBDK_6, MOD3 },
-  { Event::PreviousPaletteAttribute, KBDK_9, KBDM_SHIFT | MOD3 },
-  { Event::NextPaletteAttribute,     KBDK_9, MOD3 },
-  { Event::PaletteAttributeDecrease, KBDK_0, KBDM_SHIFT | MOD3 },
-  { Event::PaletteAttributeIncrease, KBDK_0, MOD3 },
-  { Event::ToggleColorLoss,          KBDK_L, KBDM_CTRL },
-  { Event::PaletteDecrease,          KBDK_P, KBDM_SHIFT | KBDM_CTRL },
-  { Event::PaletteIncrease,          KBDK_P, KBDM_CTRL },
-  { Event::FormatDecrease,           KBDK_F, KBDM_SHIFT | KBDM_CTRL },
-  { Event::FormatIncrease,           KBDK_F, KBDM_CTRL },
+    { Event::ToggleFullScreen,         StellaKey::RETURN, MOD3 },
+    { Event::ToggleAdaptRefresh,       StellaKey::R, MOD3 },
+    { Event::OverscanDecrease,         StellaKey::PAGEDOWN, StellaMod::SHIFT },
+    { Event::OverscanIncrease,         StellaKey::PAGEUP, StellaMod::SHIFT },
+    { Event::PreviousVideoMode,        StellaKey::_1, StellaMod::SHIFT | MOD3 },
+    { Event::NextVideoMode,            StellaKey::_1, MOD3 },
+    { Event::PreviousAttribute,        StellaKey::_2, StellaMod::SHIFT | MOD3 },
+    { Event::NextAttribute,            StellaKey::_2, MOD3 },
+    { Event::DecreaseAttribute,        StellaKey::_3, StellaMod::SHIFT | MOD3 },
+    { Event::IncreaseAttribute,        StellaKey::_3, MOD3 },
+    { Event::PhosphorDecrease,         StellaKey::_4, StellaMod::SHIFT | MOD3 },
+    { Event::PhosphorIncrease,         StellaKey::_4, MOD3 },
+    { Event::TogglePhosphor,           StellaKey::P, MOD3 },
+    //{ Event::PhosphorModeDecrease,     StellaKey::P, StellaMod::SHIFT | StellaMod::CTRL | MOD3 },
+    { Event::PhosphorModeIncrease,     StellaKey::P, StellaMod::CTRL | MOD3 },
+    { Event::ScanlinesDecrease,        StellaKey::_5, StellaMod::SHIFT | MOD3 },
+    { Event::ScanlinesIncrease,        StellaKey::_5, MOD3 },
+    { Event::PreviousScanlineMask,     StellaKey::_6, StellaMod::SHIFT | MOD3 },
+    { Event::NextScanlineMask,         StellaKey::_6, MOD3 },
+    { Event::PreviousPaletteAttribute, StellaKey::_9, StellaMod::SHIFT | MOD3 },
+    { Event::NextPaletteAttribute,     StellaKey::_9, MOD3 },
+    { Event::PaletteAttributeDecrease, StellaKey::_0, StellaMod::SHIFT | MOD3 },
+    { Event::PaletteAttributeIncrease, StellaKey::_0, MOD3 },
+    { Event::ToggleColorLoss,          StellaKey::L, StellaMod::CTRL },
+    { Event::PaletteDecrease,          StellaKey::P, StellaMod::SHIFT | StellaMod::CTRL },
+    { Event::PaletteIncrease,          StellaKey::P, StellaMod::CTRL },
+    { Event::FormatDecrease,           StellaKey::F, StellaMod::SHIFT | StellaMod::CTRL },
+    { Event::FormatIncrease,           StellaKey::F, StellaMod::CTRL },
   #ifndef BSPF_MACOS
-  { Event::PreviousSetting,          KBDK_END },
-  { Event::NextSetting,              KBDK_HOME },
-  { Event::PreviousSettingGroup,     KBDK_END, KBDM_CTRL },
-  { Event::NextSettingGroup,         KBDK_HOME, KBDM_CTRL },
+    { Event::PreviousSetting,          StellaKey::END },
+    { Event::NextSetting,              StellaKey::HOME },
+    { Event::PreviousSettingGroup,     StellaKey::END, StellaMod::CTRL },
+    { Event::NextSettingGroup,         StellaKey::HOME, StellaMod::CTRL },
   #else
     // HOME & END keys are swapped on Mac keyboards
-  { Event::PreviousSetting,          KBDK_HOME },
-  { Event::NextSetting,              KBDK_END },
-  { Event::PreviousSettingGroup,     KBDK_HOME, KBDM_CTRL },
-  { Event::NextSettingGroup,         KBDK_END, KBDM_CTRL },
+    { Event::PreviousSetting,          StellaKey::HOME },
+    { Event::NextSetting,              StellaKey::END },
+    { Event::PreviousSettingGroup,     StellaKey::HOME, StellaMod::CTRL },
+    { Event::NextSettingGroup,         StellaKey::END, StellaMod::CTRL },
   #endif
-  { Event::PreviousSetting,          KBDK_KP_1 },
-  { Event::NextSetting,              KBDK_KP_7 },
-  { Event::PreviousSettingGroup,     KBDK_KP_1, KBDM_CTRL },
-  { Event::NextSettingGroup,         KBDK_KP_7, KBDM_CTRL },
-  { Event::SettingDecrease,          KBDK_PAGEDOWN },
-  { Event::SettingDecrease,          KBDK_KP_3, KBDM_CTRL },
-  { Event::SettingIncrease,          KBDK_PAGEUP },
-  { Event::SettingIncrease,          KBDK_KP_9, KBDM_CTRL },
+    { Event::PreviousSetting,          StellaKey::KP_1 },
+    { Event::NextSetting,              StellaKey::KP_7 },
+    { Event::PreviousSettingGroup,     StellaKey::KP_1, StellaMod::CTRL },
+    { Event::NextSettingGroup,         StellaKey::KP_7, StellaMod::CTRL },
+    { Event::SettingDecrease,          StellaKey::PAGEDOWN },
+    { Event::SettingDecrease,          StellaKey::KP_3, StellaMod::CTRL },
+    { Event::SettingIncrease,          StellaKey::PAGEUP },
+    { Event::SettingIncrease,          StellaKey::KP_9, StellaMod::CTRL },
 
-  { Event::ToggleInter,              KBDK_I, KBDM_CTRL },
-  { Event::DecreaseSpeed,            KBDK_S, KBDM_SHIFT | KBDM_CTRL },
-  { Event::IncreaseSpeed,            KBDK_S, KBDM_CTRL },
-  { Event::ToggleTurbo,              KBDK_T, KBDM_CTRL },
-  { Event::JitterSenseDecrease,      KBDK_J, KBDM_SHIFT | MOD3 | KBDM_CTRL },
-  { Event::JitterSenseIncrease,      KBDK_J, MOD3 | KBDM_CTRL },
-  { Event::JitterRecDecrease,        KBDK_J, KBDM_SHIFT | KBDM_CTRL },
-  { Event::JitterRecIncrease,        KBDK_J, KBDM_CTRL },
-  { Event::ToggleDeveloperSet,       KBDK_D, MOD3 },
-  { Event::ToggleJitter,             KBDK_J, MOD3 },
-  { Event::ToggleFrameStats,         KBDK_L, MOD3 },
-  { Event::ToggleTimeMachine,        KBDK_T, MOD3 },
+    { Event::ToggleInter,              StellaKey::I, StellaMod::CTRL },
+    { Event::DecreaseSpeed,            StellaKey::S, StellaMod::SHIFT | StellaMod::CTRL },
+    { Event::IncreaseSpeed,            StellaKey::S, StellaMod::CTRL },
+    { Event::ToggleTurbo,              StellaKey::T, StellaMod::CTRL },
+    { Event::JitterSenseDecrease,      StellaKey::J, StellaMod::SHIFT | MOD3 | StellaMod::CTRL },
+    { Event::JitterSenseIncrease,      StellaKey::J, MOD3 | StellaMod::CTRL },
+    { Event::JitterRecDecrease,        StellaKey::J, StellaMod::SHIFT | StellaMod::CTRL },
+    { Event::JitterRecIncrease,        StellaKey::J, StellaMod::CTRL },
+    { Event::ToggleDeveloperSet,       StellaKey::D, MOD3 },
+    { Event::ToggleJitter,             StellaKey::J, MOD3 },
+    { Event::ToggleFrameStats,         StellaKey::L, MOD3 },
+    { Event::ToggleTimeMachine,        StellaKey::T, MOD3 },
 
   #ifdef IMAGE_SUPPORT
-  { Event::ToggleContSnapshots,      KBDK_S, MOD3 | KBDM_CTRL },
-  { Event::ToggleContSnapshotsFrame, KBDK_S, KBDM_SHIFT | MOD3 | KBDM_CTRL },
+    { Event::ToggleContSnapshots,      StellaKey::S, MOD3 | StellaMod::CTRL },
+    { Event::ToggleContSnapshotsFrame, StellaKey::S, StellaMod::SHIFT | MOD3 | StellaMod::CTRL },
   #endif
 
-  { Event::DecreaseDeadzone,         KBDK_F1, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncreaseDeadzone,         KBDK_F1, KBDM_CTRL },
-  { Event::DecAnalogDeadzone,        KBDK_F1, KBDM_CTRL | MOD3 | KBDM_SHIFT},
-  { Event::IncAnalogDeadzone,        KBDK_F1, KBDM_CTRL | MOD3},
-  { Event::DecAnalogSense,           KBDK_F2, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncAnalogSense,           KBDK_F2, KBDM_CTRL },
-  { Event::DecAnalogLinear,          KBDK_F2, KBDM_CTRL | MOD3 | KBDM_SHIFT},
-  { Event::IncAnalogLinear,          KBDK_F2, KBDM_CTRL | MOD3},
-  { Event::DecDejtterAveraging,      KBDK_F3, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncDejtterAveraging,      KBDK_F3, KBDM_CTRL },
-  { Event::DecDejtterReaction,       KBDK_F4, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncDejtterReaction,       KBDK_F4, KBDM_CTRL },
-  { Event::DecDigitalSense,          KBDK_F5, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncDigitalSense,          KBDK_F5, KBDM_CTRL },
-  { Event::ToggleAutoFire,           KBDK_A, MOD3 },
-  { Event::DecreaseAutoFire,         KBDK_A, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncreaseAutoFire,         KBDK_A, KBDM_CTRL },
-  { Event::ToggleFourDirections,     KBDK_F6, KBDM_CTRL },
-  { Event::ToggleKeyCombos,          KBDK_F7, KBDM_CTRL },
-  { Event::ToggleSAPortOrder,        KBDK_1, KBDM_CTRL },
+    { Event::DecreaseDeadzone,         StellaKey::F1, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncreaseDeadzone,         StellaKey::F1, StellaMod::CTRL },
+    { Event::DecAnalogDeadzone,        StellaKey::F1, StellaMod::CTRL | MOD3 | StellaMod::SHIFT},
+    { Event::IncAnalogDeadzone,        StellaKey::F1, StellaMod::CTRL | MOD3},
+    { Event::DecAnalogSense,           StellaKey::F2, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncAnalogSense,           StellaKey::F2, StellaMod::CTRL },
+    { Event::DecAnalogLinear,          StellaKey::F2, StellaMod::CTRL | MOD3 | StellaMod::SHIFT},
+    { Event::IncAnalogLinear,          StellaKey::F2, StellaMod::CTRL | MOD3},
+    { Event::DecDejtterAveraging,      StellaKey::F3, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncDejtterAveraging,      StellaKey::F3, StellaMod::CTRL },
+    { Event::DecDejtterReaction,       StellaKey::F4, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncDejtterReaction,       StellaKey::F4, StellaMod::CTRL },
+    { Event::DecDigitalSense,          StellaKey::F5, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncDigitalSense,          StellaKey::F5, StellaMod::CTRL },
+    { Event::ToggleAutoFire,           StellaKey::A, MOD3 },
+    { Event::DecreaseAutoFire,         StellaKey::A, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncreaseAutoFire,         StellaKey::A, StellaMod::CTRL },
+    { Event::ToggleFourDirections,     StellaKey::F6, StellaMod::CTRL },
+    { Event::ToggleKeyCombos,          StellaKey::F7, StellaMod::CTRL },
+    { Event::ToggleSAPortOrder,        StellaKey::_1, StellaMod::CTRL },
 
-  { Event::PrevMouseAsController,    KBDK_F8, KBDM_CTRL | KBDM_SHIFT },
-  { Event::NextMouseAsController,    KBDK_F8, KBDM_CTRL },
-  { Event::DecMousePaddleSense,      KBDK_F9, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncMousePaddleSense,      KBDK_F9, KBDM_CTRL },
-  { Event::DecMouseTrackballSense,   KBDK_F10, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncMouseTrackballSense,   KBDK_F10, KBDM_CTRL },
-  { Event::DecreaseDrivingSense,     KBDK_F11, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncreaseDrivingSense,     KBDK_F11, KBDM_CTRL },
-  { Event::PreviousCursorVisbility,  KBDK_F12, KBDM_CTRL | KBDM_SHIFT },
-  { Event::NextCursorVisbility,      KBDK_F12, KBDM_CTRL },
-  { Event::ToggleGrabMouse,          KBDK_G, KBDM_CTRL },
+    { Event::PrevMouseAsController,    StellaKey::F8, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::NextMouseAsController,    StellaKey::F8, StellaMod::CTRL },
+    { Event::DecMousePaddleSense,      StellaKey::F9, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncMousePaddleSense,      StellaKey::F9, StellaMod::CTRL },
+    { Event::DecMouseTrackballSense,   StellaKey::F10, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncMouseTrackballSense,   StellaKey::F10, StellaMod::CTRL },
+    { Event::DecreaseDrivingSense,     StellaKey::F11, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncreaseDrivingSense,     StellaKey::F11, StellaMod::CTRL },
+    { Event::PreviousCursorVisbility,  StellaKey::F12, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::NextCursorVisbility,      StellaKey::F12, StellaMod::CTRL },
+    { Event::ToggleGrabMouse,          StellaKey::G, StellaMod::CTRL },
 
-  { Event::PreviousLeftPort,         KBDK_2, KBDM_CTRL | KBDM_SHIFT },
-  { Event::NextLeftPort,             KBDK_2, KBDM_CTRL },
-  { Event::PreviousRightPort,        KBDK_3, KBDM_CTRL | KBDM_SHIFT },
-  { Event::NextRightPort,            KBDK_3, KBDM_CTRL },
-  { Event::ToggleSwapPorts,          KBDK_4, KBDM_CTRL },
-  { Event::ToggleSwapPaddles,        KBDK_5, KBDM_CTRL },
-  { Event::DecreasePaddleCenterX,    KBDK_6, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncreasePaddleCenterX,    KBDK_6, KBDM_CTRL },
-  { Event::DecreasePaddleCenterY,    KBDK_7, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncreasePaddleCenterY,    KBDK_7, KBDM_CTRL },
-  { Event::PreviousMouseControl,     KBDK_0, KBDM_CTRL | KBDM_SHIFT },
-  { Event::NextMouseControl,         KBDK_0, KBDM_CTRL },
-  { Event::DecreaseMouseAxesRange,   KBDK_8, KBDM_CTRL | KBDM_SHIFT },
-  { Event::IncreaseMouseAxesRange,   KBDK_8, KBDM_CTRL },
+    { Event::PreviousLeftPort,         StellaKey::_2, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::NextLeftPort,             StellaKey::_2, StellaMod::CTRL },
+    { Event::PreviousRightPort,        StellaKey::_3, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::NextRightPort,            StellaKey::_3, StellaMod::CTRL },
+    { Event::ToggleSwapPorts,          StellaKey::_4, StellaMod::CTRL },
+    { Event::ToggleSwapPaddles,        StellaKey::_5, StellaMod::CTRL },
+    { Event::DecreasePaddleCenterX,    StellaKey::_6, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncreasePaddleCenterX,    StellaKey::_6, StellaMod::CTRL },
+    { Event::DecreasePaddleCenterY,    StellaKey::_7, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncreasePaddleCenterY,    StellaKey::_7, StellaMod::CTRL },
+    { Event::PreviousMouseControl,     StellaKey::_0, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::NextMouseControl,         StellaKey::_0, StellaMod::CTRL },
+    { Event::DecreaseMouseAxesRange,   StellaKey::_8, StellaMod::CTRL | StellaMod::SHIFT },
+    { Event::IncreaseMouseAxesRange,   StellaKey::_8, StellaMod::CTRL },
 
-  { Event::ToggleP0Collision,        KBDK_Z, KBDM_SHIFT | MOD3 },
-  { Event::ToggleP0Bit,              KBDK_Z, MOD3 },
-  { Event::ToggleP1Collision,        KBDK_X, KBDM_SHIFT | MOD3 },
-  { Event::ToggleP1Bit,              KBDK_X, MOD3 },
-  { Event::ToggleM0Collision,        KBDK_C, KBDM_SHIFT | MOD3 },
-  { Event::ToggleM0Bit,              KBDK_C, MOD3 },
-  { Event::ToggleM1Collision,        KBDK_V, KBDM_SHIFT | MOD3 },
-  { Event::ToggleM1Bit,              KBDK_V, MOD3 },
-  { Event::ToggleBLCollision,        KBDK_B, KBDM_SHIFT | MOD3 },
-  { Event::ToggleBLBit,              KBDK_B, MOD3 },
-  { Event::TogglePFCollision,        KBDK_N, KBDM_SHIFT | MOD3 },
-  { Event::TogglePFBit,              KBDK_N, MOD3 },
-  { Event::ToggleCollisions,         KBDK_COMMA, KBDM_SHIFT | MOD3 },
-  { Event::ToggleBits,               KBDK_COMMA, MOD3 },
-  { Event::ToggleFixedColors,        KBDK_PERIOD, MOD3 },
+    { Event::ToggleP0Collision,        StellaKey::Z, StellaMod::SHIFT | MOD3 },
+    { Event::ToggleP0Bit,              StellaKey::Z, MOD3 },
+    { Event::ToggleP1Collision,        StellaKey::X, StellaMod::SHIFT | MOD3 },
+    { Event::ToggleP1Bit,              StellaKey::X, MOD3 },
+    { Event::ToggleM0Collision,        StellaKey::C, StellaMod::SHIFT | MOD3 },
+    { Event::ToggleM0Bit,              StellaKey::C, MOD3 },
+    { Event::ToggleM1Collision,        StellaKey::V, StellaMod::SHIFT | MOD3 },
+    { Event::ToggleM1Bit,              StellaKey::V, MOD3 },
+    { Event::ToggleBLCollision,        StellaKey::B, StellaMod::SHIFT | MOD3 },
+    { Event::ToggleBLBit,              StellaKey::B, MOD3 },
+    { Event::TogglePFCollision,        StellaKey::N, StellaMod::SHIFT | MOD3 },
+    { Event::TogglePFBit,              StellaKey::N, MOD3 },
+    { Event::ToggleCollisions,         StellaKey::COMMA, StellaMod::SHIFT | MOD3 },
+    { Event::ToggleBits,               StellaKey::COMMA, MOD3 },
+    { Event::ToggleFixedColors,        StellaKey::PERIOD, MOD3 },
 
-  { Event::RewindPause,              KBDK_LEFT, KBDM_CTRL | MOD3},
-  { Event::Rewind1Menu,              KBDK_LEFT, MOD3 },
-  { Event::Rewind10Menu,             KBDK_LEFT, KBDM_SHIFT | MOD3 },
-  { Event::RewindAllMenu,            KBDK_DOWN, MOD3 },
-  { Event::UnwindPause,              KBDK_RIGHT, KBDM_CTRL | MOD3},
-  { Event::Unwind1Menu,              KBDK_RIGHT, MOD3 },
-  { Event::Unwind10Menu,             KBDK_RIGHT, KBDM_SHIFT | MOD3 },
-  { Event::UnwindAllMenu,            KBDK_UP, MOD3 },
-  { Event::HighScoresMenuMode,       KBDK_INSERT },
-  { Event::TogglePlayBackMode,       KBDK_SPACE, KBDM_SHIFT },
+    { Event::RewindPause,              StellaKey::LEFT, StellaMod::CTRL | MOD3},
+    { Event::Rewind1Menu,              StellaKey::LEFT, MOD3 },
+    { Event::Rewind10Menu,             StellaKey::LEFT, StellaMod::SHIFT | MOD3 },
+    { Event::RewindAllMenu,            StellaKey::DOWN, MOD3 },
+    { Event::UnwindPause,              StellaKey::RIGHT, StellaMod::CTRL | MOD3},
+    { Event::Unwind1Menu,              StellaKey::RIGHT, MOD3 },
+    { Event::Unwind10Menu,             StellaKey::RIGHT, StellaMod::SHIFT | MOD3 },
+    { Event::UnwindAllMenu,            StellaKey::UP, MOD3 },
+    { Event::HighScoresMenuMode,       StellaKey::INSERT },
+    { Event::TogglePlayBackMode,       StellaKey::SPACE, StellaMod::SHIFT },
 
-  { Event::ConsoleBlackWhite,        KBDK_F4 },
-  { Event::ConsoleLeftDiffB,         KBDK_F6 },
-  { Event::ConsoleRightDiffB,        KBDK_F8 },
-  { Event::Fry,                      KBDK_BACKSPACE, KBDM_SHIFT }
-};
+    { Event::ConsoleBlackWhite,        StellaKey::F4 },
+    { Event::ConsoleLeftDiffB,         StellaKey::F6 },
+    { Event::ConsoleRightDiffB,        StellaKey::F8 },
+    { Event::Fry,                      StellaKey::BACKSPACE, StellaMod::SHIFT }
+  };
+  return EventMappingSpan{data};
+}();
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-PhysicalKeyboardHandler::EventMappingArray
-PhysicalKeyboardHandler::DefaultMenuMapping = {
-  {Event::UIUp,                     KBDK_UP},
-  {Event::UIDown,                   KBDK_DOWN},
-  {Event::UILeft,                   KBDK_LEFT},
-  {Event::UIRight,                  KBDK_RIGHT},
-  {Event::UISelect,                 KBDK_RETURN},
-  {Event::UISelect,                 KBDK_SPACE},
+const PhysicalKeyboardHandler::EventMappingSpan
+PhysicalKeyboardHandler::DefaultMenuMapping = []() noexcept {
+  static constexpr EventMapping data[] = {
+    {Event::UIUp,                     StellaKey::UP},
+    {Event::UIDown,                   StellaKey::DOWN},
+    {Event::UILeft,                   StellaKey::LEFT},
+    {Event::UIRight,                  StellaKey::RIGHT},
+    {Event::UISelect,                 StellaKey::RETURN},
+    {Event::UISelect,                 StellaKey::SPACE},
 
-  {Event::UIHome,                   KBDK_HOME},
-  {Event::UIEnd,                    KBDK_END},
-  {Event::UIPgUp,                   KBDK_PAGEUP},
-  {Event::UIPgDown,                 KBDK_PAGEDOWN},
-  // same with keypad
-  {Event::UIUp,                     KBDK_KP_8},
-  {Event::UIDown,                   KBDK_KP_2},
-  {Event::UILeft,                   KBDK_KP_4},
-  {Event::UIRight,                  KBDK_KP_6},
-  {Event::UISelect,                 KBDK_KP_ENTER},
+    {Event::UIHome,                   StellaKey::HOME},
+    {Event::UIEnd,                    StellaKey::END},
+    {Event::UIPgUp,                   StellaKey::PAGEUP},
+    {Event::UIPgDown,                 StellaKey::PAGEDOWN},
+    // same with keypad
+    {Event::UIUp,                     StellaKey::KP_8},
+    {Event::UIDown,                   StellaKey::KP_2},
+    {Event::UILeft,                   StellaKey::KP_4},
+    {Event::UIRight,                  StellaKey::KP_6},
+    {Event::UISelect,                 StellaKey::KP_ENTER},
 
-  {Event::UIHome,                   KBDK_KP_7},
-  {Event::UIEnd,                    KBDK_KP_1},
-  {Event::UIPgUp,                   KBDK_KP_9},
-  {Event::UIPgDown,                 KBDK_KP_3},
+    {Event::UIHome,                   StellaKey::KP_7},
+    {Event::UIEnd,                    StellaKey::KP_1},
+    {Event::UIPgUp,                   StellaKey::KP_9},
+    {Event::UIPgDown,                 StellaKey::KP_3},
 
-  {Event::UICancel,                 KBDK_ESCAPE},
+    {Event::UICancel,                 StellaKey::ESCAPE},
 
-  {Event::UINavPrev,                KBDK_TAB, KBDM_SHIFT},
-  {Event::UINavNext,                KBDK_TAB},
-  {Event::UITabPrev,                KBDK_TAB, KBDM_SHIFT | KBDM_CTRL},
-  {Event::UITabNext,                KBDK_TAB, KBDM_CTRL},
+    {Event::UINavPrev,                StellaKey::TAB, StellaMod::SHIFT},
+    {Event::UINavNext,                StellaKey::TAB},
+    {Event::UITabPrev,                StellaKey::TAB, StellaMod::SHIFT | StellaMod::CTRL},
+    {Event::UITabNext,                StellaKey::TAB, StellaMod::CTRL},
 
-  {Event::ToggleUIPalette,          KBDK_T, MOD3},
-  {Event::ToggleFullScreen,         KBDK_RETURN, MOD3},
+    {Event::ToggleUIPalette,          StellaKey::T, MOD3},
+    {Event::ToggleFullScreen,         StellaKey::RETURN, MOD3},
 
-#ifdef BSPF_MACOS
-  {Event::Quit,                     KBDK_Q, MOD3},
-#else
-  {Event::Quit,                     KBDK_Q, KBDM_CTRL},
-#endif
+  #ifdef BSPF_MACOS
+    {Event::Quit,                     StellaKey::Q, MOD3},
+  #else
+    {Event::Quit,                     StellaKey::Q, StellaMod::CTRL},
+  #endif
 
-  {Event::UIPrevDir,                KBDK_BACKSPACE},
-#ifdef BSPF_MACOS
-  {Event::UIHelp,                   KBDK_SLASH, KBDM_SHIFT | CMD},
-#else
-  {Event::UIHelp,                   KBDK_F1},
-#endif
-};
+    {Event::UIPrevDir,                StellaKey::BACKSPACE},
+  #ifdef BSPF_MACOS
+    {Event::UIHelp,                   StellaKey::SLASH, StellaMod::SHIFT | CMD},
+  #else
+    {Event::UIHelp,                   StellaKey::F1},
+  #endif
+  };
+  return EventMappingSpan{data};
+}();
 
 #ifdef GUI_SUPPORT
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-PhysicalKeyboardHandler::EventMappingArray
-PhysicalKeyboardHandler::FixedEditMapping = {
-  {Event::MoveLeftChar,             KBDK_LEFT},
-  {Event::MoveRightChar,            KBDK_RIGHT},
-  {Event::SelectLeftChar,           KBDK_LEFT, KBDM_SHIFT},
-  {Event::SelectRightChar,          KBDK_RIGHT, KBDM_SHIFT},
-#if defined(BSPF_MACOS) || defined(MACOS_KEYS)
-  {Event::MoveLeftWord,             KBDK_LEFT, OPTION},
-  {Event::MoveRightWord,            KBDK_RIGHT, OPTION},
-  {Event::MoveHome,                 KBDK_HOME},
-  {Event::MoveHome,                 KBDK_A, KBDM_CTRL},
-  {Event::MoveHome,                 KBDK_LEFT, CMD},
-  {Event::MoveEnd,                  KBDK_END},
-  {Event::MoveEnd,                  KBDK_E, KBDM_CTRL},
-  {Event::MoveEnd,                  KBDK_RIGHT, CMD},
-  {Event::SelectLeftWord,           KBDK_LEFT, KBDM_SHIFT | OPTION},
-  {Event::SelectRightWord,          KBDK_RIGHT, KBDM_SHIFT | OPTION},
-  {Event::SelectHome,               KBDK_HOME, KBDM_SHIFT},
-  {Event::SelectHome,               KBDK_LEFT, KBDM_SHIFT | CMD},
-  {Event::SelectHome,               KBDK_A, KBDM_CTRL | KBDM_SHIFT},
-  {Event::SelectEnd,                KBDK_E, KBDM_SHIFT | KBDM_CTRL},
-  {Event::SelectEnd,                KBDK_RIGHT, KBDM_SHIFT | CMD},
-  {Event::SelectEnd,                KBDK_END, KBDM_SHIFT},
-  {Event::SelectAll,                KBDK_A, CMD},
-  {Event::Delete,                   KBDK_DELETE},
-  {Event::Delete,                   KBDK_D, KBDM_CTRL},
-  {Event::DeleteLeftWord,           KBDK_W, KBDM_CTRL},
-  {Event::DeleteLeftWord,           KBDK_BACKSPACE, OPTION},
-  {Event::DeleteRightWord,          KBDK_DELETE, OPTION},
-  {Event::DeleteHome,               KBDK_U, KBDM_CTRL},
-  {Event::DeleteHome,               KBDK_BACKSPACE, CMD},
-  {Event::DeleteEnd,                KBDK_K, KBDM_CTRL},
-  {Event::Backspace,                KBDK_BACKSPACE},
-  {Event::Undo,                     KBDK_Z, CMD},
-  {Event::Redo,                     KBDK_Y, CMD},
-  {Event::Redo,                     KBDK_Z, KBDM_SHIFT | CMD},
-  {Event::Cut,                      KBDK_X, CMD},
-  {Event::Copy,                     KBDK_C, CMD},
-  {Event::Paste,                    KBDK_V, CMD},
-#else
-  {Event::MoveLeftWord,             KBDK_LEFT, KBDM_CTRL},
-  {Event::MoveRightWord,            KBDK_RIGHT, KBDM_CTRL},
-  {Event::MoveHome,                 KBDK_HOME},
-  {Event::MoveEnd,                  KBDK_END},
-  {Event::SelectLeftWord,           KBDK_LEFT, KBDM_SHIFT | KBDM_CTRL},
-  {Event::SelectRightWord,          KBDK_RIGHT, KBDM_SHIFT | KBDM_CTRL},
-  {Event::SelectHome,               KBDK_HOME, KBDM_SHIFT},
-  {Event::SelectEnd,                KBDK_END, KBDM_SHIFT},
-  {Event::SelectAll,                KBDK_A, KBDM_CTRL},
-  {Event::Delete,                   KBDK_DELETE},
-  {Event::Delete,                   KBDK_KP_PERIOD},
-  {Event::Delete,                   KBDK_D, KBDM_CTRL},
-  {Event::DeleteLeftWord,           KBDK_BACKSPACE, KBDM_CTRL},
-  {Event::DeleteLeftWord,           KBDK_W, KBDM_CTRL},
-  {Event::DeleteRightWord,          KBDK_DELETE, KBDM_CTRL},
-  {Event::DeleteRightWord,          KBDK_D, KBDM_ALT},
-  {Event::DeleteHome,               KBDK_HOME, KBDM_CTRL},
-  {Event::DeleteHome,               KBDK_U, KBDM_CTRL},
-  {Event::DeleteEnd,                KBDK_END, KBDM_CTRL},
-  {Event::DeleteEnd,                KBDK_K, KBDM_CTRL},
-  {Event::Backspace,                KBDK_BACKSPACE},
-  {Event::Undo,                     KBDK_Z, KBDM_CTRL},
-  {Event::Undo,                     KBDK_BACKSPACE, KBDM_ALT},
-  {Event::Redo,                     KBDK_Y, KBDM_CTRL},
-  {Event::Redo,                     KBDK_Z, KBDM_SHIFT | KBDM_CTRL},
-  {Event::Redo,                     KBDK_BACKSPACE, KBDM_SHIFT | KBDM_ALT},
-  {Event::Cut,                      KBDK_X, KBDM_CTRL},
-  {Event::Cut,                      KBDK_DELETE, KBDM_SHIFT},
-  {Event::Cut,                      KBDK_KP_PERIOD, KBDM_SHIFT},
-  {Event::Copy,                     KBDK_C, KBDM_CTRL},
-  {Event::Copy,                     KBDK_INSERT, KBDM_CTRL},
-  {Event::Paste,                    KBDK_V, KBDM_CTRL},
-  {Event::Paste,                    KBDK_INSERT, KBDM_SHIFT},
-#endif
-  {Event::EndEdit,                  KBDK_RETURN},
-  {Event::EndEdit,                  KBDK_KP_ENTER},
-  {Event::AbortEdit,                KBDK_ESCAPE},
-};
+const PhysicalKeyboardHandler::EventMappingSpan
+PhysicalKeyboardHandler::FixedEditMapping = []() noexcept {
+  static constexpr EventMapping data[] = {
+    {Event::MoveLeftChar,             StellaKey::LEFT},
+    {Event::MoveRightChar,            StellaKey::RIGHT},
+    {Event::SelectLeftChar,           StellaKey::LEFT, StellaMod::SHIFT},
+    {Event::SelectRightChar,          StellaKey::RIGHT, StellaMod::SHIFT},
+  #if defined(BSPF_MACOS) || defined(MACOS_KEYS)
+    {Event::MoveLeftWord,             StellaKey::LEFT, OPTION},
+    {Event::MoveRightWord,            StellaKey::RIGHT, OPTION},
+    {Event::MoveHome,                 StellaKey::HOME},
+    {Event::MoveHome,                 StellaKey::A, StellaMod::CTRL},
+    {Event::MoveHome,                 StellaKey::LEFT, CMD},
+    {Event::MoveEnd,                  StellaKey::END},
+    {Event::MoveEnd,                  StellaKey::E, StellaMod::CTRL},
+    {Event::MoveEnd,                  StellaKey::RIGHT, CMD},
+    {Event::SelectLeftWord,           StellaKey::LEFT, StellaMod::SHIFT | OPTION},
+    {Event::SelectRightWord,          StellaKey::RIGHT, StellaMod::SHIFT | OPTION},
+    {Event::SelectHome,               StellaKey::HOME, StellaMod::SHIFT},
+    {Event::SelectHome,               StellaKey::LEFT, StellaMod::SHIFT | CMD},
+    {Event::SelectHome,               StellaKey::A, StellaMod::CTRL | StellaMod::SHIFT},
+    {Event::SelectEnd,                StellaKey::E, StellaMod::SHIFT | StellaMod::CTRL},
+    {Event::SelectEnd,                StellaKey::RIGHT, StellaMod::SHIFT | CMD},
+    {Event::SelectEnd,                StellaKey::END, StellaMod::SHIFT},
+    {Event::SelectAll,                StellaKey::A, CMD},
+    {Event::Delete,                   StellaKey::DELETE},
+    {Event::Delete,                   StellaKey::D, StellaMod::CTRL},
+    {Event::DeleteLeftWord,           StellaKey::W, StellaMod::CTRL},
+    {Event::DeleteLeftWord,           StellaKey::BACKSPACE, OPTION},
+    {Event::DeleteRightWord,          StellaKey::DELETE, OPTION},
+    {Event::DeleteHome,               StellaKey::U, StellaMod::CTRL},
+    {Event::DeleteHome,               StellaKey::BACKSPACE, CMD},
+    {Event::DeleteEnd,                StellaKey::K, StellaMod::CTRL},
+    {Event::Backspace,                StellaKey::BACKSPACE},
+    {Event::Undo,                     StellaKey::Z, CMD},
+    {Event::Redo,                     StellaKey::Y, CMD},
+    {Event::Redo,                     StellaKey::Z, StellaMod::SHIFT | CMD},
+    {Event::Cut,                      StellaKey::X, CMD},
+    {Event::Copy,                     StellaKey::C, CMD},
+    {Event::Paste,                    StellaKey::V, CMD},
+  #else
+    {Event::MoveLeftWord,             StellaKey::LEFT, StellaMod::CTRL},
+    {Event::MoveRightWord,            StellaKey::RIGHT, StellaMod::CTRL},
+    {Event::MoveHome,                 StellaKey::HOME},
+    {Event::MoveEnd,                  StellaKey::END},
+    {Event::SelectLeftWord,           StellaKey::LEFT, StellaMod::SHIFT | StellaMod::CTRL},
+    {Event::SelectRightWord,          StellaKey::RIGHT, StellaMod::SHIFT | StellaMod::CTRL},
+    {Event::SelectHome,               StellaKey::HOME, StellaMod::SHIFT},
+    {Event::SelectEnd,                StellaKey::END, StellaMod::SHIFT},
+    {Event::SelectAll,                StellaKey::A, StellaMod::CTRL},
+    {Event::Delete,                   StellaKey::DELETE},
+    {Event::Delete,                   StellaKey::KP_PERIOD},
+    {Event::Delete,                   StellaKey::D, StellaMod::CTRL},
+    {Event::DeleteLeftWord,           StellaKey::BACKSPACE, StellaMod::CTRL},
+    {Event::DeleteLeftWord,           StellaKey::W, StellaMod::CTRL},
+    {Event::DeleteRightWord,          StellaKey::DELETE, StellaMod::CTRL},
+    {Event::DeleteRightWord,          StellaKey::D, StellaMod::ALT},
+    {Event::DeleteHome,               StellaKey::HOME, StellaMod::CTRL},
+    {Event::DeleteHome,               StellaKey::U, StellaMod::CTRL},
+    {Event::DeleteEnd,                StellaKey::END, StellaMod::CTRL},
+    {Event::DeleteEnd,                StellaKey::K, StellaMod::CTRL},
+    {Event::Backspace,                StellaKey::BACKSPACE},
+    {Event::Undo,                     StellaKey::Z, StellaMod::CTRL},
+    {Event::Undo,                     StellaKey::BACKSPACE, StellaMod::ALT},
+    {Event::Redo,                     StellaKey::Y, StellaMod::CTRL},
+    {Event::Redo,                     StellaKey::Z, StellaMod::SHIFT | StellaMod::CTRL},
+    {Event::Redo,                     StellaKey::BACKSPACE, StellaMod::SHIFT | StellaMod::ALT},
+    {Event::Cut,                      StellaKey::X, StellaMod::CTRL},
+    {Event::Cut,                      StellaKey::DELETE, StellaMod::SHIFT},
+    {Event::Cut,                      StellaKey::KP_PERIOD, StellaMod::SHIFT},
+    {Event::Copy,                     StellaKey::C, StellaMod::CTRL},
+    {Event::Copy,                     StellaKey::INSERT, StellaMod::CTRL},
+    {Event::Paste,                    StellaKey::V, StellaMod::CTRL},
+    {Event::Paste,                    StellaKey::INSERT, StellaMod::SHIFT},
+  #endif
+    {Event::EndEdit,                  StellaKey::RETURN},
+    {Event::EndEdit,                  StellaKey::KP_ENTER},
+    {Event::AbortEdit,                StellaKey::ESCAPE},
+  };
+  return EventMappingSpan{data};
+}();
 #endif  // GUI_SUPPORT
 
 #ifdef DEBUGGER_SUPPORT
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-PhysicalKeyboardHandler::EventMappingArray
-PhysicalKeyboardHandler::FixedPromptMapping = {
-  {Event::UINavNext,                KBDK_TAB},
-  {Event::UINavPrev,                KBDK_TAB, KBDM_SHIFT},
-  {Event::UIPgUp,                   KBDK_PAGEUP},
-  {Event::UIPgUp,                   KBDK_PAGEUP, KBDM_SHIFT},
-  {Event::UIPgDown,                 KBDK_PAGEDOWN},
-  {Event::UIPgDown,                 KBDK_PAGEDOWN, KBDM_SHIFT},
-  {Event::UIHome,                   KBDK_HOME, KBDM_SHIFT},
-  {Event::UIEnd,                    KBDK_END, KBDM_SHIFT},
-  {Event::UIUp,                     KBDK_UP, KBDM_SHIFT},
-  {Event::UIDown,                   KBDK_DOWN, KBDM_SHIFT},
-  {Event::UILeft,                   KBDK_DOWN},
-  {Event::UIRight,                  KBDK_UP},
-};
-#endif // DEBUGGER_SUPPORT
+const PhysicalKeyboardHandler::EventMappingSpan
+PhysicalKeyboardHandler::FixedPromptMapping = []() noexcept {
+  static constexpr EventMapping data[] = {
+    {Event::UINavNext,                StellaKey::TAB},
+    {Event::UINavPrev,                StellaKey::TAB, StellaMod::SHIFT},
+    {Event::UIPgUp,                   StellaKey::PAGEUP},
+    {Event::UIPgUp,                   StellaKey::PAGEUP, StellaMod::SHIFT},
+    {Event::UIPgDown,                 StellaKey::PAGEDOWN},
+    {Event::UIPgDown,                 StellaKey::PAGEDOWN, StellaMod::SHIFT},
+    {Event::UIHome,                   StellaKey::HOME, StellaMod::SHIFT},
+    {Event::UIEnd,                    StellaKey::END, StellaMod::SHIFT},
+    {Event::UIUp,                     StellaKey::UP, StellaMod::SHIFT},
+    {Event::UIDown,                   StellaKey::DOWN, StellaMod::SHIFT},
+    {Event::UILeft,                   StellaKey::DOWN},
+    {Event::UIRight,                  StellaKey::UP},
+  };
+  return EventMappingSpan{data};
+}();
+#endif  // DEBUGGER_SUPPORT
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-PhysicalKeyboardHandler::EventMappingArray PhysicalKeyboardHandler::DefaultJoystickMapping = {
-  {Event::LeftJoystickUp,           KBDK_UP},
-  {Event::LeftJoystickDown,         KBDK_DOWN},
-  {Event::LeftJoystickLeft,         KBDK_LEFT},
-  {Event::LeftJoystickRight,        KBDK_RIGHT},
-  {Event::LeftJoystickUp,           KBDK_KP_8},
-  {Event::LeftJoystickDown,         KBDK_KP_2},
-  {Event::LeftJoystickLeft,         KBDK_KP_4},
-  {Event::LeftJoystickRight,        KBDK_KP_6},
-  {Event::LeftJoystickFire,         KBDK_SPACE},
-  {Event::LeftJoystickFire,         KBDK_LCTRL},
-  {Event::LeftJoystickFire,         KBDK_KP_5},
-  {Event::LeftJoystickFire5,        KBDK_4},
-  {Event::LeftJoystickFire5,        KBDK_RSHIFT},
-  {Event::LeftJoystickFire5,        KBDK_KP_9},
-  {Event::LeftJoystickFire9,        KBDK_5},
-  {Event::LeftJoystickFire9,        KBDK_RCTRL},
-  {Event::LeftJoystickFire9,        KBDK_KP_3},
+const PhysicalKeyboardHandler::EventMappingSpan
+PhysicalKeyboardHandler::DefaultJoystickMapping = []() noexcept {
+  static constexpr EventMapping data[] = {
+    {Event::LeftJoystickUp,           StellaKey::UP},
+    {Event::LeftJoystickDown,         StellaKey::DOWN},
+    {Event::LeftJoystickLeft,         StellaKey::LEFT},
+    {Event::LeftJoystickRight,        StellaKey::RIGHT},
+    {Event::LeftJoystickUp,           StellaKey::KP_8},
+    {Event::LeftJoystickDown,         StellaKey::KP_2},
+    {Event::LeftJoystickLeft,         StellaKey::KP_4},
+    {Event::LeftJoystickRight,        StellaKey::KP_6},
+    {Event::LeftJoystickFire,         StellaKey::SPACE},
+    {Event::LeftJoystickFire,         StellaKey::LCTRL},
+    {Event::LeftJoystickFire,         StellaKey::KP_5},
+    {Event::LeftJoystickFire5,        StellaKey::_4},
+    {Event::LeftJoystickFire5,        StellaKey::RSHIFT},
+    {Event::LeftJoystickFire5,        StellaKey::KP_9},
+    {Event::LeftJoystickFire9,        StellaKey::_5},
+    {Event::LeftJoystickFire9,        StellaKey::RCTRL},
+    {Event::LeftJoystickFire9,        StellaKey::KP_3},
 
-  {Event::RightJoystickUp,          KBDK_Y},
-  {Event::RightJoystickDown,        KBDK_H},
-  {Event::RightJoystickLeft,        KBDK_G},
-  {Event::RightJoystickRight,       KBDK_J},
-  {Event::RightJoystickFire,        KBDK_F},
-  {Event::RightJoystickFire5,       KBDK_6},
-  {Event::RightJoystickFire9,       KBDK_7},
+    {Event::RightJoystickUp,          StellaKey::Y},
+    {Event::RightJoystickDown,        StellaKey::H},
+    {Event::RightJoystickLeft,        StellaKey::G},
+    {Event::RightJoystickRight,       StellaKey::J},
+    {Event::RightJoystickFire,        StellaKey::F},
+    {Event::RightJoystickFire5,       StellaKey::_6},
+    {Event::RightJoystickFire9,       StellaKey::_7},
 
-  // Same as Joysticks Zero & One + SHIFT
-  {Event::QTJoystickThreeUp,        KBDK_UP, KBDM_SHIFT},
-  {Event::QTJoystickThreeDown,      KBDK_DOWN, KBDM_SHIFT},
-  {Event::QTJoystickThreeLeft,      KBDK_LEFT, KBDM_SHIFT},
-  {Event::QTJoystickThreeRight,     KBDK_RIGHT, KBDM_SHIFT},
-  {Event::QTJoystickThreeUp,        KBDK_KP_8, KBDM_SHIFT},
-  {Event::QTJoystickThreeDown,      KBDK_KP_2, KBDM_SHIFT},
-  {Event::QTJoystickThreeLeft,      KBDK_KP_4, KBDM_SHIFT},
-  {Event::QTJoystickThreeRight,     KBDK_KP_6, KBDM_SHIFT},
-  {Event::QTJoystickThreeFire,      KBDK_SPACE, KBDM_SHIFT},
+    // Same as Joysticks Zero & One + SHIFT
+    {Event::QTJoystickThreeUp,        StellaKey::UP, StellaMod::SHIFT},
+    {Event::QTJoystickThreeDown,      StellaKey::DOWN, StellaMod::SHIFT},
+    {Event::QTJoystickThreeLeft,      StellaKey::LEFT, StellaMod::SHIFT},
+    {Event::QTJoystickThreeRight,     StellaKey::RIGHT, StellaMod::SHIFT},
+    {Event::QTJoystickThreeUp,        StellaKey::KP_8, StellaMod::SHIFT},
+    {Event::QTJoystickThreeDown,      StellaKey::KP_2, StellaMod::SHIFT},
+    {Event::QTJoystickThreeLeft,      StellaKey::KP_4, StellaMod::SHIFT},
+    {Event::QTJoystickThreeRight,     StellaKey::KP_6, StellaMod::SHIFT},
+    {Event::QTJoystickThreeFire,      StellaKey::SPACE, StellaMod::SHIFT},
 
-  {Event::QTJoystickFourUp,         KBDK_Y, KBDM_SHIFT},
-  {Event::QTJoystickFourDown,       KBDK_H, KBDM_SHIFT},
-  {Event::QTJoystickFourLeft,       KBDK_G, KBDM_SHIFT},
-  {Event::QTJoystickFourRight,      KBDK_J, KBDM_SHIFT},
-  {Event::QTJoystickFourFire,       KBDK_F, KBDM_SHIFT},
-};
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-PhysicalKeyboardHandler::EventMappingArray
-PhysicalKeyboardHandler::DefaultPaddleMapping = {
-  {Event::LeftPaddleADecrease,      KBDK_RIGHT},
-  {Event::LeftPaddleAIncrease,      KBDK_LEFT},
-  {Event::LeftPaddleAFire,          KBDK_SPACE},
-  {Event::LeftPaddleAFire,          KBDK_LCTRL},
-  {Event::LeftPaddleAFire,          KBDK_KP_5},
-  {Event::LeftPaddleAButton1,       KBDK_UP, KBDM_SHIFT},
-  {Event::LeftPaddleAButton2,       KBDK_DOWN, KBDM_SHIFT},
-
-  {Event::LeftPaddleBDecrease,      KBDK_DOWN},
-  {Event::LeftPaddleBIncrease,      KBDK_UP},
-  {Event::LeftPaddleBFire,          KBDK_4},
-  {Event::LeftPaddleBFire,          KBDK_RCTRL},
-
-  {Event::RightPaddleADecrease,     KBDK_J},
-  {Event::RightPaddleAIncrease,     KBDK_G},
-  {Event::RightPaddleAFire,         KBDK_F},
-  {Event::RightPaddleAButton1,      KBDK_Y, KBDM_SHIFT},
-  {Event::RightPaddleAButton2,      KBDK_H, KBDM_SHIFT},
-
-  {Event::RightPaddleBDecrease,     KBDK_H},
-  {Event::RightPaddleBIncrease,     KBDK_Y},
-  {Event::RightPaddleBFire,         KBDK_6},
-
-  // Same as Paddles Zero..Three Fire + SHIFT
-  {Event::QTPaddle3AFire,           KBDK_SPACE, KBDM_SHIFT},
-  {Event::QTPaddle3BFire,           KBDK_4, KBDM_SHIFT},
-  {Event::QTPaddle4AFire,           KBDK_F, KBDM_SHIFT},
-  {Event::QTPaddle4BFire,           KBDK_6, KBDM_SHIFT},
-};
+    {Event::QTJoystickFourUp,         StellaKey::Y, StellaMod::SHIFT},
+    {Event::QTJoystickFourDown,       StellaKey::H, StellaMod::SHIFT},
+    {Event::QTJoystickFourLeft,       StellaKey::G, StellaMod::SHIFT},
+    {Event::QTJoystickFourRight,      StellaKey::J, StellaMod::SHIFT},
+    {Event::QTJoystickFourFire,       StellaKey::F, StellaMod::SHIFT},
+  };
+  return EventMappingSpan{data};
+}();
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-PhysicalKeyboardHandler::EventMappingArray
-PhysicalKeyboardHandler::DefaultKeyboardMapping = {
-  {Event::LeftKeyboard1,            KBDK_1},
-  {Event::LeftKeyboard2,            KBDK_2},
-  {Event::LeftKeyboard3,            KBDK_3},
-  {Event::LeftKeyboard4,            KBDK_Q},
-  {Event::LeftKeyboard5,            KBDK_W},
-  {Event::LeftKeyboard6,            KBDK_E},
-  {Event::LeftKeyboard7,            KBDK_A},
-  {Event::LeftKeyboard8,            KBDK_S},
-  {Event::LeftKeyboard9,            KBDK_D},
-  {Event::LeftKeyboardStar,         KBDK_Z},
-  {Event::LeftKeyboard0,            KBDK_X},
-  {Event::LeftKeyboardPound,        KBDK_C},
+const PhysicalKeyboardHandler::EventMappingSpan
+PhysicalKeyboardHandler::DefaultPaddleMapping = []() noexcept {
+  static constexpr EventMapping data[] = {
+    {Event::LeftPaddleADecrease,      StellaKey::RIGHT},
+    {Event::LeftPaddleAIncrease,      StellaKey::LEFT},
+    {Event::LeftPaddleAFire,          StellaKey::SPACE},
+    {Event::LeftPaddleAFire,          StellaKey::LCTRL},
+    {Event::LeftPaddleAFire,          StellaKey::KP_5},
+    {Event::LeftPaddleAButton1,       StellaKey::UP, StellaMod::SHIFT},
+    {Event::LeftPaddleAButton2,       StellaKey::DOWN, StellaMod::SHIFT},
 
-  {Event::RightKeyboard1,           KBDK_8},
-  {Event::RightKeyboard2,           KBDK_9},
-  {Event::RightKeyboard3,           KBDK_0},
-  {Event::RightKeyboard4,           KBDK_I},
-  {Event::RightKeyboard5,           KBDK_O},
-  {Event::RightKeyboard6,           KBDK_P},
-  {Event::RightKeyboard7,           KBDK_K},
-  {Event::RightKeyboard8,           KBDK_L},
-  {Event::RightKeyboard9,           KBDK_SEMICOLON},
-  {Event::RightKeyboardStar,        KBDK_COMMA},
-  {Event::RightKeyboard0,           KBDK_PERIOD},
-  {Event::RightKeyboardPound,       KBDK_SLASH},
-};
+    {Event::LeftPaddleBDecrease,      StellaKey::DOWN},
+    {Event::LeftPaddleBIncrease,      StellaKey::UP},
+    {Event::LeftPaddleBFire,          StellaKey::_4},
+    {Event::LeftPaddleBFire,          StellaKey::RCTRL},
 
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-PhysicalKeyboardHandler::EventMappingArray PhysicalKeyboardHandler::DefaultDrivingMapping = {
-  {Event::LeftDrivingCCW,          KBDK_LEFT},
-  {Event::LeftDrivingCW,           KBDK_RIGHT},
-  {Event::LeftDrivingCCW,          KBDK_KP_4},
-  {Event::LeftDrivingCW,           KBDK_KP_6},
-  {Event::LeftDrivingFire,         KBDK_SPACE},
-  {Event::LeftDrivingFire,         KBDK_LCTRL},
-  {Event::LeftDrivingFire,         KBDK_KP_5},
-  {Event::LeftDrivingButton1,      KBDK_UP},
-  {Event::LeftDrivingButton2,      KBDK_DOWN},
-  {Event::LeftDrivingButton1,      KBDK_KP_8},
-  {Event::LeftDrivingButton2,      KBDK_KP_2},
+    {Event::RightPaddleADecrease,     StellaKey::J},
+    {Event::RightPaddleAIncrease,     StellaKey::G},
+    {Event::RightPaddleAFire,         StellaKey::F},
+    {Event::RightPaddleAButton1,      StellaKey::Y, StellaMod::SHIFT},
+    {Event::RightPaddleAButton2,      StellaKey::H, StellaMod::SHIFT},
 
-  {Event::RightDrivingCCW,         KBDK_G},
-  {Event::RightDrivingCW,          KBDK_J},
-  {Event::RightDrivingFire,        KBDK_F},
-  {Event::RightDrivingButton1,     KBDK_Y},
-  {Event::RightDrivingButton2,     KBDK_H},
-};
+    {Event::RightPaddleBDecrease,     StellaKey::H},
+    {Event::RightPaddleBIncrease,     StellaKey::Y},
+    {Event::RightPaddleBFire,         StellaKey::_6},
+
+    // Same as Paddles Zero..Three Fire + SHIFT
+    {Event::QTPaddle3AFire,           StellaKey::SPACE, StellaMod::SHIFT},
+    {Event::QTPaddle3BFire,           StellaKey::_4, StellaMod::SHIFT},
+    {Event::QTPaddle4AFire,           StellaKey::F, StellaMod::SHIFT},
+    {Event::QTPaddle4BFire,           StellaKey::_6, StellaMod::SHIFT},
+  };
+  return EventMappingSpan{data};
+}();
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-PhysicalKeyboardHandler::EventMappingArray
-PhysicalKeyboardHandler::CompuMateMapping = {
-  {Event::CompuMateShift,         KBDK_LSHIFT},
-  {Event::CompuMateShift,         KBDK_RSHIFT},
-  {Event::CompuMateFunc,          KBDK_LCTRL},
-  {Event::CompuMateFunc,          KBDK_RCTRL},
-  {Event::CompuMate0,             KBDK_0},
-  {Event::CompuMate1,             KBDK_1},
-  {Event::CompuMate2,             KBDK_2},
-  {Event::CompuMate3,             KBDK_3},
-  {Event::CompuMate4,             KBDK_4},
-  {Event::CompuMate5,             KBDK_5},
-  {Event::CompuMate6,             KBDK_6},
-  {Event::CompuMate7,             KBDK_7},
-  {Event::CompuMate8,             KBDK_8},
-  {Event::CompuMate9,             KBDK_9},
-  {Event::CompuMateA,             KBDK_A},
-  {Event::CompuMateB,             KBDK_B},
-  {Event::CompuMateC,             KBDK_C},
-  {Event::CompuMateD,             KBDK_D},
-  {Event::CompuMateE,             KBDK_E},
-  {Event::CompuMateF,             KBDK_F},
-  {Event::CompuMateG,             KBDK_G},
-  {Event::CompuMateH,             KBDK_H},
-  {Event::CompuMateI,             KBDK_I},
-  {Event::CompuMateJ,             KBDK_J},
-  {Event::CompuMateK,             KBDK_K},
-  {Event::CompuMateL,             KBDK_L},
-  {Event::CompuMateM,             KBDK_M},
-  {Event::CompuMateN,             KBDK_N},
-  {Event::CompuMateO,             KBDK_O},
-  {Event::CompuMateP,             KBDK_P},
-  {Event::CompuMateQ,             KBDK_Q},
-  {Event::CompuMateR,             KBDK_R},
-  {Event::CompuMateS,             KBDK_S},
-  {Event::CompuMateT,             KBDK_T},
-  {Event::CompuMateU,             KBDK_U},
-  {Event::CompuMateV,             KBDK_V},
-  {Event::CompuMateW,             KBDK_W},
-  {Event::CompuMateX,             KBDK_X},
-  {Event::CompuMateY,             KBDK_Y},
-  {Event::CompuMateZ,             KBDK_Z},
-  {Event::CompuMateComma,         KBDK_COMMA},
-  {Event::CompuMatePeriod,        KBDK_PERIOD},
-  {Event::CompuMateEnter,         KBDK_RETURN},
-  {Event::CompuMateEnter,         KBDK_KP_ENTER},
-  {Event::CompuMateSpace,         KBDK_SPACE},
-  // extra emulated keys
-  {Event::CompuMateQuestion,      KBDK_SLASH, KBDM_SHIFT},
-  {Event::CompuMateLeftBracket,   KBDK_LEFTBRACKET},
-  {Event::CompuMateRightBracket,  KBDK_RIGHTBRACKET},
-  {Event::CompuMateMinus,         KBDK_MINUS},
-  {Event::CompuMateQuote,         KBDK_APOSTROPHE, KBDM_SHIFT},
-  {Event::CompuMateBackspace,     KBDK_BACKSPACE},
-  {Event::CompuMateEquals,        KBDK_EQUALS},
-  {Event::CompuMatePlus,          KBDK_EQUALS, KBDM_SHIFT},
-  {Event::CompuMateSlash,         KBDK_SLASH}
-};
-// NOLINTEND(bugprone-throwing-static-initialization)
+const PhysicalKeyboardHandler::EventMappingSpan
+PhysicalKeyboardHandler::DefaultKeyboardMapping = []() noexcept {
+  static constexpr EventMapping data[] = {
+    {Event::LeftKeyboard1,            StellaKey::_1},
+    {Event::LeftKeyboard2,            StellaKey::_2},
+    {Event::LeftKeyboard3,            StellaKey::_3},
+    {Event::LeftKeyboard4,            StellaKey::Q},
+    {Event::LeftKeyboard5,            StellaKey::W},
+    {Event::LeftKeyboard6,            StellaKey::E},
+    {Event::LeftKeyboard7,            StellaKey::A},
+    {Event::LeftKeyboard8,            StellaKey::S},
+    {Event::LeftKeyboard9,            StellaKey::D},
+    {Event::LeftKeyboardStar,         StellaKey::Z},
+    {Event::LeftKeyboard0,            StellaKey::X},
+    {Event::LeftKeyboardPound,        StellaKey::C},
+
+    {Event::RightKeyboard1,           StellaKey::_8},
+    {Event::RightKeyboard2,           StellaKey::_9},
+    {Event::RightKeyboard3,           StellaKey::_0},
+    {Event::RightKeyboard4,           StellaKey::I},
+    {Event::RightKeyboard5,           StellaKey::O},
+    {Event::RightKeyboard6,           StellaKey::P},
+    {Event::RightKeyboard7,           StellaKey::K},
+    {Event::RightKeyboard8,           StellaKey::L},
+    {Event::RightKeyboard9,           StellaKey::SEMICOLON},
+    {Event::RightKeyboardStar,        StellaKey::COMMA},
+    {Event::RightKeyboard0,           StellaKey::PERIOD},
+    {Event::RightKeyboardPound,       StellaKey::SLASH},
+  };
+  return EventMappingSpan{data};
+}();
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+const PhysicalKeyboardHandler::EventMappingSpan
+PhysicalKeyboardHandler::DefaultDrivingMapping = []() noexcept {
+  static constexpr EventMapping data[] = {
+    {Event::LeftDrivingCCW,          StellaKey::LEFT},
+    {Event::LeftDrivingCW,           StellaKey::RIGHT},
+    {Event::LeftDrivingCCW,          StellaKey::KP_4},
+    {Event::LeftDrivingCW,           StellaKey::KP_6},
+    {Event::LeftDrivingFire,         StellaKey::SPACE},
+    {Event::LeftDrivingFire,         StellaKey::LCTRL},
+    {Event::LeftDrivingFire,         StellaKey::KP_5},
+    {Event::LeftDrivingButton1,      StellaKey::UP},
+    {Event::LeftDrivingButton2,      StellaKey::DOWN},
+    {Event::LeftDrivingButton1,      StellaKey::KP_8},
+    {Event::LeftDrivingButton2,      StellaKey::KP_2},
+
+    {Event::RightDrivingCCW,         StellaKey::G},
+    {Event::RightDrivingCW,          StellaKey::J},
+    {Event::RightDrivingFire,        StellaKey::F},
+    {Event::RightDrivingButton1,     StellaKey::Y},
+    {Event::RightDrivingButton2,     StellaKey::H},
+  };
+  return EventMappingSpan{data};
+}();
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+const PhysicalKeyboardHandler::EventMappingSpan
+PhysicalKeyboardHandler::CompuMateMapping = []() noexcept {
+  static constexpr EventMapping data[] = {
+    {Event::CompuMateShift,         StellaKey::LSHIFT},
+    {Event::CompuMateShift,         StellaKey::RSHIFT},
+    {Event::CompuMateFunc,          StellaKey::LCTRL},
+    {Event::CompuMateFunc,          StellaKey::RCTRL},
+    {Event::CompuMate0,             StellaKey::_0},
+    {Event::CompuMate1,             StellaKey::_1},
+    {Event::CompuMate2,             StellaKey::_2},
+    {Event::CompuMate3,             StellaKey::_3},
+    {Event::CompuMate4,             StellaKey::_4},
+    {Event::CompuMate5,             StellaKey::_5},
+    {Event::CompuMate6,             StellaKey::_6},
+    {Event::CompuMate7,             StellaKey::_7},
+    {Event::CompuMate8,             StellaKey::_8},
+    {Event::CompuMate9,             StellaKey::_9},
+    {Event::CompuMateA,             StellaKey::A},
+    {Event::CompuMateB,             StellaKey::B},
+    {Event::CompuMateC,             StellaKey::C},
+    {Event::CompuMateD,             StellaKey::D},
+    {Event::CompuMateE,             StellaKey::E},
+    {Event::CompuMateF,             StellaKey::F},
+    {Event::CompuMateG,             StellaKey::G},
+    {Event::CompuMateH,             StellaKey::H},
+    {Event::CompuMateI,             StellaKey::I},
+    {Event::CompuMateJ,             StellaKey::J},
+    {Event::CompuMateK,             StellaKey::K},
+    {Event::CompuMateL,             StellaKey::L},
+    {Event::CompuMateM,             StellaKey::M},
+    {Event::CompuMateN,             StellaKey::N},
+    {Event::CompuMateO,             StellaKey::O},
+    {Event::CompuMateP,             StellaKey::P},
+    {Event::CompuMateQ,             StellaKey::Q},
+    {Event::CompuMateR,             StellaKey::R},
+    {Event::CompuMateS,             StellaKey::S},
+    {Event::CompuMateT,             StellaKey::T},
+    {Event::CompuMateU,             StellaKey::U},
+    {Event::CompuMateV,             StellaKey::V},
+    {Event::CompuMateW,             StellaKey::W},
+    {Event::CompuMateX,             StellaKey::X},
+    {Event::CompuMateY,             StellaKey::Y},
+    {Event::CompuMateZ,             StellaKey::Z},
+    {Event::CompuMateComma,         StellaKey::COMMA},
+    {Event::CompuMatePeriod,        StellaKey::PERIOD},
+    {Event::CompuMateEnter,         StellaKey::RETURN},
+    {Event::CompuMateEnter,         StellaKey::KP_ENTER},
+    {Event::CompuMateSpace,         StellaKey::SPACE},
+    // extra emulated keys
+    {Event::CompuMateQuestion,      StellaKey::SLASH, StellaMod::SHIFT},
+    {Event::CompuMateLeftBracket,   StellaKey::LEFTBRACKET},
+    {Event::CompuMateRightBracket,  StellaKey::RIGHTBRACKET},
+    {Event::CompuMateMinus,         StellaKey::MINUS},
+    {Event::CompuMateQuote,         StellaKey::APOSTROPHE, StellaMod::SHIFT},
+    {Event::CompuMateBackspace,     StellaKey::BACKSPACE},
+    {Event::CompuMateEquals,        StellaKey::EQUALS},
+    {Event::CompuMatePlus,          StellaKey::EQUALS, StellaMod::SHIFT},
+    {Event::CompuMateSlash,         StellaKey::SLASH}
+  };
+  return EventMappingSpan{data};
+}();

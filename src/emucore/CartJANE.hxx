@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEJANE_HXX
-#define CARTRIDGEJANE_HXX
+#ifndef CARTRIDGE_JANE_HXX
+#define CARTRIDGE_JANE_HXX
 
 #include "CartEnhanced.hxx"
 #ifdef DEBUGGER_SUPPORT
@@ -24,8 +24,13 @@
 #endif
 
 /**
-  Cartridge class used for the Tarzan prototype. There are four 4K banks,
-  accessible by read at $1FF0/1/8/9.
+  Cartridge class used for the Tarzan prototype (scheme name "JANE").  There
+  are four 4K banks selected by reading four non-contiguous hotspots:
+  $1FF0 (bank 0), $1FF1 (bank 1), $1FF8 (bank 2), $1FF9 (bank 3).  The
+  scheme was reverse-engineered from the prototype ROM; "JANE" is the name
+  assigned by Stella.  Note that the hotspots overlap with the standard F8
+  positions ($1FF8/$1FF9) but also include $1FF0/$1FF1, and the cart starts
+  in bank 1 rather than bank 0.
 
   @author  Thomas Jentzsch
 */
@@ -37,13 +42,12 @@ class CartridgeJANE : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeJANE(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeJANE(ByteSpan image, string_view md5,
                   const Settings& settings, size_t bsSize = 16_KB);
     ~CartridgeJANE() override = default;
 
@@ -83,4 +87,4 @@ class CartridgeJANE : public CartridgeEnhanced
     CartridgeJANE& operator=(CartridgeJANE&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_JANE_HXX

@@ -56,6 +56,7 @@ class FlashWidget : public ControllerWidget
     */
     virtual bool isPageUsed(uInt32 page) = 0;
 
+  private:
     // Following constructors and assignment operators not supported
     FlashWidget() = delete;
     FlashWidget(const FlashWidget&) = delete;
@@ -64,4 +65,4 @@ class FlashWidget : public ControllerWidget
     FlashWidget& operator=(FlashWidget&&) = delete;
 };
 
-#endif
+#endif  // FLASH_WIDGET_HXX

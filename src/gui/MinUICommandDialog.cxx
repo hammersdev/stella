@@ -49,7 +49,7 @@ MinUICommandDialog::MinUICommandDialog(OSystem& osystem, DialogContainer& parent
   // Set real dimensions
   _w = 3 * (buttonWidth + 5) + HBORDER * 2;
   _h = 6 * rowHeight - VGAP + VBORDER * 2 + _th;
-  ButtonWidget* bw = nullptr;  // NOLINT (erroneously marked as const)
+  ButtonWidget* bw = nullptr;
   WidgetArray wid;
   int xoffset = HBORDER, yoffset = VBORDER + _th;
 
@@ -109,15 +109,6 @@ MinUICommandDialog::MinUICommandDialog(OSystem& osystem, DialogContainer& parent
   bw = ADD_CD_BUTTON("Close", GuiObject::kCloseCmd);
   wid.push_back(bw);
 
-  ////  Bottom row
-  //xoffset = HBORDER + (buttonWidth + HGAP) / 2;
-  //bw = ADD_CD_BUTTON("Exit Game", kExitGameCmd);
-  //wid.push_back(bw);
-  //xoffset += buttonWidth + HGAP;
-  //yoffset -= buttonHeight + VGAP;
-  //bw = ADD_CD_BUTTON("Close", GuiObject::kCloseCmd);
-  //wid.push_back(bw);
-
   addToFocusList(wid);
 
   // We don't have a close/cancel button, but we still want the cancel
@@ -150,9 +141,9 @@ void MinUICommandDialog::loadConfig()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MinUICommandDialog::handleKeyDown(StellaKey key, StellaMod mod, bool repeated)
 {
-  switch (key)
+  switch(key)
   {
-    case KBDK_F8: // front  ("Skill P2")
+    case StellaKey::F8: // front  ("Skill P2")
       instance().eventHandler().leaveMenuMode();
       break;
 
@@ -164,7 +155,7 @@ void MinUICommandDialog::handleKeyDown(StellaKey key, StellaMod mod, bool repeat
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MinUICommandDialog::handleCommand(CommandSender* sender, int cmd,
-                                  int data, int id)
+                                       int data, int id)
 {
   bool consoleCmd = false, stateCmd = false;
   Event::Type event = Event::NoType;
@@ -274,7 +265,7 @@ void MinUICommandDialog::handleCommand(CommandSender* sender, int cmd,
 
   // Console commands should be performed right away, after leaving the menu
   // State commands require you to exit the menu manually
-  if(consoleCmd)
+  if(consoleCmd) [[likely]]
   {
     instance().eventHandler().leaveMenuMode();
     instance().eventHandler().handleEvent(event);
@@ -295,11 +286,8 @@ void MinUICommandDialog::processCancel()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MinUICommandDialog::updateSlot(int slot)
 {
-  std::ostringstream buf;
-  buf << " " << slot;
-
-  mySaveStateButton->setLabel("Save State" + buf.str());
-  myLoadStateButton->setLabel("Load State" + buf.str());
+  mySaveStateButton->setLabel(std::format("Save State {}", slot));
+  myLoadStateButton->setLabel(std::format("Load State {}", slot));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -321,19 +309,15 @@ void MinUICommandDialog::updateWinds()
 void MinUICommandDialog::openSettings()
 {
   // Create an options dialog, similar to the in-game one
-  if (instance().settings().getBool("basic_settings"))
-  {
+  if(instance().settings().getBool("basic_settings"))
     myDialog = std::make_unique<StellaSettingsDialog>(instance(), parent(),
                                                  1280, 720, AppMode::launcher);
-    myDialog->open();
-  }
   else
-  {
     myDialog = std::make_unique<OptionsDialog>(instance(), parent(), this,
                                           FBMinimum::Width, FBMinimum::Height,
                                           AppMode::launcher);
-    myDialog->open();
-  }
+
+  myDialog->open();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

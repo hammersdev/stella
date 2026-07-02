@@ -51,6 +51,7 @@ using uInt64 = uint64_t;
 #include <ctime>
 #include <numbers>
 #include <ranges>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -76,21 +77,40 @@ using std::string;
 using std::string_view;
 using std::unique_ptr;
 using std::shared_ptr;
-using std::array;
 using std::vector;
 
 // Common array types
-using IntArray = std::vector<Int32>;
-using uIntArray = std::vector<uInt32>;
-using BoolArray = std::vector<bool>;
-using ByteArray = std::vector<uInt8>;
+using BoolArray  = std::vector<bool>;
+using ByteArray  = std::vector<uInt8>;
 using ShortArray = std::vector<uInt16>;
+using IntArray   = std::vector<Int32>;
+using uIntArray  = std::vector<uInt32>;
 using StringList = std::vector<std::string>;
-using ByteBuffer = std::unique_ptr<uInt8[]>;
-using DWordBuffer = std::unique_ptr<uInt32[]>;
+
+// Common const span types
+template<typename T>
+using SpanOf = std::span<const T>;
+
+using BoolSpan  = SpanOf<bool>;
+using ByteSpan  = SpanOf<uInt8>;
+using ShortSpan = SpanOf<uInt16>;
+using IntSpan   = SpanOf<uInt32>;
+using sIntSpan  = SpanOf<Int32>;
+using FloatSpan = SpanOf<float>;
+
+// Common mutable span types
+template<typename T>
+using MSpanOf = std::span<T>;
+
+using BoolMSpan  = MSpanOf<bool>;
+using ByteMSpan  = MSpanOf<uInt8>;
+using ShortMSpan = MSpanOf<uInt16>;
+using IntMSpan   = MSpanOf<uInt32>;
+using sIntMSpan  = MSpanOf<Int32>;
+using FloatMSpan = MSpanOf<float>;
 
 // We use KB a lot; let's make a literal for it
-constexpr size_t operator ""_KB(unsigned long long size)
+[[nodiscard]] constexpr size_t operator ""_KB(unsigned long long size)
 {
   return static_cast<size_t>(size * 1024);
 }
@@ -103,7 +123,20 @@ std::ostream& operator<< (std::ostream& out, const std::vector<T>& v) {
   return out;
 }
 
-// This is so we can return empty string references with creating temporaries
+// Output contents of a map
+template<typename T>
+concept MapLike = requires(T m) {
+  typename T::key_type;
+  typename T::mapped_type;
+};
+template<MapLike M>
+std::ostream& operator<<(std::ostream& out, const M& m) {
+  for(const auto& [key, value]: m)
+    out << key << ": " << value << '\n';
+  return out;
+}
+
+// This is so we can return empty string references without creating temporaries
 inline const string& EmptyString() { static const string empty; return empty; }
 
 // This is defined by some systems, but Stella has other uses for it
@@ -145,6 +178,17 @@ namespace BSPF
     #define FORCE_INLINE inline __attribute__((always_inline))
   #endif
 
+  // Portable restrict hint — tells the compiler that pointer arguments
+  // do not alias each other, enabling auto-vectorization of hot loops.
+  #if defined(__clang__) || defined(__GNUC__)
+    #define FORCE_RESTRICT __restrict__
+  #elif defined(_MSC_VER)
+    #define FORCE_RESTRICT __restrict
+  #else
+    /* no support for restricted pointers */
+    #define FORCE_RESTRICT
+  #endif
+
   // Get next power of two greater than or equal to the given value
   constexpr size_t nextPowerOfTwo(size_t size) {
     return std::bit_ceil(size);
@@ -176,6 +220,7 @@ namespace BSPF
   }
 
   // Test whether a container contains the given value
+  // NOTE: Only needed until std::vector gets a contains() method
   template<typename Container>
   bool contains(const Container& c, typename Container::const_reference elem) {
     return std::ranges::find(c, elem) != c.end();
@@ -262,13 +307,14 @@ namespace BSPF
                                   size_t startpos = 0)
   {
     if(startpos > s1.size()) return string_view::npos;
-    const auto pos = std::search(s1.begin() + startpos, s1.end(), // NOLINT: issues with auto
-                                 s2.begin(), s2.end(),
+    const auto sub = s1.substr(startpos);
+    const auto found = std::ranges::search(sub, s2,
             [&](char ch1, char ch2) {
               return toUpperAscii(ch1) == toUpperAscii(ch2);
             }
     );
-    return pos == s1.end() ? string_view::npos : pos - s1.begin();
+    return (found.empty() && !s2.empty()) ? string_view::npos
+                                          : startpos + (found.begin() - sub.begin());
   }
 
   // Test whether the first string contains the second one (case insensitive)
@@ -353,55 +399,6 @@ namespace BSPF
   }
 
   // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  // Search if string contains pattern including '?' as joker.
-  // @param str      The searched string
-  // @param pattern  The pattern to search for
-  // @return  Position of pattern in string.
-  constexpr size_t matchWithJoker(string_view str, string_view pattern)
-  {
-    if(str.length() < pattern.length())
-      return string_view::npos;
-
-    // Find the first literal (non-'?') character in the pattern to use as
-    // a fast-skip anchor; if none exists every position trivially matches
-    size_t anchorPat = 0;
-    while(anchorPat < pattern.length() && pattern[anchorPat] == '?')
-      ++anchorPat;
-
-    if(anchorPat == pattern.length())
-      return 0;  // pattern is all '?', matches at position 0
-
-    const char anchor = pattern[anchorPat];
-    const size_t maxPos = str.length() - pattern.length();
-
-    for(size_t pos = 0; pos <= maxPos; )
-    {
-      // Jump ahead to next occurrence of the anchor character
-      const size_t found = str.find(anchor, pos + anchorPat);
-      if(found == string_view::npos || found - anchorPat > maxPos)
-        return string_view::npos;
-
-      pos = found - anchorPat;
-
-      // Verify the full pattern at this position
-      bool match = true;
-      for(size_t i = 0; i < pattern.length(); ++i)
-      {
-        if(pattern[i] != '?' && pattern[i] != str[pos + i])
-        {
-          match = false;
-          break;
-        }
-      }
-      if(match)
-        return pos;
-
-      ++pos;
-    }
-    return string_view::npos;
-  }
-
-  // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   // Search if string contains pattern including wildcard '*'
   // and '?' as joker.
   // @param str      The searched string
@@ -409,6 +406,22 @@ namespace BSPF
   // @return  True if pattern was found.
   constexpr bool matchWithWildcards(string_view str, string_view pattern)
   {
+    // A pattern without an explicit leading '*' matches anywhere in str,
+    // and one without a trailing '*' need not consume str's tail.
+    // "PAL" behaves like "*PAL*", and internal '*'/'?' are matched as
+    // you'd expect; "1984*Atari" filters for Atari games from 1984.
+    const bool needLeading  = pattern.empty() || pattern.front() != '*';
+    const bool needTrailing = pattern.empty() || pattern.back()  != '*';
+    string effectivePat;
+    if(needLeading || needTrailing)
+    {
+      effectivePat.reserve(pattern.size() + needLeading + needTrailing);
+      if(needLeading)  effectivePat += '*';
+      effectivePat += pattern;
+      if(needTrailing) effectivePat += '*';
+      pattern = effectivePat;
+    }
+
     size_t si = 0;        // current position in str
     size_t pi = 0;        // current position in pattern
     size_t starPi = string_view::npos;  // position of last '*' in pattern
@@ -461,14 +474,28 @@ namespace BSPF
   }
 
   // Trim leading and trailing whitespace from a string
-  constexpr string trim(string_view str)
+  constexpr string_view trim(string_view str)
   {
-    const auto first = str.find_first_not_of(' ');
+    constexpr string_view WS = " \t\r\n";
+    const auto first = str.find_first_not_of(WS);
     if(first == string_view::npos)
       return {};
 
-    const auto last = str.find_last_not_of(' ');
-    return string{str.substr(first, last - first + 1)};
+    const auto last = str.find_last_not_of(WS);
+    return str.substr(first, last - first + 1);
+  }
+
+  // Make an untrusted string safe to use as a single filename component by
+  // neutralizing path separators.  This prevents directory-traversal when a
+  // name from a (potentially shared/imported) properties entry is concatenated
+  // into a save/snapshot path.  Both '/' and '\' are replaced regardless of
+  // platform so the result can't escape its intended directory.
+  inline string sanitizeFilename(string_view name)
+  {
+    string result{name};
+    std::ranges::replace(result, '/', '_');
+    std::ranges::replace(result, '\\', '_');
+    return result;
   }
 
   // C++11 way to get local time
@@ -490,6 +517,55 @@ namespace BSPF
     constexpr string_view spaces{" ,.;:+-*&/\\'"};
     return spaces.find(c) != string_view::npos;
   }
-} // namespace BSPF
 
-#endif
+  // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  // Search the image for the specified byte signature
+  //
+  // @param image      The ROM image as a span
+  // @param signature  The byte sequence to search for as a span
+  // @param minhits    The minimum number of times a signature is to be found
+  // @return  True if the signature was found at least 'minhits' times, else false
+  constexpr bool searchForBytes(ByteSpan image, ByteSpan signature,
+                                size_t minhits = 1)
+  {
+    const auto sigsize = signature.size();
+    if(image.size() < sigsize)
+      return false;
+
+    size_t count{0};
+    for(size_t i = 0; i <= image.size() - sigsize; ++i)
+    {
+      size_t j{0};
+      for(j = 0; j < sigsize; ++j)
+      {
+        if(image[i + j] != signature[j])
+          break;
+      }
+      if(j == sigsize)
+      {
+        if(++count == minhits)
+          break;
+        i += sigsize - 1;  // -1 because the loop will increment i
+      }
+    }
+    return (count == minhits);
+  }
+
+  // Used with various map objects to accept string_view
+  struct StringHash {
+    using is_transparent = void;
+    size_t operator()(string_view sv) const noexcept {
+      return std::hash<string_view>{}(sv);
+    }
+  };
+
+  // Transparent comparator for case-insensitive std::map/std::set
+  struct CaseInsensitiveLess {
+    using is_transparent = void;
+    bool operator()(string_view a, string_view b) const {
+      return compareIgnoreCase(a, b) < 0;
+    }
+  };
+}  // namespace BSPF
+
+#endif  // BSPF_HXX

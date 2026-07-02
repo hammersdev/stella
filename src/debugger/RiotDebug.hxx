@@ -122,4 +122,4 @@ class RiotDebug : public DebuggerSystem
     RiotDebug& operator=(RiotDebug&&) = delete;
 };
 
-#endif
+#endif  // RIOT_DEBUG_HXX

@@ -333,26 +333,34 @@ bool RiotDebug::reset(int newVal)
 string RiotDebug::dirP0String()
 {
   const uInt8 reg = swcha();
-  std::ostringstream buf;
-  buf << ((reg & 0x80) ? "" : "right ")
-      << ((reg & 0x40) ? "" : "left ")
-      << ((reg & 0x20) ? "" : "left ")
-      << ((reg & 0x10) ? "" : "left ")
-      << ((reg & 0xf0) == 0xf0 ? "(no directions) " : "");
-  return buf.str();
+
+  if((reg & 0xf0) == 0xf0)
+    return "(no directions) ";
+
+  string result;
+  result.reserve(24);
+  if (!(reg & 0x80)) result += "right ";
+  if (!(reg & 0x40)) result += "left ";
+  if (!(reg & 0x20)) result += "down ";
+  if (!(reg & 0x10)) result += "up ";
+  return result;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string RiotDebug::dirP1String()
 {
   const uInt8 reg = swcha();
-  std::ostringstream buf;
-  buf << ((reg & 0x08) ? "" : "right ")
-      << ((reg & 0x04) ? "" : "left ")
-      << ((reg & 0x02) ? "" : "left ")
-      << ((reg & 0x01) ? "" : "left ")
-      << ((reg & 0x0f) == 0x0f ? "(no directions) " : "");
-  return buf.str();
+
+  if((reg & 0x0F) == 0x0F)
+    return "(no directions) ";
+
+  string result;
+  result.reserve(24);
+  if (!(reg & 0x08)) result += "right ";
+  if (!(reg & 0x04)) result += "left ";
+  if (!(reg & 0x02)) result += "down ";
+  if (!(reg & 0x01)) result += "up ";
+  return result;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -376,10 +384,10 @@ string RiotDebug::tvTypeString()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string RiotDebug::switchesString()
 {
-  std::ostringstream buf;
-  buf << ((swchb() & 0x2) ? "-" : "+") << "select "
-      << ((swchb() & 0x1) ? "-" : "+") << "reset";
-  return buf.str();
+  const auto reg = swchb();
+  return std::format("{}select {}reset",
+    (reg & 0x2) ? "-" : "+",
+    (reg & 0x1) ? "-" : "+");
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -388,44 +396,43 @@ string RiotDebug::toString()
   const auto& state    = static_cast<const RiotState&>(getState());
   const auto& oldstate = static_cast<const RiotState&>(getOldState());
 
-  std::ostringstream buf;
-  buf << "280/SWCHA(R)=" << Debugger::invIfChanged(state.SWCHA_R, oldstate.SWCHA_R)
-      << " 280/SWCHA(W)=" << Debugger::invIfChanged(state.SWCHA_W, oldstate.SWCHA_W)
-      << " 281/SWACNT=" << Debugger::invIfChanged(state.SWACNT, oldstate.SWACNT)
-      << '\n'
-      << "282/SWCHB(R)=" << Debugger::invIfChanged(state.SWCHB_R, oldstate.SWCHB_R)
-      << " 282/SWCHB(W)=" << Debugger::invIfChanged(state.SWCHB_W, oldstate.SWCHB_W)
-      << " 283/SWBCNT=" << Debugger::invIfChanged(state.SWBCNT, oldstate.SWBCNT)
-      << '\n'
+  string buf;
+  buf.reserve(512);
 
-      // These are squirrely: some symbol files will define these as
-      // 0x284-0x287. Doesn't actually matter, these registers repeat
-      // every 16 bytes.
-      << "294/TIM1T=" << Debugger::invIfChanged(state.TIM1T, oldstate.TIM1T)
-      << " 295/TIM8T=" << Debugger::invIfChanged(state.TIM8T, oldstate.TIM8T)
-      << " 296/TIM64T=" << Debugger::invIfChanged(state.TIM64T, oldstate.TIM64T)
-      << " 297/T1024T=" << Debugger::invIfChanged(state.T1024T, oldstate.T1024T)
-      << " Divider=" << Debugger::invIfChanged(state.TIMDIV, oldstate.TIMDIV)
-      << '\n'
+  std::format_to(std::back_inserter(buf),
+    "280/SWCHA(R)={} 280/SWCHA(W)={} 281/SWACNT={}\n"
+    "282/SWCHB(R)={} 282/SWCHB(W)={} 283/SWBCNT={}\n"
+    // These are squirrely: some symbol files will define these as
+    // 0x284-0x287. Doesn't actually matter, these registers repeat
+    // every 16 bytes.
+    "294/TIM1T={} 295/TIM8T={} 296/TIM64T={} 297/T1024T={} Divider={}\n"
+    "0x284/INTIM={} 285/TIMINT={} Timer_Clocks={} INTIM_Clocks={}\n"
+    "Left/P0diff: {}   Right/P1diff: {}\n"
+    "TVType: {}   Switches: {}\n"
+    "Left/P0 stick:  {}{}\n"
+    "Right/P1 stick: {}{}",
+    Debugger::invIfChanged(state.SWCHA_R,  oldstate.SWCHA_R),
+    Debugger::invIfChanged(state.SWCHA_W,  oldstate.SWCHA_W),
+    Debugger::invIfChanged(state.SWACNT,   oldstate.SWACNT),
+    Debugger::invIfChanged(state.SWCHB_R,  oldstate.SWCHB_R),
+    Debugger::invIfChanged(state.SWCHB_W,  oldstate.SWCHB_W),
+    Debugger::invIfChanged(state.SWBCNT,   oldstate.SWBCNT),
+    Debugger::invIfChanged(state.TIM1T,    oldstate.TIM1T),
+    Debugger::invIfChanged(state.TIM8T,    oldstate.TIM8T),
+    Debugger::invIfChanged(state.TIM64T,   oldstate.TIM64T),
+    Debugger::invIfChanged(state.T1024T,   oldstate.T1024T),
+    Debugger::invIfChanged(state.TIMDIV,   oldstate.TIMDIV),
+    Debugger::invIfChanged(state.INTIM,    oldstate.INTIM),
+    Debugger::invIfChanged(state.TIMINT,   oldstate.TIMINT),
+    Debugger::invIfChanged(state.TIMCLKS,  oldstate.TIMCLKS),
+    Debugger::invIfChanged(state.INTIMCLKS,oldstate.INTIMCLKS),
+    diffP0String(), diffP1String(),
+    tvTypeString(), switchesString(),
+    // Yes, the fire buttons are in the TIA, but we might as well
+    // show them here for convenience.
+    dirP0String(), (mySystem.peekOob(0x03c) & 0x80) ? "" : "(button) ",
+    dirP1String(), (mySystem.peekOob(0x03d) & 0x80) ? "" : "(button) "
+  );
 
-      << "0x284/INTIM=" << Debugger::invIfChanged(state.INTIM, oldstate.INTIM)
-      << " 285/TIMINT=" << Debugger::invIfChanged(state.TIMINT, oldstate.TIMINT)
-      << " Timer_Clocks=" << Debugger::invIfChanged(state.TIMCLKS, oldstate.TIMCLKS)
-      << " INTIM_Clocks=" << Debugger::invIfChanged(state.INTIMCLKS, oldstate.INTIMCLKS)
-      << '\n'
-
-      << "Left/P0diff: " << diffP0String() << "   Right/P1diff: " << diffP1String()
-      << '\n'
-      << "TVType: " << tvTypeString() << "   Switches: " << switchesString()
-      << '\n'
-
-      // Yes, the fire buttons are in the TIA, but we might as well
-      // show them here for convenience.
-      << "Left/P0 stick:  " << dirP0String()
-      << ((mySystem.peekOob(0x03c) & 0x80) ? "" : "(button) ")
-      << '\n'
-      << "Right/P1 stick: " << dirP1String()
-      << ((mySystem.peekOob(0x03d) & 0x80) ? "" : "(button) ");
-
-  return buf.str();
+  return buf;
 }

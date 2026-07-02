@@ -28,9 +28,8 @@ MouseControl::MouseControl(Console& console, string_view mode)
     myLeftController{console.leftController()},
     myRightController{console.rightController()}
 {
-  std::istringstream m_axis(string{mode});  // TODO: fixed in C++23
-  string m_mode;
-  m_axis >> m_mode;
+  const auto spacePos = mode.find(' ');
+  const string_view m_mode = mode.substr(0, spacePos);
 
   if(BSPF::equalsIgnoreCase(m_mode, "none"))
   {
@@ -45,69 +44,41 @@ MouseControl::MouseControl(Console& console, string_view mode)
         (static_cast<int>(m_mode[0]) - '0');
     const auto yaxis = static_cast<MouseControl::Type>
         (static_cast<int>(m_mode[1]) - '0');
-    std::ostringstream msg;
-    Controller::Type xtype = Controller::Type::Joystick, ytype = Controller::Type::Joystick;
+
+    Controller::Type xtype = Controller::Type::Joystick,
+                     ytype = Controller::Type::Joystick;
     int xid = -1, yid = -1;
 
-    const auto MControlToController = [&msg](MouseControl::Type axis,
-                                             Controller::Type& type, int& id) {
+    const auto MControlToController = [](MouseControl::Type axis,
+                                        Controller::Type& type, int& id) -> string_view {
       switch(axis)
       {
         using enum MouseControl::Type;
-        case NoControl:
-          msg << "not used";
-          break;
-        case LeftPaddleA:
-          type = Controller::Type::Paddles;
-          id = 0;
-          msg << "Left Paddle A";
-          break;
-        case LeftPaddleB:
-          type = Controller::Type::Paddles;
-          id = 1;
-          msg << "Left Paddle B";
-          break;
-        case RightPaddleA:
-          type = Controller::Type::Paddles;
-          id = 2;
-          msg << "Right Paddle A";
-          break;
-        case RightPaddleB:
-          type = Controller::Type::Paddles;
-          id = 3;
-          msg << "Right Paddle B";
-          break;
-        case LeftDriving:
-          type = Controller::Type::Driving;
-          id = 0;
-          msg << "Left Driving";
-          break;
-        case RightDriving:
-          type = Controller::Type::Driving;
-          id = 1;
-          msg << "Right Driving";
-          break;
-        case LeftMindLink:
-          type = Controller::Type::MindLink;
-          id = 0;
-          msg << "Left MindLink";
-          break;
-        case RightMindLink:
-          type = Controller::Type::MindLink;
-          id = 1;
-          msg << "Right MindLink";
-          break;
-        default:
-          break;  // Not supposed to get here
+        case NoControl:     return "not used";
+        case LeftPaddleA:   type = Controller::Type::Paddles;  id = 0;
+                            return "Left Paddle A";
+        case LeftPaddleB:   type = Controller::Type::Paddles;  id = 1;
+                            return "Left Paddle B";
+        case RightPaddleA:  type = Controller::Type::Paddles;  id = 2;
+                            return "Right Paddle A";
+        case RightPaddleB:  type = Controller::Type::Paddles;  id = 3;
+                            return "Right Paddle B";
+        case LeftDriving:   type = Controller::Type::Driving;  id = 0;
+                            return "Left Driving";
+        case RightDriving:  type = Controller::Type::Driving;  id = 1;
+                            return "Right Driving";
+        case LeftMindLink:  type = Controller::Type::MindLink; id = 0;
+                            return "Left MindLink";
+        case RightMindLink: type = Controller::Type::MindLink; id = 1;
+                            return "Right MindLink";
+        default:            return "";
       }
     };
 
-    msg << "Mouse X-axis is ";
-    MControlToController(xaxis, xtype, xid);
-    msg << ", Y-axis is ";
-    MControlToController(yaxis, ytype, yid);
-
-    myModeList.emplace_back(xtype, xid, ytype, yid, msg.view());
+    const string_view xname = MControlToController(xaxis, xtype, xid);
+    const string_view yname = MControlToController(yaxis, ytype, yid);
+    myModeList.emplace_back(xtype, xid, ytype, yid,
+      std::format("Mouse X-axis is {}, Y-axis is {}", xname, yname));
   }
 
   // Now consider the possible modes for the mouse based on the left
@@ -127,18 +98,16 @@ MouseControl::MouseControl(Console& console, string_view mode)
   // Set range information (currently only for paddles, but may be used
   // for other controllers in the future)
   int m_range = 100;
-  if(!(m_axis >> m_range))
-    m_range = 100;
+  if(spacePos != string_view::npos)
+  {
+    const string_view rangeStr = mode.substr(spacePos + 1);
+    std::from_chars(rangeStr.data(), rangeStr.data() + rangeStr.size(), m_range);
+  }
   Paddles::setDigitalPaddleRange(m_range);
 
   // If the mouse isn't used at all, we still need one item in the list
   if(myModeList.empty())
     myModeList.emplace_back("Mouse not used for current controllers");
-
-#if 0
-  for(const auto& m: myModeList)
-    cerr << m << '\n';
-#endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -170,11 +139,10 @@ void MouseControl::addLeftControllerModes(bool noswap)
     }
     else
     {
-      std::ostringstream msg;
-      msg << "Mouse is left " << myLeftController.name() << " controller";
       const Controller::Type type = myLeftController.type();
       const int id = noswap ? 0 : 1;
-      myModeList.emplace_back(type, id, type, id, msg.view());
+      myModeList.emplace_back(type, id, type, id,
+        std::format("Mouse is left {} controller", myLeftController.name()));
     }
   }
 }
@@ -191,11 +159,10 @@ void MouseControl::addRightControllerModes(bool noswap)
     }
     else
     {
-      std::ostringstream msg;
-      msg << "Mouse is right " << myRightController.name() << " controller";
       const Controller::Type type = myRightController.type();
       const int id = noswap ? 1 : 0;
-      myModeList.emplace_back(type, id, type, id, msg.view());
+      myModeList.emplace_back(type, id, type, id,
+        std::format("Mouse is right {} controller", myRightController.name()));
     }
   }
 }
@@ -204,23 +171,20 @@ void MouseControl::addRightControllerModes(bool noswap)
 void MouseControl::addPaddleModes(int lport, int rport, int lname, int rname)
 {
   const Controller::Type type = Controller::Type::Paddles;
-  std::ostringstream msg;
-  msg << "Mouse is Paddle " << lname << " controller";
-  const MouseMode mode0(type, lport, type, lport, msg.view());
-
-  msg.str("");
-  msg << "Mouse is Paddle " << rname << " controller";
-  const MouseMode mode1(type, rport, type, rport, msg.view());
+  MouseMode mode0(type, lport, type, lport,
+    std::format("Mouse is Paddle {} controller", lname));
+  MouseMode mode1(type, rport, type, rport,
+    std::format("Mouse is Paddle {} controller", rname));
 
   if(BSPF::equalsIgnoreCase(myProps.get(PropType::Controller_SwapPaddles), "NO"))
   {
-    myModeList.push_back(mode0);
-    myModeList.push_back(mode1);
+    myModeList.push_back(std::move(mode0));
+    myModeList.push_back(std::move(mode1));
   }
   else
   {
-    myModeList.push_back(mode1);
-    myModeList.push_back(mode0);
+    myModeList.push_back(std::move(mode1));
+    myModeList.push_back(std::move(mode0));
   }
 }
 

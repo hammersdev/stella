@@ -19,33 +19,36 @@
 #include "Cart2K.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Cartridge2K::Cartridge2K(const ByteBuffer& image, size_t size,
-                         string_view md5, const Settings& settings,
-                         size_t bsSize)
-  : CartridgeEnhanced(image, size, md5, settings, bsSize)
+Cartridge2K::Cartridge2K(ByteSpan image, string_view md5,
+                         const Settings& settings, size_t bsSize)
+  : CartridgeEnhanced(image, md5, settings, bsSize)
 {
   // When creating a 2K cart, we always initially create a buffer of size 2_KB
   // Sometimes we only use a portion of that buffer; we check for that now
 
   // Size can be a maximum of 2K
-  size = std::min(size, bsSize);
+  const size_t size = std::min(image.size(), bsSize);
 
   // Set image size to closest power-of-two for the given size
-  mySize = 1; myBankShift = 0;
-  while(mySize < size)
+  size_t newSize = 1; myBankShift = 0;
+  while(newSize < size)
   {
-    mySize <<= 1;
+    newSize <<= 1;
     myBankShift++;
   }
 
   // Handle cases where ROM is smaller than the page size
   // It's much easier to do it this way rather than changing the page size
-  if(mySize < System::PAGE_SIZE)
+  if(newSize < System::PAGE_SIZE)
   {
     // Manually 'mirror' the ROM image into the buffer
-    for(size_t i = 0; i < System::PAGE_SIZE; i += mySize)
-      std::copy_n(image.get(), mySize, myImage.get() + i);
-    mySize = System::PAGE_SIZE;
+    myImage.assign(System::PAGE_SIZE, 0);
+    // newSize is rounded up to a power of two, so it may exceed the actual
+    // image size; clamp the source read to avoid reading past the image
+    for(size_t i = 0; i < System::PAGE_SIZE; i += newSize)
+      std::copy_n(image.data(), std::min(newSize, size), myImage.data() + i);
     myBankShift = System::PAGE_SHIFT;
   }
+  else if(newSize < myImage.size())
+    myImage.resize(newSize);
 }

@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEF4SC_HXX
-#define CARTRIDGEF4SC_HXX
+#ifndef CARTRIDGE_F4SC_HXX
+#define CARTRIDGE_F4SC_HXX
 
 #include "CartF4.hxx"
 #ifdef DEBUGGER_SUPPORT
@@ -24,9 +24,10 @@
 #endif
 
 /**
-  Cartridge class used for Atari's 32K bankswitched games with 128 bytes of
-  RAM.  There are eight 4K banks, accessible by read/write to $1FF4 - $1FFB.
-  RAM read port is $1080 - $10FF, write port is $1000 - $107F.
+  F4SC is F4 with 128 bytes of SuperChip RAM.  Banking works identically to
+  F4: eight 4K banks (32K total), selected by accessing $1FF4-$1FFB.  The SC
+  RAM uses the standard split window: write port $1000-$107F, read port
+  $1080-$10FF.
 
   @author  Bradford W. Mott, Thomas Jentzsch
 */
@@ -38,13 +39,12 @@ class CartridgeF4SC : public CartridgeF4
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeF4SC(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeF4SC(ByteSpan image, string_view md5,
                   const Settings& settings, size_t bsSize = 32_KB);
     ~CartridgeF4SC() override = default;
 
@@ -88,4 +88,4 @@ class CartridgeF4SC : public CartridgeF4
     CartridgeF4SC& operator=(CartridgeF4SC&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_F4SC_HXX

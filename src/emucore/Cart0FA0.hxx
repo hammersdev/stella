@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEBR_HXX
-#define CARTRIDGEBR_HXX
+#ifndef CARTRIDGE_0FA0_HXX
+#define CARTRIDGE_0FA0_HXX
 
 #include "bspf.hxx"
 #include "CartEnhanced.hxx"
@@ -26,11 +26,14 @@
 #endif
 
 /**
-  Cartridge class used for some brazilian 8K bankswitched games. There
-  are two 4K banks, which are switched by accessing
-  (address & $16A0) = $06a0 (bank 0) and = $06c0 (bank 1).
-  Actual addresses used by these carts are e.g. $0FA0, $0FC0 and $EFC0.
-  The code accepts further potential hotspot addresses.
+  Cartridge class used for some Brazilian 8K bankswitched games.  There are
+  two 4K banks whose selection is detected via a bitmask rather than exact
+  addresses: any address satisfying (address & $16A0) == $06A0 triggers bank 0,
+  and (address & $16A0) == $06C0 triggers bank 1.  Known concrete hotspots are
+  $0FA0/$0FC0 (below $1000) and $EFA0/$EFC0 (which map to $1FA0/$1FC0 in cart
+  space), but the mask allows several other aliases.  This permissive matching
+  was presumably required to accommodate address-bus variations across different
+  Brazilian clone hardware.
 
   @author  Thomas Jentzsch
 */
@@ -42,13 +45,11 @@ class Cartridge0FA0 : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image         Pointer to the ROM image
-      @param size          The size of the ROM image
-      @param md5           The md5sum of the ROM image
-      @param settings      A reference to the various settings (read-only)
+      @param image     Span of the ROM image
+      @param md5       The md5sum of the ROM image
+      @param settings  A reference to the various settings (read-only)
     */
-    Cartridge0FA0(const ByteBuffer& image, size_t size, string_view md5,
-      const Settings& settings);
+    Cartridge0FA0(ByteSpan image, string_view md5, const Settings& settings);
     ~Cartridge0FA0() override = default;
 
   public:
@@ -124,4 +125,4 @@ class Cartridge0FA0 : public CartridgeEnhanced
     Cartridge0FA0& operator=(Cartridge0FA0&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_0FA0_HXX

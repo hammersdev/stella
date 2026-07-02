@@ -15,12 +15,11 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#include <sstream>
-
 #include "Logger.hxx"
 
 #include "Base.hxx"
 #include "Console.hxx"
+#include "System.hxx"
 #include "PaletteHandler.hxx"
 #include "FrameBuffer.hxx"
 #include "OSystem.hxx"
@@ -55,11 +54,9 @@
   #include "DebuggerParser.hxx"
 #endif
 #ifdef GUI_SUPPORT
-  #include "OptionsMenu.hxx"
-  #include "CommandMenu.hxx"
-  #include "HighScoresMenu.hxx"
-  #include "MessageMenu.hxx"
-  #include "PlusRomsMenu.hxx"
+  #include "BrowserDialog.hxx"
+  #include "MessageDialog.hxx"
+  #include "OverlayMenu.hxx"
   #include "DialogContainer.hxx"
   #include "Launcher.hxx"
   #include "TimeMachine.hxx"
@@ -77,9 +74,7 @@ EventHandler::EventHandler(OSystem& osystem)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-EventHandler::~EventHandler()  // NOLINT (we need an empty d'tor)
-{
-}
+EventHandler::~EventHandler() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::initialize()
@@ -104,7 +99,6 @@ void EventHandler::initialize()
   Paddles::setAnalogLinearity(myOSystem.settings().getInt("plinear"));
   Paddles::setDejitterDiff(myOSystem.settings().getInt("dejitter.diff"));
   Paddles::setDejitterBase(myOSystem.settings().getInt("dejitter.base"));
-  Paddles::setDejitterDiff(myOSystem.settings().getInt("dejitter.diff"));
   Paddles::setDigitalSensitivity(myOSystem.settings().getInt("dsense"));
   Controller::setMouseSensitivity(myOSystem.settings().getInt("msense"));
   PointingDevice::setSensitivity(myOSystem.settings().getInt("tsense"));
@@ -131,10 +125,6 @@ void EventHandler::initialize()
 
   // Integer to string conversions (for HEX) use upper or lower-case
   Common::Base::setHexUppercase(myOSystem.settings().getBool("dbg.uhex"));
-
-  // Default phosphor blend
-  Properties::setDefault(PropType::Display_PPBlend,
-                         myOSystem.settings().getString(PhosphorHandler::SETTING_BLEND));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -202,10 +192,9 @@ void EventHandler::toggleAllow4JoyDirections(bool toggle)
     myOSystem.settings().setValue("joyallow4", joyAllow4);
   }
 
-  std::ostringstream ss;
-  ss << "Allow all 4 joystick directions ";
-  ss << (joyAllow4 ? "enabled" : "disabled");
-  myOSystem.frameBuffer().showTextMessage(ss.view());
+  myOSystem.frameBuffer().showTextMessage(
+    std::format("Allow all 4 joystick directions {}",
+      joyAllow4 ? "enabled" : "disabled"));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -216,10 +205,7 @@ void EventHandler::toggleSAPortOrder(bool toggle)
 
   if(toggle)
   {
-    if(saport == "lr")
-      saport = "rl";
-    else
-      saport = "lr";
+    saport = (saport == "lr") ? "rl" : "lr";
     mapStelladaptors(saport);
   }
 
@@ -263,10 +249,18 @@ bool EventHandler::hasMouseControl() const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+uInt64 EventHandler::currentSystemCycles() const
+{
+  return myOSystem.hasConsole() ? myOSystem.console().system().cycles() : 0;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::poll(uInt64 time)
 {
-  // Process events from the underlying hardware
-  pollEvent();
+  // Drain hardware input into a fresh input window (opened, filled from the
+  // hardware, then spread across the window and replayed by the controllers
+  // during the next frame of emulation)
+  pollInput();
 
   // Update controllers and console switches, and in general all other things
   // related to emulation
@@ -308,6 +302,7 @@ void EventHandler::poll(uInt64 time)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::enableTextEvents(bool enable)
 {
+  myTextEventsEnabled = enable;
   myOSystem.frameBuffer().enableTextEvents(enable);
 }
 
@@ -316,7 +311,7 @@ void EventHandler::handleTextEvent(char text)
 {
 #ifdef GUI_SUPPORT
   // Text events are only used in GUI mode
-  if(myOverlay)
+  if(myOverlay && myTextEventsEnabled)
     myOverlay->handleTextEvent(text);
 #endif
 }
@@ -331,13 +326,6 @@ void EventHandler::handleMouseMotionEvent(int x, int y, int xrel, int yrel)
     {
       myEvent.set(Event::MouseAxisXValue, x); // required for Lightgun controller
       myEvent.set(Event::MouseAxisYValue, y); // required for Lightgun controller
-#if 0  // FIXME: remove debug code
-      cerr << "dx " << (x - lastX - xrel) << ": " << x << ", " << xrel <<
-        "   y:" << y << ", " << yrel << "\n";
-      if(x - lastX - xrel != 0)
-        int i = 0;
-      lastX = x;
-#endif
       myEvent.set(Event::MouseAxisXMove, xrel);
       myEvent.set(Event::MouseAxisYMove, yrel);
     }
@@ -384,20 +372,8 @@ void EventHandler::handleSystemEvent(SystemEvent e, int, int)
       // Force full render update
       myOSystem.frameBuffer().update(FrameBuffer::UpdateMode::RERENDER);
       break;
-#if 0
-    case SystemEvent::WINDOW_MINIMIZED:
-      if(myState == EventHandlerState::EMULATION)
-        enterMenuMode(EventHandlerState::OPTIONSMENU);
-      break;
-#endif
 
     case SystemEvent::WINDOW_FOCUS_GAINED:
-  #ifdef BSPF_UNIX
-      // Used to handle Alt-x key combos; sometimes the key associated with
-      // Alt gets 'stuck'  and is passed to the core for processing
-      if(myPKeyHandler->altKeyCount() > 0)
-        myPKeyHandler->altKeyCount() = 2;
-  #endif
       if(myOSystem.settings().getBool("autopause") && myState == EventHandlerState::PAUSE)
         setState(EventHandlerState::EMULATION);
       break;
@@ -416,14 +392,19 @@ void EventHandler::handleSystemEvent(SystemEvent e, int, int)
       }
       break;
 
-    default:  // handle other events as testing requires
-      // cerr << "handleSystemEvent: " << e << '\n';
+    default:
       break;
   }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-// NOLINTNEXTLINE (readability-function-size)
+void EventHandler::handleDropfileEvent(string_view file)
+{
+  myOSystem.createConsole(FSNode(file));
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// NOLINTNEXTLINE(readability-function-size,google-readability-function-size,hicpp-function-size)
 void EventHandler::handleEvent(Event::Type event, Int32 value, bool repeated)
 {
   // Take care of special events that aren't part of the emulation core
@@ -1571,11 +1552,11 @@ void EventHandler::handleEvent(Event::Type event, Int32 value, bool repeated)
     case Event::ToggleContSnapshotsFrame:
       if(pressed && !repeated) myOSystem.png().toggleContinuousSnapshots(true);
       return;
-  #endif
 
     case Event::TakeSnapshot:
       if(pressed && !repeated) myOSystem.frameBuffer().tiaSurface().saveSnapShot();
       return;
+  #endif
 
     case Event::ExitMode:
       // Special handling for Escape key
@@ -1616,7 +1597,7 @@ void EventHandler::handleEvent(Event::Type event, Int32 value, bool repeated)
                 msg.emplace_back("");
                 msg.emplace_back("You will lose all your progress.");
               }
-              MessageMenu::setMessage("Exit Emulation", msg, true);
+              MessageDialog::setMessage("Exit Emulation", msg, true);
               enterMenuMode(EventHandlerState::MESSAGEMENU);
             }
             else
@@ -1631,7 +1612,7 @@ void EventHandler::handleEvent(Event::Type event, Int32 value, bool repeated)
           if(pressed && !repeated)
           {
             leaveMenuMode();
-            if (myOSystem.messageMenu().confirmed())
+            if (MessageDialog::confirmed())
               exitEmulation(true);
           }
           return;
@@ -1922,7 +1903,7 @@ bool EventHandler::changeStateByEvent(Event::Type type)
         handled = false;
       break;
 
-#endif // GUI_SUPPORT
+#endif  // GUI_SUPPORT
 
     case Event::TimeMachineMode:
       if(myState == EventHandlerState::EMULATION || myState == EventHandlerState::PAUSE
@@ -1970,54 +1951,33 @@ bool EventHandler::changeStateByEvent(Event::Type type)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::setActionMappings(EventMode mode)
 {
+  const auto fillMappings = [this, mode](auto& list) {
+    for(auto& item: list)
+    {
+      const Event::Type event = item.event;
+      item.key = "None";
+      string key = myPKeyHandler->getMappingDesc(event, mode);
+
+    #ifdef JOYSTICK_SUPPORT
+      const string joydesc = myPJoyHandler->getMappingDesc(event, mode);
+      if(!joydesc.empty())
+      {
+        if(!key.empty())
+          key += ", ";
+        key += joydesc;
+      }
+    #endif
+
+      if(!key.empty())
+        item.key = key;
+    }
+  };
+
   switch(mode)
   {
-    case EventMode::kEmulationMode:
-      // Fill the EmulActionList with the current key and joystick mappings
-      for(auto& item: ourEmulActionList)
-      {
-        const Event::Type event = item.event;
-        item.key = "None";
-        string key = myPKeyHandler->getMappingDesc(event, mode);
-
-    #ifdef JOYSTICK_SUPPORT
-        const string joydesc = myPJoyHandler->getMappingDesc(event, mode);
-        if(!joydesc.empty())
-        {
-          if(!key.empty())
-            key += ", ";
-          key += joydesc;
-        }
-    #endif
-
-        if(!key.empty())
-          item.key = key;
-      }
-      break;
-    case EventMode::kMenuMode:
-      // Fill the MenuActionList with the current key and joystick mappings
-      for(auto& item: ourMenuActionList)
-      {
-        const Event::Type event = item.event;
-        item.key = "None";
-        string key = myPKeyHandler->getMappingDesc(event, mode);
-
-    #ifdef JOYSTICK_SUPPORT
-        const string joydesc = myPJoyHandler->getMappingDesc(event, mode);
-        if(!joydesc.empty())
-        {
-          if(!key.empty())
-            key += ", ";
-          key += joydesc;
-        }
-    #endif
-
-        if(!key.empty())
-          item.key = key;
-      }
-      break;
-    default:
-      return;
+    case EventMode::kEmulationMode: fillMappings(ourEmulActionList); break;
+    case EventMode::kMenuMode:      fillMappings(ourMenuActionList); break;
+    default:                        break;
   }
 }
 
@@ -2072,22 +2032,27 @@ void EventHandler::setComboMap()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-json EventHandler::convertLegacyComboMapping(string lst)
+json EventHandler::convertLegacyComboMapping(string_view lst)
 {
   json convertedMapping = json::array();
 
-  // Since istringstream swallows whitespace, we have to make the
-  // delimiters be spaces
-  std::ranges::replace(lst, ':', ' ');
-  std::ranges::replace(lst, ',', ' ');
-  std::istringstream buf(lst);
-
   try
   {
+    const char* p = lst.data();
+    const char* end = p + lst.size();
+
+    const auto nextInt = [&](int& val) -> bool {
+      while(p < end && (*p == ' ' || *p == ':' || *p == ',')) ++p;
+      auto [next, ec] = std::from_chars(p, end, val);
+      if(ec != std::errc{}) return false;
+      p = next;
+      return true;
+    };
+
     int numCombos{0};
     // Get combo count, which should be the first int in the list
     // If it isn't, then we treat the entire list as invalid
-    buf >> numCombos;
+    if(!nextInt(numCombos)) return convertedMapping;
 
     if(numCombos == COMBO_SIZE)
     {
@@ -2098,12 +2063,12 @@ json EventHandler::convertLegacyComboMapping(string lst)
         for(int j = 0; j < EVENTS_PER_COMBO; ++j)
         {
           int event{0};
-          buf >> event;
+          if(!nextInt(event)) break;
           // skip all NoType events
           if(event != Event::NoType)
             events.push_back(static_cast<Event::Type>(event));
         }
-        // only store if there are any NoType events
+        // only store combos with at least one mapped event
         if(!events.empty())
         {
           json combo;
@@ -2200,13 +2165,13 @@ void EventHandler::setDefaultMapping(Event::Type event, EventMode mode)
 {
   setDefaultKeymap(event, mode);
   setDefaultJoymap(event, mode);
+  setActionMappings(mode);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::setDefaultKeymap(Event::Type event, EventMode mode)
 {
   myPKeyHandler->setDefaultMapping(event, mode);
-  setActionMappings(mode);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2214,7 +2179,6 @@ void EventHandler::setDefaultJoymap(Event::Type event, EventMode mode)
 {
 #ifdef JOYSTICK_SUPPORT
   myPJoyHandler->setDefaultMapping(event, mode);
-  setActionMappings(mode);
 #endif
 }
 
@@ -2250,7 +2214,7 @@ void EventHandler::saveComboMapping()
       if(event != Event::NoType)
         events.push_back(static_cast<Event::Type>(event));
     }
-    // only store if there are any NoType events
+    // only store if there are any non-NoType events
     if(!events.empty())
     {
       json combo;
@@ -2267,18 +2231,17 @@ void EventHandler::saveComboMapping()
 StringList EventHandler::getActionList(EventMode mode)
 {
   StringList l;
+
+  const auto collectActions = [&l](const auto& list) {
+    std::ranges::transform(list, std::back_inserter(l),
+      [](const auto& item) { return item.action; });
+  };
+
   switch(mode)
   {
-    case EventMode::kEmulationMode:
-      for(const auto& item: ourEmulActionList)
-        l.push_back(item.action);
-      break;
-    case EventMode::kMenuMode:
-      for(const auto& item: ourMenuActionList)
-        l.push_back(item.action);
-      break;
-    default:
-      break;
+    case EventMode::kEmulationMode: collectActions(ourEmulActionList); break;
+    case EventMode::kMenuMode:      collectActions(ourMenuActionList); break;
+    default:                        break;
   }
   return l;
 }
@@ -2302,7 +2265,7 @@ StringList EventHandler::getActionList(Event::Group group)
     case Devices:     return getActionList(DevicesEvents);
     case Debug:       return getActionList(DebugEvents);
     case Combo:       return getActionList(ComboEvents);
-    default:          return {}; // ToDo
+    default:          return {}; // LastGroup is a sentinel; empty is correct
   }
 }
 
@@ -2312,26 +2275,16 @@ StringList EventHandler::getActionList(const Event::EventSet& events,
 {
   StringList l;
 
+  const auto collectMatchingActions = [&l, &events](const auto& list) {
+    for(const auto& item : list)
+      if(events.contains(item.event))
+        l.push_back(item.action);
+  };
+
   switch(mode)
   {
-    case EventMode::kMenuMode:
-      for(const auto& item: ourMenuActionList)
-        for(const auto& event : events)
-          if(item.event == event)
-          {
-            l.push_back(item.action);
-            break;
-          }
-      break;
-
-    default:
-      for(const auto& item: ourEmulActionList)
-        for(const auto& event : events)
-          if(item.event == event)
-          {
-            l.push_back(item.action);
-            break;
-          }
+    case EventMode::kMenuMode: collectMatchingActions(ourMenuActionList); break;
+    default:                   collectMatchingActions(ourEmulActionList); break;
   }
   return l;
 }
@@ -2341,19 +2294,14 @@ VariantList EventHandler::getComboList()
 {
   // For now, this only works in emulation mode
   VariantList l;
-  std::ostringstream buf;
-
   VarList::push_back(l, "None", "-1");
   for(uInt32 i = 0; i < ourEmulActionList.size(); ++i)
   {
     const Event::Type event = EventHandler::ourEmulActionList[i].event;
     // exclude combos events
     if(event < Event::Combo1 || event > Event::Combo16)
-    {
-      buf << i;
-      VarList::push_back(l, EventHandler::ourEmulActionList[i].action, buf.view());
-      buf.str("");
-    }
+      VarList::push_back(l, EventHandler::ourEmulActionList[i].action,
+        std::to_string(i));
   }
   return l;
 }
@@ -2362,7 +2310,6 @@ VariantList EventHandler::getComboList()
 StringList EventHandler::getComboListForEvent(Event::Type event) const
 {
   StringList l;
-  std::ostringstream buf;
   if(event >= Event::Combo1 && event <= Event::Combo16)
   {
     const int combo = event - Event::Combo1;
@@ -2370,14 +2317,12 @@ StringList EventHandler::getComboListForEvent(Event::Type event) const
     {
       const Event::Type e = myComboTable[combo][i];
       for(uInt32 j = 0; j < ourEmulActionList.size(); ++j)
-      {
         if(EventHandler::ourEmulActionList[j].event == e)
         {
-          buf << j;
-          l.push_back(buf.str());
-          buf.str("");
+          l.push_back(std::to_string(j));
+          break;
         }
-      }
+
       // Make sure entries are 1-to-1, using '-1' to indicate Event::NoType
       if(i == l.size())
         l.emplace_back("-1");
@@ -2410,24 +2355,8 @@ int EventHandler::getEmulActionListIndex(int idx, const Event::EventSet& events)
 {
   // idx = index into intersection set of 'events' and 'ourEmulActionList'
   //   ordered by 'ourEmulActionList'!
-  Event::Type event = Event::NoType;
-
-  for(auto& alist: ourEmulActionList)
-  {
-    for(const auto& item : events)
-      if(alist.event == item)
-      {
-        idx--;
-        if(idx < 0)
-          event = item;
-        break;
-      }
-    if(idx < 0)
-      break;
-  }
-
-  for(uInt32 i = 0; i < ourEmulActionList.size(); ++i)
-    if(EventHandler::ourEmulActionList[i].event == event)
+  for(int i = 0; std::cmp_less(i, ourEmulActionList.size()); ++i)
+    if(events.contains(ourEmulActionList[i].event) && --idx < 0)
       return i;
 
   return -1;
@@ -2485,14 +2414,14 @@ string EventHandler::actionAtIndex(int idx, Event::Group group)
   if(group == Event::Group::Menu)
   {
     if(index < 0 || std::cmp_greater_equal(index, ourMenuActionList.size()))
-      return EmptyString();
+      return string{};
     else
       return ourMenuActionList[index].action;
   }
   else
   {
     if(index < 0 || std::cmp_greater_equal(index, ourEmulActionList.size()))
-      return EmptyString();
+      return string{};
     else
       return ourEmulActionList[index].action;
   }
@@ -2506,14 +2435,14 @@ string EventHandler::keyAtIndex(int idx, Event::Group group)
   if(group == Event::Group::Menu)
   {
     if(index < 0 || std::cmp_greater_equal(index, ourMenuActionList.size()))
-      return EmptyString();
+      return string{};
     else
       return ourMenuActionList[index].key;
   }
   else
   {
     if(index < 0 || std::cmp_greater_equal(index, ourEmulActionList.size()))
-      return EmptyString();
+      return string{};
     else
       return ourEmulActionList[index].key;
   }
@@ -2531,11 +2460,11 @@ void EventHandler::setMouseControllerMode(string_view enable)
       usemouse = false;
     else  // 'analog'
     {
-      usemouse = myOSystem.console().leftController().isAnalog() ||
-                 myOSystem.console().rightController().isAnalog();
+      usemouse = myOSystem.console().leftController().usesMouse() ||
+                 myOSystem.console().rightController().usesMouse();
     }
 
-    const string& control = usemouse ?
+    string_view control = usemouse ?
       myOSystem.console().properties().get(PropType::Controller_MouseAxis) : "none";
 
     myMouseControl = std::make_unique<MouseControl>(myOSystem.console(), control);
@@ -2546,9 +2475,12 @@ void EventHandler::setMouseControllerMode(string_view enable)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::changeMouseControllerMode(int direction)
 {
-  constexpr int NUM_MODES = 3;
-  const string MODES[NUM_MODES] = {"always", "analog", "never"};
-  const string MSG[NUM_MODES] = {"all", "analog", "no"};
+  static constexpr std::array<string_view, 3> MODES = {
+    "always", "analog", "never"
+  };
+  static constexpr std::array<string_view, 3> MSG = {
+    "all", "analog", "no"
+  };
   string usemouse = myOSystem.settings().getString("usemouse");
 
   int i = 0;
@@ -2556,7 +2488,7 @@ void EventHandler::changeMouseControllerMode(int direction)
   {
     if(mode == usemouse)
     {
-      i = BSPF::clampw(i + direction, 0, NUM_MODES - 1);
+      i = BSPF::clampw(i + direction, 0, 2);
       usemouse = MODES[i];
       break;
     }
@@ -2566,9 +2498,8 @@ void EventHandler::changeMouseControllerMode(int direction)
   setMouseControllerMode(usemouse);
   myOSystem.frameBuffer().setCursorState(); // if necessary change grab mouse
 
-  std::ostringstream ss;
-  ss << "Mouse controls " << MSG[i] << " devices";
-  myOSystem.frameBuffer().showTextMessage(ss.view());
+  myOSystem.frameBuffer().showTextMessage(
+    std::format("Mouse controls {} devices", MSG[i]));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2579,11 +2510,10 @@ void EventHandler::changeMouseCursor(int direction)
   myOSystem.settings().setValue("cursor", cursor);
   myOSystem.frameBuffer().setCursorState();
 
-  std::ostringstream ss;
-  ss << "Mouse cursor visibilility: "
-    << ((cursor & 2) ? "+" : "-") << "UI, "
-    << ((cursor & 1) ? "+" : "-") << "Emulation";
-  myOSystem.frameBuffer().showTextMessage(ss.view());
+  myOSystem.frameBuffer().showTextMessage(
+    std::format("Mouse cursor visibility: {}UI, {}Emulation",
+      (cursor & 2) ? "+" : "-",
+      (cursor & 1) ? "+" : "-"));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2595,6 +2525,30 @@ void EventHandler::enterMenuMode(EventHandlerState state)
   myOSystem.sound().pause(true);
 #endif
 }
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void EventHandler::openDialog(Dialog* dialog)
+{
+#ifdef GUI_SUPPORT
+  myOSystem.overlayMenu().setDialog(dialog);
+  enterMenuMode(EventHandlerState::OVERLAYMENU);
+#endif
+}
+
+#ifdef GUI_SUPPORT
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void EventHandler::openBrowserDialog(string_view title, string_view startpath,
+                                     BrowserDialog::Mode mode,
+                                     const BrowserDialog::Command& command,
+                                     const FSNode::NameFilter& namefilter)
+{
+  // Use setState directly to avoid reStack(), which would call baseDialog()
+  // on the overlayMenu before BrowserDialog has pushed itself onto the stack
+  setState(EventHandlerState::OVERLAYMENU);
+  myOSystem.sound().pause(true);
+  BrowserDialog::show(myOSystem, title, startpath, mode, command, namefilter);
+}
+#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::leaveMenuMode()
@@ -2663,11 +2617,10 @@ void EventHandler::enterTimeMachineMenuMode(uInt32 numWinds, bool unwind)
 {
 #ifdef GUI_SUPPORT
   // add one extra state if we are in Time Machine mode
-  // TODO: maybe remove this state if we leave the menu at this new state
   myOSystem.state().addExtraState("enter Time Machine dialog"); // force new state
 
   if(numWinds)
-    // hande winds and display wind message (numWinds != 0) in time machine dialog
+    // handle winds and display wind message (numWinds != 0) in time machine dialog
     myOSystem.timeMachine().setEnterWinds(unwind ? numWinds : -numWinds);
 
   enterMenuMode(EventHandlerState::TIMEMACHINE);
@@ -2708,28 +2661,15 @@ void EventHandler::setState(EventHandlerState state)
       break;
 
   #ifdef GUI_SUPPORT
+    // All built-in menus and any transient dialog opened over TIA mode share
+    // the single OverlayMenu container; it picks the right dialog by state
     case EventHandlerState::OPTIONSMENU:
-      myOverlay = &myOSystem.optionsMenu();
-      enableTextEvents(true);
-      break;
-
     case EventHandlerState::CMDMENU:
-      myOverlay = &myOSystem.commandMenu();
-      enableTextEvents(true);
-      break;
-
     case EventHandlerState::HIGHSCORESMENU:
-      myOverlay = &myOSystem.highscoresMenu();
-      enableTextEvents(true);
-      break;
-
     case EventHandlerState::MESSAGEMENU:
-      myOverlay = &myOSystem.messageMenu();
-      enableTextEvents(true);
-      break;
-
     case EventHandlerState::PLUSROMSMENU:
-      myOverlay = &myOSystem.plusRomsMenu();
+    case EventHandlerState::OVERLAYMENU:
+      myOverlay = &myOSystem.overlayMenu();
       enableTextEvents(true);
       break;
 
@@ -2765,7 +2705,7 @@ void EventHandler::setState(EventHandlerState state)
     myOSystem.console().stateChanged(myState); // does nothing
 
   // Sometimes an extraneous mouse motion event is generated
-  // after a state change, which should be supressed
+  // after a state change, which should be suppressed
   mySkipMouseMotion = true;
 
   // Erase any previously set events, since a state change implies
@@ -2793,7 +2733,7 @@ void EventHandler::exitEmulation(bool checkLauncher)
   else if (saveOnExit == "current")
     handleEvent(Event::SaveState);
 
-#if DEBUGGER_SUPPORT
+#ifdef DEBUGGER_SUPPORT
   myOSystem.debugger().quit();
 #endif
 

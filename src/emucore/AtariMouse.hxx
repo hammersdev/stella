@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef ATARIMOUSE_HXX
-#define ATARIMOUSE_HXX
+#ifndef ATARI_MOUSE_HXX
+#define ATARI_MOUSE_HXX
 
 #include "PointingDevice.hxx"
 
@@ -50,7 +50,7 @@ class AtariMouse : public PointingDevice
         0b0000, 0b0100, 0b1100, 0b1000
       };
 
-      return ourTableH[countH] | ourTableV[countV];
+      return ourTableH[countH & 0b11] | ourTableV[countV & 0b11];
     }
 
     static constexpr float trackballSensitivity = 0.8F;
@@ -63,4 +63,4 @@ class AtariMouse : public PointingDevice
     AtariMouse& operator=(AtariMouse&&) = delete;
 };
 
-#endif // ATARIMOUSE_HXX
+#endif  // ATARI_MOUSE_HXX

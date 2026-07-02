@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef EVENTHANDLER_LIBRETRO_HXX
-#define EVENTHANDLER_LIBRETRO_HXX
+#ifndef EVENT_HANDLER_LIBRETRO_HXX
+#define EVENT_HANDLER_LIBRETRO_HXX
 
 #include "EventHandler.hxx"
 
@@ -27,6 +27,8 @@
 
   @author  Stephen Anthony
 */
+extern void update_input();
+
 class EventHandlerLIBRETRO : public EventHandler
 {
   public:
@@ -36,11 +38,14 @@ class EventHandlerLIBRETRO : public EventHandler
     explicit EventHandlerLIBRETRO(OSystem& osystem) : EventHandler(osystem) { }
     ~EventHandlerLIBRETRO() override = default;
 
-  private:
+  protected:
     /**
-      Collects and dispatches any pending events.
+      Collects and dispatches any pending events.  Called (with the input
+      window already open) from EventHandler::pollInput(), which libretro.cxx
+      drives once per frame.  update_input() lives in libretro.cxx, where the
+      RetroArch input callbacks it samples live.
     */
-    void pollEvent() override { }
+    void pollEvent() override { update_input(); }
 
   private:
     // Following constructors and assignment operators not supported
@@ -51,4 +56,4 @@ class EventHandlerLIBRETRO : public EventHandler
     EventHandlerLIBRETRO& operator=(EventHandlerLIBRETRO&&) = delete;
 };
 
-#endif
+#endif  // EVENT_HANDLER_LIBRETRO_HXX

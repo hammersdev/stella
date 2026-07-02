@@ -311,7 +311,7 @@ string Widget::getToolTip(const Common::Point& pos) const
   const string hotkey2 = instance().eventHandler().keyHandler().getMappingDesc(
     _toolTipEvent2, _toolTipMode);
 
-  if(hotkey != EmptyString() && hotkey2 != EmptyString())
+  if(!hotkey.empty() && !hotkey2.empty())
   {
     // Merge hotkeys if they only differ by "-Shift"
     const string mod = "-Shift";
@@ -333,9 +333,9 @@ string Widget::getToolTip(const Common::Point& pos) const
   else
     hotkey += hotkey2;
 
-  if(hotkey == EmptyString())
+  if(hotkey.empty())
     return _toolTipText;
-  else if(_toolTipText == EmptyString())
+  else if(_toolTipText.empty())
     return "(" + hotkey + ")";
   else
     if(_toolTipText.length() + hotkey.length() + 3 <= ToolTip::MAX_COLUMNS)
@@ -382,7 +382,6 @@ string Widget::getHelpURL() const
   }
   return {};
 }
-
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Widget* Widget::findWidgetInChain(Widget* start, int x, int y)
@@ -587,11 +586,11 @@ bool StaticTextWidget::setUrl(string_view url, string_view label,
                               string_view placeHolder)
 {
   size_t start = string::npos, len = 0;
-  const string_view text = label != EmptyString() ? label : url;
+  const string_view text = !label.empty() ? label : url;
 
-  if(text != EmptyString())
+  if(!text.empty())
   {
-    if(placeHolder != EmptyString())
+    if(!placeHolder.empty())
       BSPF::replaceAll(_label, placeHolder, text);
 
     // determine position of link
@@ -643,7 +642,7 @@ bool StaticTextWidget::setUrl(string_view url, string_view label,
   else
   {
     setLink(); // clear link
-    _url = EmptyString();
+    _url.clear();
     return false;
   }
 }
@@ -671,7 +670,6 @@ void StaticTextWidget::handleMouseUp(int x, int y, MouseButton b, int clickCount
     sendCommand(_cmd, 0, _id);
   }
 }
-
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void StaticTextWidget::drawWidget(bool hilite)
@@ -802,7 +800,7 @@ void ButtonWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void ButtonWidget::handleMouseUp(int x, int y, MouseButton b, int clickCount)
 {
-  if (!_repeat && isEnabled() && x >= 0 && x < _w && y >= 0 && y < _h)
+  if(!_repeat && isEnabled() && x >= 0 && x < _w && y >= 0 && y < _h)
   {
     clearFlags(Widget::FLAG_HILITED);
     sendCommand(_cmd, 0, _id);
@@ -876,7 +874,7 @@ CheckboxWidget::CheckboxWidget(GuiObject* boss, const GUI::Font& font,
   else         // center text
     _textY = (_boxSize - _font.getFontHeight()) / 2;
 
-  setFill(CheckboxWidget::FillType::Normal);  // NOLINT
+  setFill(CheckboxWidget::FillType::Normal);  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1047,7 +1045,7 @@ void SliderWidget::setValue(int value)
   {
     _value = value;
     setDirty();
-    if (_valueLabelWidth)
+    if(_valueLabelWidth)
       setValueLabel(_value); // update label
     sendCommand(_cmd, _value, _id);
   }

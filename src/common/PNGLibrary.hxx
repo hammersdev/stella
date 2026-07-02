@@ -17,8 +17,8 @@
 
 #ifdef IMAGE_SUPPORT
 
-#ifndef PNGLIBRARY_HXX
-#define PNGLIBRARY_HXX
+#ifndef PNG_LIBRARY_HXX
+#define PNG_LIBRARY_HXX
 
 #include <png.h>
 
@@ -27,11 +27,11 @@
 
 class OSystem;
 class FBSurface;
+class FSNode;
 
 /**
   This class implements a thin wrapper around the libpng library, and
-  abstracts all the irrelevant details other loading and saving an
-  actual image.
+  abstracts all the irrelevant details of loading and saving an actual image.
 
   @author  Stephen Anthony
 */
@@ -53,23 +53,8 @@ class PNGLibrary
              std::runtime_error is thrown containing a more detailed
              error message.
     */
-    void loadImage(const string& filename, FBSurface& surface,
-                   VariantList& metaData);
-
-    /**
-      Save the current FrameBuffer image to a PNG file.  Note that in most
-      cases this will be a TIA image, but it could actually be used for
-      *any* mode.
-
-      @param filename  The filename to save the PNG image
-      @param metaData  The meta data s to add to the PNG image
-
-      @post  On success, the PNG file has been saved to 'filename',
-             otherwise a std::runtime_error is thrown containing a
-             more detailed error message.
-    */
-    void saveImage(const string& filename,
-                   const VariantList& metaData = VariantList{});
+    static void loadImage(string_view filename, FBSurface& surface,
+                          VariantList& metaData);
 
     /**
       Save the given surface to a PNG file.
@@ -83,7 +68,7 @@ class PNGLibrary
              otherwise a std::runtime_error is thrown containing a
              more detailed error message.
     */
-    static void saveImage(const string& filename, const FBSurface& surface,
+    static void saveImage(string_view filename, const FBSurface& surface,
                           const Common::Rect& rect = Common::Rect{},
                           const VariantList& metaData = VariantList{});
 
@@ -118,9 +103,6 @@ class PNGLibrary
     void setContinuousSnapInterval(uInt32 interval);
 
     /**
-      NOTE: This method will be made private soon, so all calls from
-            external code should be refactored
-
       Create a new snapshot based on the name of the ROM, and also
       optionally using the number given as a parameter.
 
@@ -136,48 +118,23 @@ class PNGLibrary
     uInt32 mySnapInterval{0};
     uInt32 mySnapCounter{0};
 
-    // The following data remains between invocations of allocateStorage,
-    // and is only changed when absolutely necessary.
-    struct ReadInfoType {
-      vector<png_byte> buffer;
-      vector<png_bytep> row_pointers;
-      png_uint_32 width{0}, height{0}, pitch{0};
-    };
-    static ReadInfoType ReadInfo;
+    // Auto-cropped area for the current snapshot.  For continuous snapshots
+    // the crop is computed once (on the first frame) and cached here, so that
+    // every frame in the sequence is saved with identical dimensions.
+    Common::Rect myCropRect;
+    bool myCropValid{false};
 
     /**
-      Allocate memory for PNG read operations.  This is used to provide a
-      basic memory manager, so that we don't constantly allocate and deallocate
-      memory for each image loaded.
+      Determine the auto-cropped (black borders trimmed) area of the surface.
+      For continuous snapshots (number > 0) the result is computed once and
+      cached, then reused for subsequent frames.
 
-      The method fills the 'ReadInfo' struct with valid memory locations
-      dependent on the given dimensions.  If memory has been previously
-      allocated and it can accommodate the given dimensions, it is used directly.
-
-      @param width   The width of the PNG image
-      @param height  The height of the PNG image
+      @param surface  The surface to examine
+      @param rect     The area of the surface to crop within
+      @param number   The continuous snapshot number (0 for single snapshots)
     */
-    static bool allocateStorage(size_t width, size_t height, bool hasAlpha);
-
-    /** The actual method which saves a PNG image.
-
-      @param out       The output stream for writing PNG data
-      @param rows      Pointer into PNG RGB data for each row
-      @param width     The width of the PNG image
-      @param height    The height of the PNG image
-      @param metaData  The meta data to add to the PNG image
-    */
-    static void saveImageToDisk(std::ofstream& out, const vector<png_bytep>& rows,
-                                size_t width, size_t height,
-                                const VariantList& metaData);
-
-    /**
-      Load the PNG data from 'ReadInfo' into the FBSurface.  The surface
-      is resized as necessary to accommodate the data.
-
-      @param surface  The FBSurface into which to place the PNG data
-    */
-    void loadImagetoSurface(FBSurface& surface, bool hasAlpha);
+    Common::Rect croppedRect(const FBSurface& surface,
+                             const Common::Rect& rect, uInt32 number);
 
     /**
       Write PNG tEXt chunks to the image.
@@ -191,13 +148,6 @@ class PNGLibrary
     static void readMetaData(png_structp png_ptr, png_infop info_ptr,
                              VariantList& metaData);
 
-    /** PNG library callback functions */
-    static void png_read_data(png_structp ctx, png_bytep area, png_size_t size);
-    static void png_write_data(png_structp ctx, png_bytep area, png_size_t size);
-    static void png_io_flush(png_structp ctx);
-    [[noreturn]] static void png_user_warn(png_structp ctx, png_const_charp str);
-    [[noreturn]] static void png_user_error(png_structp ctx, png_const_charp str);
-
   private:
     // Following constructors and assignment operators not supported
     PNGLibrary() = delete;
@@ -207,6 +157,6 @@ class PNGLibrary
     PNGLibrary& operator=(PNGLibrary&&) = delete;
 };
 
-#endif
+#endif  // PNG_LIBRARY_HXX
 
 #endif  // IMAGE_SUPPORT

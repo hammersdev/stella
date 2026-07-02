@@ -106,10 +106,9 @@ void Debugger::initialize()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 FBInitStatus Debugger::initializeVideo()
 {
-  const string title = string{STELLA_FULL_TITLE} + ": Debugger mode";
   return myOSystem.frameBuffer().createDisplay(
-      title, BufferType::Debugger, mySize
-  );
+    string{STELLA_FULL_TITLE} + ": Debugger mode",
+    BufferType::Debugger, mySize);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -121,11 +120,11 @@ bool Debugger::start(string_view message, int address, bool read,
     myFirstLog = true;
     // This must be done *after* we enter debug mode,
     // so the message isn't erased
-    std::ostringstream buf;
-    buf << message;
+
+    string text{message};
     if(address > -1)
-      buf << cartDebug().getLabel(address, read, 4);
-    myDialog->message().setText(buf.view());
+      text += cartDebug().getLabel(address, read, 4);
+    myDialog->message().setText(text);
     myDialog->message().setToolTip(toolTip);
     return true;
   }
@@ -168,37 +167,43 @@ void Debugger::exit(bool exitrom)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string Debugger::autoExec(StringList* history)
 {
-  std::ostringstream buf;
+  string output;
 
   // autoexec.script is always run
   const FSNode autoexec(myOSystem.baseDir().getPath() + "autoexec.script");
-  buf << "autoExec():\n"
-      << myParser->exec(autoexec, history) << '\n';
+  output += std::format(
+    "autoExec():\n{}\n",
+    myParser->exec(autoexec, history)
+  );
 
-  // Also, "romname.script" if present
-  const string path = myOSystem.userDir().getPath() + myOSystem.romFile().getNameWithExt(".script");
-  const FSNode romname(path);
-  buf << myParser->exec(romname, history) << '\n';
+  // Also, "romname.script" if present. Per the documentation this lives in
+  // the same directory as the ROM; fall back to the user directory (where
+  // the 'save'/autosave commands write it) for backward compatibility.
+  FSNode romname = myOSystem.romFile().getSiblingNode(".script");
+  if(!romname.exists())
+    romname = FSNode(myOSystem.userDir().getPath() +
+                     myOSystem.romFile().getNameWithExt(".script"));
+  output += std::format("{}\n", myParser->exec(romname, history));
 
   // Also, script specified via -dbg.script command line parameter
   const string scriptPath = myOSystem.settings().getString("dbg.script");
   if(!scriptPath.empty())
   {
     const FSNode script(scriptPath);
-    buf << myParser->exec(script, history) << '\n';
+    output += std::format("{}\n", myParser->exec(script, history));
   }
 
   // Init builtins
   for(const auto& func: ourBuiltinFunctions)
   {
-    // TODO - check this for memory leaks
-    const int res = YaccParser::parse(func.defn);
-    if(res == 0)
-      addFunction(func.name, func.defn, YaccParser::getResult(), true);
+    auto expr = YaccParser::parse(func.defn);
+    if(expr)
+      addFunction(func.name, func.defn, std::move(expr), true);
     else
-      cerr << "ERROR in builtin function " << func.name << "!\n";
+      cerr << std::format("ERROR in builtin function {}!\n", func.name);
   }
-  return buf.str();
+
+  return output;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -250,19 +255,18 @@ void Debugger::reset()
 /* Element 0 of args is the address. The remaining elements are the data
    to poke, starting at the given address.
 */
-string Debugger::setRAM(IntArray& args)
+string Debugger::setRAM(const IntArray& args)
 {
-  std::ostringstream buf;
+  if(args.empty())
+    return "no arguments provided";
 
-  const size_t count = args.size();
+  const size_t count = args.size(), written = count - 1;
   int address = args[0];
   for(size_t i = 1; i < count; ++i)
     mySystem.pokeOob(address++, args[i]);
 
-  buf << "changed " << (count-1) << " location";
-  if(count != 2)
-    buf << "s";
-  return buf.str();
+  return std::format("changed {} {}", written,
+    written == 1 ? "location" : "locations");
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -406,6 +410,7 @@ void Debugger::addReadTrap(uInt16 t) const
   readTraps().add(t);
 }
 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Debugger::addWriteTrap(uInt16 t) const
 {
   writeTraps().initialize();
@@ -455,75 +460,78 @@ bool Debugger::writeTrap(uInt16 t) const
 void Debugger::log(string_view triggerMsg)
 {
   const int pc = myCpuDebug->pc();
+  const auto romBanks = myCartDebug->romBankCount();
 
   if(myFirstLog)
   {
-    std::ostringstream msg;
+    string header = "Trigger:  Frame Scn Cy Pxl | PS       A  X  Y  SP | ";
+    if(romBanks > 1)
+      header += (romBanks > 9) ? "Bk/" : "B/";
 
-    msg << "Trigger:  Frame Scn Cy Pxl | PS       A  X  Y  SP | ";
-    if(myCartDebug->romBankCount() > 1)
-    {
-      if(myCartDebug->romBankCount() > 9)
-        msg << "Bk/";
-      else
-        msg << "B/";
-    }
-    msg << "Addr Code     Disasm";
-    Logger::log(msg.view());
+    header += "Addr Code     Disasm";
+    Logger::log(header);
     myFirstLog = false;
   }
 
-  std::ostringstream msg;
+  string msg;
 
-  msg << std::left << std::setw(10) << std::setfill(' ') << triggerMsg
-    << Base::toString(myTiaDebug->frameCount(), Base::Fmt::_10_5) << " "
-    << Base::toString(myTiaDebug->scanlines(), Base::Fmt::_10_3) << " "
-    << Base::toString(myTiaDebug->clocksThisLine() / 3, Base::Fmt::_10_02) << " "
-    << Base::toString(myTiaDebug->clocksThisLine() - 68, Base::Fmt::_10_3) << " | "
-    << (myCpuDebug->n() ? "N" : "n")
-    << (myCpuDebug->v() ? "V" : "v") << "-"
-    << (myCpuDebug->b() ? "B" : "b")
-    << (myCpuDebug->d() ? "D" : "d")
-    << (myCpuDebug->i() ? "I" : "i")
-    << (myCpuDebug->z() ? "Z" : "z")
-    << (myCpuDebug->c() ? "C" : "c") << " "
-    << Base::HEX2 << myCpuDebug->a() << " "
-    << Base::HEX2 << myCpuDebug->x() << " "
-    << Base::HEX2 << myCpuDebug->y() << " "
-    << Base::HEX2 << myCpuDebug->sp() << " |";
+  // Main CPU/timing line
+  msg += std::format(
+    "{:<10} {} {} {} {} | ",
+    triggerMsg,
+    Base::toString(myTiaDebug->frameCount(), Base::Fmt::_10_5),
+    Base::toString(myTiaDebug->scanlines(), Base::Fmt::_10_3),
+    Base::toString(myTiaDebug->clocksThisLine() / 3, Base::Fmt::_10_02),
+    Base::toString(myTiaDebug->clocksThisLine() - 68, Base::Fmt::_10_3)
+  );
 
-  if(myCartDebug->romBankCount() > 1)
+  // Status flags
+  msg += std::format(
+    "{}{}-{}{}{}{}{} {:02X} {:02X} {:02X} {:02X} |",
+    myCpuDebug->n() ? "N" : "n",
+    myCpuDebug->v() ? "V" : "v",
+    myCpuDebug->b() ? "B" : "b",
+    myCpuDebug->d() ? "D" : "d",
+    myCpuDebug->i() ? "I" : "i",
+    myCpuDebug->z() ? "Z" : "z",
+    myCpuDebug->c() ? "C" : "c",
+    myCpuDebug->a(),
+    myCpuDebug->x(),
+    myCpuDebug->y(),
+    myCpuDebug->sp()
+  );
+
+  // Bank info
+  if(romBanks > 1)
   {
-    if(myCartDebug->romBankCount() > 9)
-      msg << Base::toString(myCartDebug->getBank(pc), Base::Fmt::_10) << "/";
-    else
-      msg << " " << myCartDebug->getBank(pc) << "/";
+    const auto bank = myCartDebug->getBank(pc);
+    msg += (romBanks > 9)
+      ? Base::toString(bank, Base::Fmt::_10)
+      : (" " + std::to_string(bank));
+    msg += "/";
   }
   else
-    msg << " ";
+    msg += " ";
 
   // First find the lines in the range, and determine the longest string
-  const CartDebug::Disassembly& disasm = myCartDebug->disassembly();
-  const uInt16 start = pc & 0xFFF;
-  const size_t list_size = disasm.list.size();
-  size_t pos = 0;
+  const auto& disasm = myCartDebug->disassembly();
+  const uInt16 start = pc & mySystem.addressMask();
 
-  for(pos = 0; pos < list_size; ++pos)
+  for(const auto& tag: disasm.list)
   {
-    const CartDebug::DisassemblyTag& tag = disasm.list[pos];
-
-    if((tag.address & 0xfff) >= start)
+    if((tag.address & mySystem.addressMask()) >= start)
     {
-      msg << Base::HEX4 << pc << " "
-        << std::left << std::setw(8) << std::setfill(' ') << tag.bytes << " "
-        << tag.disasm.substr(0, 7);
+      const string pcStr = Base::hex4(pc);
+      msg += std::format("{} {:<8} {}", pcStr, tag.bytes, tag.disasm.substr(0, 7));
 
-      if(tag.disasm.length() > 8)
-        msg << tag.disasm.substr(8);
+      if(tag.disasm.size() > 8)
+        msg += tag.disasm.substr(8);
+
       break;
     }
   }
-  Logger::log(msg.view());
+
+  Logger::log(msg);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -577,6 +585,12 @@ void Debugger::setAccessFlags(uInt16 addr, Device::AccessFlags flags)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Device::AccessCounter Debugger::getAccessCounter(uInt16 addr) const
+{
+  return mySystem.getAccessCounter(addr);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt32 Debugger::getBaseAddress(uInt32 addr, bool read)
 {
   if((addr & 0x1080) == 0x0000) // (addr & 0b 0001 0000 1000 0000) == 0b 0000 0000 0000 0000
@@ -623,43 +637,43 @@ uInt32 Debugger::getBaseAddress(uInt32 addr, bool read)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Debugger::nextScanline(int lines)
 {
-  std::ostringstream buf;
-  buf << "scanline + " << lines;
+  const auto label = std::format("scanline + {}", lines);
 
   saveOldState();
-
   unlockSystem();
-  while(lines)
-  {
+
+  for(int i = 0; i < lines; ++i)
     myOSystem.console().tia().updateScanline();
-    --lines;
-  }
+
   lockSystem();
 
-  addState(buf.view());
+  addState(label);
   myOSystem.console().tia().flushLineCache();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Debugger::nextFrame(int frames)
 {
-  std::ostringstream buf;
-  buf << "frame + " << frames;
+  string buf = std::format("frame + {}", frames);
 
   saveOldState();
-
   unlockSystem();
+
   DispatchResult dispatchResult;
+  auto& tia = myOSystem.console().tia();
+  auto& emuTiming = myOSystem.console().emulationTiming();
+
   while(frames)
   {
     do
-      myOSystem.console().tia().update(dispatchResult, myOSystem.console().emulationTiming().maxCyclesPerTimeslice());
-    while (dispatchResult.getStatus() == DispatchResult::Status::debugger);
+      tia.update(dispatchResult, emuTiming.maxCyclesPerTimeslice());
+    while(dispatchResult.getStatus() == DispatchResult::Status::debugger);
+
     --frames;
   }
-  lockSystem();
 
-  addState(buf.view());
+  lockSystem();
+  addState(buf);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -675,7 +689,6 @@ uInt16 Debugger::windStates(uInt16 numStates, bool unwind, string& message)
   RewindManager& r = myOSystem.state().rewindManager();
 
   saveOldState();
-
   unlockSystem();
 
   const uInt64 startCycles = myOSystem.console().system().cycles();
@@ -722,7 +735,7 @@ string Debugger::showWatches()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 int Debugger::stringToValue(string_view stringval)
 {
-  return myParser->decipher_arg(stringval);
+  return myParser->decipherArg(stringval);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -790,9 +803,9 @@ void Debugger::setQuitState()
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool Debugger::addFunction(string_view name, string_view definition,
-                           Expression* exp, bool builtin)
+                           unique_ptr<Expression> exp, bool builtin)
 {
-  myFunctions.emplace(name, unique_ptr<Expression>(exp));
+  myFunctions.emplace(name, std::move(exp));
   myFunctionDefs.emplace(name, definition);
 
   return true;
@@ -815,12 +828,12 @@ bool Debugger::delFunction(string_view name)
   if(isBuiltinFunction(name))
       return false;
 
-  myFunctions.erase(string{name});
+  myFunctions.erase(string{name});    // TODO: heterogeneous erase fixed in C++26
 
   if(!myFunctionDefs.contains(name))
     return false;
 
-  myFunctionDefs.erase(string{name});
+  myFunctionDefs.erase(string{name}); // TODO: heterogeneous erase fixed in C++26
   return true;
 }
 

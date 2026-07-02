@@ -15,7 +15,7 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#include "StellaDb.hxx"
+#include "repository/sqlite/StellaDb.hxx"
 #include "OSystemStandalone.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -26,7 +26,7 @@ void OSystemStandalone::initPersistence(FSNode& basedir)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-string OSystemStandalone::describePresistence()
+string OSystemStandalone::describePersistence()
 {
   return (myStellaDb && myStellaDb->isValid()) ? myStellaDb->databaseFileName() : "none";
 }

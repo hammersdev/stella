@@ -55,21 +55,17 @@ QuadTari::QuadTari(Jack jack, const OSystem& osystem, const System& system,
 
   // Autodetect QuadTari controllers:
   // This will detect the same controller for 1st and 2nd controller
-  size_t size = 0;
-  const ByteBuffer& image = cart.getImage(size);
-
-  if(image != nullptr && size != 0)
+  const ByteSpan image = cart.getImage();
+  if(!image.empty())
   {
     if(firstType == Controller::Type::Unknown || secondType == Controller::Type::Unknown)
     {
-      Controller::Type autodetected = Controller::Type::Unknown;
-      autodetected = ControllerDetector::detectType(image, size, autodetected,
-        jack, myOSystem.settings(), true);
+      const Controller::Type autodetected =
+        ControllerDetector::detectType(image, Controller::Type::Unknown,
+                                       jack, myOSystem.settings(), true);
 
-      if(firstType == Controller::Type::Unknown)
-        firstType = autodetected;
-      if(secondType == Controller::Type::Unknown)
-        secondType = autodetected;
+      if(firstType == Controller::Type::Unknown)  firstType = autodetected;
+      if(secondType == Controller::Type::Unknown) secondType = autodetected;
     }
   }
 
@@ -84,7 +80,6 @@ QuadTari::QuadTari(Jack jack, const OSystem& osystem, const System& system,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 unique_ptr<Controller> QuadTari::addController(Controller::Type type, bool second)
 {
-  FSNode nvramfile = myOSystem.nvramDir();
   const Controller::onMessageCallback callback = [&os = myOSystem]
     (string_view msg) {
       const bool devSettings = os.settings().getBool("dev.settings");
@@ -107,6 +102,7 @@ unique_ptr<Controller> QuadTari::addController(Controller::Type type, bool secon
 
     case Controller::Type::AtariVox:
     {
+      FSNode nvramfile = myOSystem.nvramDir();
       nvramfile /= "atarivox_eeprom.dat";
       return std::make_unique<AtariVox>(myJack, myEvent, mySystem,
                                    myOSystem.settings().getString("avoxport"),
@@ -114,6 +110,7 @@ unique_ptr<Controller> QuadTari::addController(Controller::Type type, bool secon
     }
     case Controller::Type::SaveKey:
     {
+      FSNode nvramfile = myOSystem.nvramDir();
       nvramfile /= "savekey_eeprom.dat";
       return std::make_unique<SaveKey>(myJack, myEvent, mySystem,
                                   nvramfile, callback); // no alternative mapping here
@@ -169,14 +166,15 @@ void QuadTari::update()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string QuadTari::name() const
 {
-  return "QT(" + myFirstController->name() + "/" + mySecondController->name() + ")";
+  return std::format("QT({}/{})", myFirstController->name(),
+                     mySecondController->name());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool QuadTari::isAnalog() const
+bool QuadTari::usesMouse() const
 {
   // For now, use mouse for first controller only
-  return myFirstController->isAnalog();
+  return myFirstController->usesMouse();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

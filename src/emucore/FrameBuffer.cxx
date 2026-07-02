@@ -50,26 +50,19 @@
   #include "Stella16x32tFont.hxx"
   #include "ConsoleFont.hxx"
   #include "Launcher.hxx"
-  #include "OptionsMenu.hxx"
-  #include "CommandMenu.hxx"
-  #include "HighScoresMenu.hxx"
-  #include "MessageMenu.hxx"
-  #include "PlusRomsMenu.hxx"
+  #include "DialogContainer.hxx"
   #include "TimeMachine.hxx"
 #endif
 
-static constexpr int MESSAGE_TIME = 120; // display message for 2 seconds
-
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 FrameBuffer::FrameBuffer(OSystem& osystem)
-  : myOSystem{osystem}
+  : myOSystem{osystem},
+    myMsgHandler{*this, osystem}
 {
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-FrameBuffer::~FrameBuffer()  // NOLINT (we need an empty d'tor)
-{
-}
+FrameBuffer::~FrameBuffer() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameBuffer::initialize()
@@ -81,11 +74,9 @@ void FrameBuffer::initialize()
   // Get desktop resolution and supported renderers
   myBackend->queryHardware(myFullscreenDisplays, myWindowedDisplays, myRenderers);
 
-  const size_t numDisplays = myWindowedDisplays.size();
-
-  for(size_t display = 0; display < numDisplays; ++display)
+  for(const auto& display: myWindowedDisplays)
   {
-    uInt32 query_w = myWindowedDisplays[display].w, query_h = myWindowedDisplays[display].h;
+    uInt32 query_w = display.second.w, query_h = display.second.h;
 
     // Check the 'maxres' setting, which is an undocumented developer feature
     // that specifies the desktop size (not normally set)
@@ -97,21 +88,22 @@ void FrameBuffer::initialize()
     }
     // Various parts of the codebase assume a minimum screen size
     Common::Size size(std::max(query_w, FBMinimum::Width), std::max(query_h, FBMinimum::Height));
-    myAbsDesktopSize.push_back(size);
+    myAbsDesktopSize[display.first] = size;
 
     // Check for HiDPI mode (is it activated, and can we use it?)
-    myHiDPIAllowed.push_back(((size.w / 2) >= FBMinimum::Width) &&
-                             ((size.h / 2) >= FBMinimum::Height));
-    myHiDPIEnabled.push_back(myHiDPIAllowed.back() && myOSystem.settings().getBool("hidpi"));
+    const bool hidpi = (((size.w / 2) >= FBMinimum::Width) &&
+                        ((size.h / 2) >= FBMinimum::Height));
+    myHiDPIAllowed[display.first] = hidpi;
+    myHiDPIEnabled[display.first] = hidpi && myOSystem.settings().getBool("hidpi");
 
     // In HiDPI mode, the desktop resolution is essentially halved
     // Later, the output is scaled and rendered in 2x mode
-    if(myHiDPIEnabled.back())
+    if(myHiDPIEnabled[display.first])
     {
       size.w /= hidpiScaleFactor();
       size.h /= hidpiScaleFactor();
     }
-    myDesktopSize.push_back(size);
+    myDesktopSize[display.first] = size;
   }
 
 #ifdef GUI_SUPPORT
@@ -130,18 +122,25 @@ void FrameBuffer::initialize()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-int FrameBuffer::displayId(BufferType bufferType) const
+uInt32 FrameBuffer::displayId(BufferType bufferType) const
 {
-  const int maxDisplay = static_cast<int>(myWindowedDisplays.size()) - 1;
-  int display = 0;
+  uInt32 display = 0;
 
-  if(bufferType == myBufferType)
+  if(bufferType == myBufferType || bufferType == BufferType::None)
     display = myBackend->getCurrentDisplayID();
   else
-    display = myOSystem.settings().getInt(getDisplayKey(bufferType != BufferType::None
-                                          ? bufferType : myBufferType));
+    display = myOSystem.settings().getInt(
+      getDisplayKey(bufferType != BufferType::None
+        ? bufferType
+        : myBufferType)
+    );
 
-  return std::min(std::max(0, display), maxDisplay);
+  // If the requested display ID is not available, default to the first one
+  // in the container (normally the primary display)
+  if(!myWindowedDisplays.contains(display))
+    display = myWindowedDisplays.begin()->first;
+
+  return display;
 }
 
 #ifdef GUI_SUPPORT
@@ -229,7 +228,7 @@ FontDesc FrameBuffer::getFontDesc(string_view name)
   else // "large16"
     return GUI::stella16x32tDesc;   // 16x32
 }
-#endif
+#endif  // GUI_SUPPORT
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 FBInitStatus FrameBuffer::createDisplay(string_view title, BufferType type,
@@ -288,31 +287,7 @@ FBInitStatus FrameBuffer::createDisplay(string_view title, BufferType type,
       BSPF::clamp(currentTIAZoom, supportedTIAMinZoom(), supportedTIAMaxZoom()));
   }
 
-#ifdef GUI_SUPPORT  // TODO: put message stuff in its own class
-  // Erase any messages from a previous run
-  myMsg.enabled = false;
-
-  // Create surfaces for TIA statistics and general messages
-  const GUI::Font& f = hidpiEnabled() ? infoFont() : font();
-  myStatsMsg.color = kColorInfo;
-  myStatsMsg.w = f.getMaxCharWidth() * 40 + 3;
-  myStatsMsg.h = (f.getFontHeight() + 2) * 3;
-
-  if(!myStatsMsg.surface)
-  {
-    myStatsMsg.surface = allocateSurface(myStatsMsg.w, myStatsMsg.h);
-    myStatsMsg.surface->enableBlend(true);
-    myStatsMsg.surface->setBlendLevel(92); //aligned with TimeMachineDialog
-  }
-
-  if(!myMsg.surface)
-  {
-    const int fontWidth = font().getMaxCharWidth(),
-              HBORDER = fontWidth * 1.25 / 2.0;
-    myMsg.surface = allocateSurface(fontWidth * MESSAGE_WIDTH + HBORDER * 2,
-                                    font().getFontHeight() * 1.5);
-  }
-#endif
+  myMsgHandler.init();
 
   // Initialize video mode handler, so it can know what video modes are
   // appropriate for the requested image size
@@ -394,6 +369,9 @@ void FrameBuffer::update(UpdateMode mode)
                          || myPendingRender);
   myPendingRender = false;
 
+  // Show any messages enqueued from other threads (e.g. PlusROM/cart callbacks)
+  myMsgHandler.drainPending();
+
   switch(myOSystem.eventHandler().state())
   {
     case EventHandlerState::NONE:
@@ -406,9 +384,8 @@ void FrameBuffer::update(UpdateMode mode)
       // Show a pause message immediately and then every 7 seconds
       const bool shade = myOSystem.settings().getBool("pausedim");
 
-      if(myMsg.counter < MESSAGE_TIME && myPausedCount-- <= 0)
+      if(myMsgHandler.tickPause())
       {
-        myPausedCount = static_cast<uInt32>(7 * myOSystem.frameRate());
         showTextMessage("Paused", MessagePosition::MiddleCenter);
         renderTIA(false, shade);
       }
@@ -419,78 +396,28 @@ void FrameBuffer::update(UpdateMode mode)
 
   #ifdef GUI_SUPPORT
     case EventHandlerState::OPTIONSMENU:
-    {
-      myOSystem.optionsMenu().tick();
-      redraw |= myOSystem.optionsMenu().needsRedraw();
-      if(redraw)
-      {
-        renderTIA(true, true);
-        myOSystem.optionsMenu().draw(forceRedraw);
-      }
-      else if(rerender)
-      {
-        renderTIA(true, true);
-        myOSystem.optionsMenu().render();
-      }
-      break;  // EventHandlerState::OPTIONSMENU
-    }
-
     case EventHandlerState::CMDMENU:
-    {
-      myOSystem.commandMenu().tick();
-      redraw |= myOSystem.commandMenu().needsRedraw();
-      if(redraw)
-      {
-        renderTIA(true, true);
-        myOSystem.commandMenu().draw(forceRedraw);
-      }
-      else if(rerender)
-      {
-        renderTIA(true, true);
-        myOSystem.commandMenu().render();
-      }
-      break;  // EventHandlerState::CMDMENU
-    }
-
     case EventHandlerState::HIGHSCORESMENU:
+    case EventHandlerState::MESSAGEMENU:
+    case EventHandlerState::PLUSROMSMENU:
+    case EventHandlerState::OVERLAYMENU:
     {
-      myOSystem.highscoresMenu().tick();
-      redraw |= myOSystem.highscoresMenu().needsRedraw();
+      // All GUI menus that overlay the TIA image share one render path;
+      // the active DialogContainer is tracked by EventHandler::overlay()
+      DialogContainer& overlay = myOSystem.eventHandler().overlay();
+      overlay.tick();
+      redraw |= overlay.needsRedraw();
       if(redraw)
       {
         renderTIA(true, true);
-        myOSystem.highscoresMenu().draw(forceRedraw);
+        overlay.draw(forceRedraw);
       }
       else if(rerender)
       {
         renderTIA(true, true);
-        myOSystem.highscoresMenu().render();
+        overlay.render();
       }
-      break;  // EventHandlerState::HIGHSCORESMENU
-    }
-
-    case EventHandlerState::MESSAGEMENU:
-    {
-      myOSystem.messageMenu().tick();
-      redraw |= myOSystem.messageMenu().needsRedraw();
-      if(redraw)
-      {
-        renderTIA(true, true);
-        myOSystem.messageMenu().draw(forceRedraw);
-      }
-      break;  // EventHandlerState::MESSAGEMENU
-    }
-
-    case EventHandlerState::PLUSROMSMENU:
-    {
-      myOSystem.plusRomsMenu().tick();
-      redraw |= myOSystem.plusRomsMenu().needsRedraw();
-      if(redraw)
-      {
-        renderTIA(true, true);
-        myOSystem.plusRomsMenu().draw(forceRedraw);
-      }
-      break;  // EventHandlerState::PLUSROMSMENU
+      break;  // GUI menu overlays
     }
 
     case EventHandlerState::TIMEMACHINE:
@@ -559,7 +486,7 @@ void FrameBuffer::update(UpdateMode mode)
         myOSystem.launcher().render();
       break;  // EventHandlerState::LAUNCHER
     }
-  #endif
+  #endif  // GUI_SUPPORT
 
   #ifdef DEBUGGER_SUPPORT
     case EventHandlerState::DEBUGGER:
@@ -572,7 +499,7 @@ void FrameBuffer::update(UpdateMode mode)
         myOSystem.debugger().render();
       break;  // EventHandlerState::DEBUGGER
     }
-  #endif
+  #endif  // DEBUGGER_SUPPORT
     default:
       break;
   }
@@ -582,8 +509,8 @@ void FrameBuffer::update(UpdateMode mode)
   // If the message is to be disabled, logic inside the draw method
   // indicates that, and then the code at the top of this method sees
   // the change and redraws everything
-  if(myMsg.enabled)
-    redraw |= drawMessage();
+  if(myMsgHandler.isShown())
+    redraw |= myMsgHandler.draw();
 
   // Push buffers to screen only when necessary
   if(redraw || rerender)
@@ -600,65 +527,34 @@ void FrameBuffer::updateInEmulationMode(float framesPerSecond)
 
   renderTIA();
 
-  // Show frame statistics
-  if(myStatsMsg.enabled)
-    drawFrameStats(framesPerSecond);
+  // Show any messages enqueued from the emulation worker thread (e.g. AR
+  // Supercharger load notifications) before drawing them this frame
+  myMsgHandler.drainPending();
 
-  myLastScanlines = myOSystem.console().tia().frameBufferScanlinesLastFrame();
-  myPausedCount = 0;
+  // Show frame statistics
+  if(myMsgHandler.statsShown())
+    myMsgHandler.drawStats(framesPerSecond);
+
+  myMsgHandler.onEmulationFrame();
 
   // Draw any pending messages
-  if(myMsg.enabled)
-    drawMessage();
+  if(myMsgHandler.isShown())
+    myMsgHandler.draw();
 
   // Push buffers to screen
   myBackend->renderToScreen();
 }
-
-#ifdef GUI_SUPPORT
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FrameBuffer::createMessage(string_view message, MessagePosition position,
-                                bool force)
-{
-  // Only show messages if they've been enabled
-  if(myMsg.surface == nullptr || !(force || myOSystem.settings().getBool("uimessages")))
-    return;
-
-  const int fontHeight = font().getFontHeight();
-  const int VBORDER = fontHeight / 4;
-
-  // Show message for 2 seconds
-  myMsg.counter = std::min(static_cast<Int32>(myOSystem.frameRate()) * 2, MESSAGE_TIME);
-  if(myMsg.counter == 0)
-    myMsg.counter = MESSAGE_TIME;
-
-  // Precompute the message coordinates
-  myMsg.text      = message;
-  myMsg.color     = kBtnTextColor;
-  myMsg.h         = fontHeight + VBORDER * 2;
-  myMsg.position  = position;
-  myMsg.enabled   = true;
-  myMsg.dirty     = true;
-
-  myMsg.surface->setSrcSize(myMsg.w, myMsg.h);
-  myMsg.surface->setDstSize(myMsg.w * hidpiScaleFactor(), myMsg.h * hidpiScaleFactor());
-}
-#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameBuffer::showTextMessage(string_view message,
                                   MessagePosition position, bool force)
 {
 #ifdef GUI_SUPPORT
-  const int fontWidth = font().getMaxCharWidth();
-  const int HBORDER = fontWidth * 1.25 / 2.0;
-
-  myMsg.showGauge = false;
-  myMsg.w         = std::min(fontWidth * MESSAGE_WIDTH - HBORDER * 2,
-                             font().getStringWidth(message) + HBORDER * 2);
-
-  createMessage(message, position, force);
-#endif
+  myMsgHandler.showText(message, position, force);
+#else
+  if(myBackend && (force || myOSystem.settings().getBool("uimessages")))
+    myBackend->showMessage(message);
+#endif  // GUI_SUPPORT
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -666,286 +562,56 @@ void FrameBuffer::showGaugeMessage(string_view message, string_view valueText,
                                    float value, float minValue, float maxValue)
 {
 #ifdef GUI_SUPPORT
-  const int fontWidth = font().getMaxCharWidth();
-  const int HBORDER = fontWidth * 1.25 / 2.0;
-
-  myMsg.showGauge  = true;
-  if(std::not_equal_to()(maxValue - minValue, 0))
-    myMsg.value = (value - minValue) / (maxValue - minValue) * 100.F;
-  else
-    myMsg.value = 100.F;
-  myMsg.valueText  = valueText;
-  myMsg.w          = std::min(fontWidth * MESSAGE_WIDTH,
-                              font().getStringWidth(message)
-                              + fontWidth * (GAUGEBAR_WIDTH + 2)
-                              + font().getStringWidth(valueText))
-                              + HBORDER * 2;
-
-  createMessage(message, MessagePosition::BottomCenter);
-#endif
+  myMsgHandler.showGauge(message, valueText, value, minValue, maxValue);
+#else
+  if(myBackend && (myOSystem.settings().getBool("uimessages")))
+    myBackend->showGaugeMessage(message, valueText, value, minValue, maxValue);
+#endif  // GUI_SUPPORT
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool FrameBuffer::messageShown() const
 {
-#ifdef GUI_SUPPORT
-  return myMsg.enabled;
-#else
-  return false;
-#endif
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FrameBuffer::drawFrameStats(float framesPerSecond)
-{
-#ifdef GUI_SUPPORT
-  const ConsoleInfo& info = myOSystem.console().about();
-  constexpr int xPos = 2;
-  int yPos = 0;
-  const GUI::Font& f = hidpiEnabled() ? infoFont() : font();
-  const int dy = f.getFontHeight() + 2;
-
-  std::ostringstream ss;
-
-  myStatsMsg.surface->invalidate();
-
-  // draw scanlines
-  ColorId color = myOSystem.console().tia().frameBufferScanlinesLastFrame() !=
-    myLastScanlines ? kDbgColorRed : myStatsMsg.color;
-
-  ss
-    << myOSystem.console().tia().frameBufferScanlinesLastFrame()
-    << " / "
-    << std::fixed << std::setprecision(1)
-    << myOSystem.console().currentFrameRate()
-    << "Hz => "
-    << info.DisplayFormat;
-
-  myStatsMsg.surface->drawString(f, ss.view(), xPos, yPos,
-                                 myStatsMsg.w, color, TextAlign::Left, 0, true, kBGColor);
-
-  yPos += dy;
-  ss.str("");
-
-  ss
-    << std::fixed << std::setprecision(1) << framesPerSecond
-    << "fps @ "
-    << std::fixed << std::setprecision(0) << 100 *
-      (myOSystem.settings().getBool("turbo")
-        ? 50.0F
-        : myOSystem.settings().getFloat("speed"))
-    << "% speed";
-
-  myStatsMsg.surface->drawString(f, ss.view(), xPos, yPos,
-      myStatsMsg.w, myStatsMsg.color, TextAlign::Left, 0, true, kBGColor);
-
-  yPos += dy;
-  ss.str("");
-
-  ss << info.BankSwitch;
-  int xPosEnd =
-    myStatsMsg.surface->drawString(f, ss.view(), xPos, yPos,
-                                   myStatsMsg.w, myStatsMsg.color, TextAlign::Left, 0, true, kBGColor);
-
-  if(myOSystem.settings().getBool("dev.settings"))
-  {
-    xPosEnd = myStatsMsg.surface->drawString(f, "| ", xPosEnd, yPos,
-                                  myStatsMsg.w, color, TextAlign::Left, 0, true, kBGColor);
-    ss.str("");
-    color = myStatsMsg.color;
-    if(myOSystem.console().vsyncCorrect())
-      ss << "Developer";
-    else
-    {
-      color = kDbgColorRed;
-      ss << "VSYNC!";
-    }
-    myStatsMsg.surface->drawString(f, ss.view(), xPosEnd, yPos,
-        myStatsMsg.w, color, TextAlign::Left, 0, true, kBGColor);
-  }
-
-  myStatsMsg.surface->setDstPos(imageRect().x() + imageRect().w() / 64,
-                                imageRect().y() + imageRect().h() / 64);
-  myStatsMsg.surface->setDstSize(myStatsMsg.w * hidpiScaleFactor(),
-                                 myStatsMsg.h * hidpiScaleFactor());
-  myStatsMsg.surface->render();
-#endif
+  return myMsgHandler.isShown();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameBuffer::toggleFrameStats(bool toggle)
 {
-  if (toggle)
-    showFrameStats(!myStatsEnabled);
+  if(toggle)
+    myMsgHandler.showStats(!myMsgHandler.statsEnabled());
   myOSystem.settings().setValue(
-    myOSystem.settings().getBool("dev.settings") ? "dev.stats" : "plr.stats", myStatsEnabled);
+    myOSystem.settings().getBool("dev.settings") ? "dev.stats" : "plr.stats",
+    myMsgHandler.statsEnabled());
 
-  myOSystem.frameBuffer().showTextMessage(string("Console info ") +
-                                          (myStatsEnabled ? "enabled" : "disabled"));
+  showTextMessage(std::format("Console info {}",
+    myMsgHandler.statsEnabled() ? "enabled" : "disabled"));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameBuffer::showFrameStats(bool enable)
 {
-  myStatsEnabled = myStatsMsg.enabled = enable;
+  myMsgHandler.showStats(enable);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameBuffer::enableMessages(bool enable)
 {
-  if(enable)
+  myMsgHandler.enable(enable);
+  if(!enable)
   {
-    // Only re-enable frame stats if they were already enabled before
-    myStatsMsg.enabled = myStatsEnabled;
+    // Update immediately
+    if(myOSystem.eventHandler().state() == EventHandlerState::EMULATION)
+      renderTIA();
+    else
+      update();
   }
-  else
-  {
-    // Temporarily disable frame stats
-    myStatsMsg.enabled = false;
-
-    // Erase old messages on the screen
-    hideMessage();
-
-    update();  // update immediately
-  }
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FrameBuffer::hideMessage()
-{
-  myPendingRender = myMsg.enabled;
-  myMsg.enabled = false;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-inline bool FrameBuffer::drawMessage()
-{
-#ifdef GUI_SUPPORT
-  // Either erase the entire message (when time is reached),
-  // or show again this frame
-  if(myMsg.counter == 0)
-  {
-    hideMessage();
-    return false;
-  }
-
-  if(myMsg.dirty)
-  {
-  #ifdef DEBUG_BUILD
-    cerr << "m";
-    //cerr << "--- draw message ---\n";
-  #endif
-
-    // Draw the bounded box and text
-    const Common::Rect& dst = myMsg.surface->dstRect();
-    const int fontWidth = font().getMaxCharWidth(),
-              fontHeight = font().getFontHeight();
-    const int VBORDER = fontHeight / 4;
-    const int HBORDER = fontWidth * 1.25 / 2.0;
-    constexpr int BORDER = 1;
-
-    switch(myMsg.position)
-    {
-      case MessagePosition::TopLeft:
-        myMsg.x = 5;
-        myMsg.y = 5;
-        break;
-
-      case MessagePosition::TopCenter:
-        myMsg.x = (imageRect().w() - dst.w()) >> 1;
-        myMsg.y = 5;
-        break;
-
-      case MessagePosition::TopRight:
-        myMsg.x = imageRect().w() - dst.w() - 5;
-        myMsg.y = 5;
-        break;
-
-      case MessagePosition::MiddleLeft:
-        myMsg.x = 5;
-        myMsg.y = (imageRect().h() - dst.h()) >> 1;
-        break;
-
-      case MessagePosition::MiddleCenter:
-        myMsg.x = (imageRect().w() - dst.w()) >> 1;
-        myMsg.y = (imageRect().h() - dst.h()) >> 1;
-        break;
-
-      case MessagePosition::MiddleRight:
-        myMsg.x = imageRect().w() - dst.w() - 5;
-        myMsg.y = (imageRect().h() - dst.h()) >> 1;
-        break;
-
-      case MessagePosition::BottomLeft:
-        myMsg.x = 5;
-        myMsg.y = imageRect().h() - dst.h() - 5;
-        break;
-
-      case MessagePosition::BottomCenter:
-        myMsg.x = (imageRect().w() - dst.w()) >> 1;
-        myMsg.y = imageRect().h() - dst.h() - 5;
-        break;
-
-      case MessagePosition::BottomRight:
-        myMsg.x = imageRect().w() - dst.w() - 5;
-        myMsg.y = imageRect().h() - dst.h() - 5;
-        break;
-
-      default:
-        break;  // Not supposed to get here
-    }
-
-    myMsg.surface->setDstPos(myMsg.x + imageRect().x(), myMsg.y + imageRect().y());
-    myMsg.surface->fillRect(0, 0, myMsg.w, myMsg.h, kColor);
-    myMsg.surface->fillRect(BORDER, BORDER, myMsg.w - BORDER * 2, myMsg.h - BORDER * 2, kBtnColor);
-    myMsg.surface->drawString(font(), myMsg.text, HBORDER, VBORDER,
-                              myMsg.w, myMsg.color);
-
-    if(myMsg.showGauge)
-    {
-      constexpr int NUM_TICKMARKS = 4;
-      // limit gauge bar width if texts are too long
-      const int swidth = std::min(fontWidth * GAUGEBAR_WIDTH,
-                                  fontWidth * (MESSAGE_WIDTH - 2)
-                                  - font().getStringWidth(myMsg.text)
-                                  - font().getStringWidth(myMsg.valueText));
-      const int bwidth = swidth * myMsg.value / 100.F;
-      const int bheight = fontHeight >> 1;
-      const int x = HBORDER + font().getStringWidth(myMsg.text) + fontWidth;
-      // align bar with bottom of text
-      const int y = VBORDER + font().desc().ascent - bheight;
-
-      // draw gauge bar
-      myMsg.surface->fillRect(x - BORDER, y, swidth + BORDER * 2, bheight, kSliderBGColor);
-      myMsg.surface->fillRect(x, y + BORDER, bwidth, bheight - BORDER * 2, kSliderColor);
-      // draw tickmark in the middle of the bar
-      for(int i = 1; i < NUM_TICKMARKS; ++i)
-      {
-        const int xt = x + swidth * i / NUM_TICKMARKS;
-        const ColorId color = (bwidth < xt - x) ? kCheckColor : kSliderBGColor;
-        myMsg.surface->vLine(xt, y + bheight / 2, y + bheight - 1, color);
-      }
-      // draw value text
-      myMsg.surface->drawString(font(), myMsg.valueText,
-                                x + swidth + fontWidth, VBORDER,
-                                myMsg.w, myMsg.color);
-    }
-    myMsg.dirty = false;
-    myMsg.surface->render();
-    return true;
-  }
-
-  myMsg.counter--;
-  myMsg.surface->render();
-#endif
-
-  return false;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameBuffer::setPauseDelay()
 {
-  myPausedCount = static_cast<uInt32>(2 * myOSystem.frameRate());
+  myMsgHandler.setPauseDelay();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -986,17 +652,22 @@ void FrameBuffer::renderTIA(bool doClear, bool shade)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameBuffer::setTIAPalette(const PaletteArray& rgb_palette)
 {
+  // Hoist shift values — surface format is constant
+  const uInt32 rShift = std::countr_zero(rMask());
+  const uInt32 gShift = std::countr_zero(gMask());
+  const uInt32 bShift = std::countr_zero(bMask());
+  const uInt32 aMask_ = aMask();  // fully transparent; no alpha in RGB palette
+
   // Create a TIA palette from the raw RGB data
   PaletteArray tia_palette = {0};
   for(int i = 0; i < 256; ++i)
   {
-    const uInt8 r = (rgb_palette[i] >> 16) & 0xff;
-    const uInt8 g = (rgb_palette[i] >> 8) & 0xff;
-    const uInt8 b =  rgb_palette[i] & 0xff;
-
-    tia_palette[i] = mapRGB(r, g, b);
+    const uInt32 rgb = rgb_palette[i];
+    tia_palette[i] = aMask_
+                   | (((rgb >> 16) & 0xFF) << rShift)
+                   | (((rgb >>  8) & 0xFF) << gShift)
+                   | (( rgb        & 0xFF) << bShift);
   }
-
   // Remember the TIA palette; place it at the beginning of the full palette
   std::copy_n(tia_palette.begin(), tia_palette.size(), myFullPalette.begin());
 
@@ -1019,14 +690,44 @@ void FrameBuffer::setUIPalette()
      (settings.getString(key) == "dark")    ? ourDarkUIPalette :
       ourStandardUIPalette;
 
-  for(size_t i = 0, j = myFullPalette.size() - ui_palette.size();
-      i < ui_palette.size(); ++i, ++j)
-  {
-    const uInt8 r = (ui_palette[i] >> 16) & 0xff,
-                g = (ui_palette[i] >> 8) & 0xff,
-                b =  ui_palette[i] & 0xff;
+  // Hoist shift values — surface format is constant
+  const uInt32 rShift = std::countr_zero(rMask());
+  const uInt32 gShift = std::countr_zero(gMask());
+  const uInt32 bShift = std::countr_zero(bMask());
+  const uInt32 aMask_ = aMask();
 
-    myFullPalette[j] = mapRGB(r, g, b);
+  for(size_t i = 0; i < ui_palette.size(); ++i)
+  {
+    const uInt32 rgb = ui_palette[i];
+    myFullPalette[kColor + i] = aMask_
+                              | (((rgb >> 16) & 0xFF) << rShift)
+                              | (((rgb >>  8) & 0xFF) << gShift)
+                              | (( rgb        & 0xFF) << bShift);
+  }
+  setDisasmPalette();  // fills disasm slots and calls FBSurface::setPalette
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void FrameBuffer::setDisasmPalette()
+{
+  const Settings& settings = myOSystem.settings();
+  const string& key = settings.getBool("altuipalette") ? "uipalette2" : "uipalette";
+  const string& name = settings.getString(key);
+  const bool isDark = (name == "dark" || name == "classic");
+  const DisasmPaletteArray& dp = isDark ? ourDarkDisasmPalette : ourStandardDisasmPalette;
+
+  const uInt32 rShift = std::countr_zero(rMask());
+  const uInt32 gShift = std::countr_zero(gMask());
+  const uInt32 bShift = std::countr_zero(bMask());
+  const uInt32 aMask_ = aMask();
+
+  for(size_t i = 0; i < dp.size(); ++i)
+  {
+    const uInt32 rgb = dp[i];
+    myFullPalette[kUINColors + i] = aMask_
+                                  | (((rgb >> 16) & 0xFF) << rShift)
+                                  | (((rgb >>  8) & 0xFF) << gShift)
+                                  | (( rgb        & 0xFF) << bShift);
   }
   FBSurface::setPalette(myFullPalette);
 }
@@ -1034,12 +735,9 @@ void FrameBuffer::setUIPalette()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameBuffer::stateChanged(EventHandlerState state)
 {
-  // Prevent removing state change messages
-  if(myMsg.counter < MESSAGE_TIME - 1)
-  {
-    // Make sure any onscreen messages are removed
-    hideMessage();
-  }
+  // Prevent removing state change messages (brand-new ones survive transitions)
+  if(!myMsgHandler.msgJustShown())
+    myMsgHandler.hide();
   update(); // update immediately
 }
 
@@ -1136,7 +834,7 @@ void FrameBuffer::setFullscreen(bool enable)
   myOSystem.settings().setValue("fullscreen", enable);
   saveCurrentWindowPosition();
   applyVideoMode();
-#endif
+#endif  // WINDOWED_SUPPORT
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1156,25 +854,21 @@ void FrameBuffer::toggleFullscreen(bool toggle)
 
       if(state != EventHandlerState::LAUNCHER)
       {
-        std::ostringstream msg;
-        msg << "Fullscreen ";
+        const string_view state_str = isFullscreen ? "enabled" : "disabled";
 
         if(state != EventHandlerState::DEBUGGER)
         {
-          if(isFullscreen)
-            msg << "enabled (" << myBackend->refreshRate() << " Hz, ";
-          else
-            msg << "disabled (";
-          msg << "Zoom " << round(myActiveVidMode.zoom * 100) << "%)";
+          const string msg = isFullscreen
+            ? std::format("Fullscreen {} ({} Hz, Zoom {}%)",
+                state_str, myBackend->refreshRate(),
+                static_cast<int>(round(myActiveVidMode.zoom * 100)))
+            : std::format("Fullscreen {} (Zoom {}%)",
+                state_str,
+                static_cast<int>(round(myActiveVidMode.zoom * 100)));
+          showTextMessage(msg);
         }
         else
-        {
-          if(isFullscreen)
-            msg << "enabled";
-          else
-            msg << "disabled";
-        }
-        showTextMessage(msg.view());
+          showTextMessage(std::format("Fullscreen {}", state_str));
       }
       break;
     }
@@ -1182,13 +876,6 @@ void FrameBuffer::toggleFullscreen(bool toggle)
       break;
   }
 }
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-#if 0
-const FBSurface& FrameBuffer::renderedTIASurface()
-{
-}
-#endif
 
 #ifdef ADAPTABLE_REFRESH_SUPPORT
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1208,26 +895,22 @@ void FrameBuffer::toggleAdaptRefresh(bool toggle)
       myOSystem.createFrameBuffer();
     }
 
-    std::ostringstream msg;
-
-    msg << "Adapt refresh rate ";
-    msg << (isAdaptRefresh ? "enabled" : "disabled");
-    msg << " (" << myBackend->refreshRate() << " Hz)";
-
-    showTextMessage(msg.view());
+    showTextMessage(std::format("Adapt refresh rate {} ({} Hz)",
+      isAdaptRefresh ? "enabled" : "disabled",
+      myBackend->refreshRate()));
   }
 }
-#endif
+#endif  // ADAPTABLE_REFRESH_SUPPORT
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameBuffer::changeOverscan(int direction)
 {
-  if (fullScreen())
+  if(fullScreen())
   {
     const int oldOverscan = myOSystem.settings().getInt("tia.fs_overscan");
     const int overscan = BSPF::clamp(oldOverscan + direction, 0, 10);
 
-    if (overscan != oldOverscan)
+    if(overscan != oldOverscan)
     {
       myOSystem.settings().setValue("tia.fs_overscan", overscan);
 
@@ -1235,12 +918,10 @@ void FrameBuffer::changeOverscan(int direction)
       myOSystem.createFrameBuffer();
     }
 
-    std::ostringstream val;
-    if(overscan)
-      val << (overscan > 0 ? "+" : "" ) << overscan << "%";
-    else
-      val << "Off";
-    myOSystem.frameBuffer().showGaugeMessage("Overscan", val.view(), overscan, 0, 10);
+    const string val = overscan
+      ? std::format("{}{}{}", overscan > 0 ? "+" : "", overscan, "%")
+      : "Off";
+    myOSystem.frameBuffer().showGaugeMessage("Overscan", val, overscan, 0, 10);
   }
 }
 
@@ -1328,7 +1009,7 @@ FBInitStatus FrameBuffer::applyVideoMode()
 {
   // Update display size, in case windowed/fullscreen mode has changed
   const Settings& s = myOSystem.settings();
-  const int ID = displayId();
+  const int ID = displayId(); // TODO SDL 3:
 
   if(s.getBool("fullscreen"))
     myVidModeHandler.setDisplaySize(myFullscreenDisplays[ID], true);
@@ -1395,7 +1076,7 @@ FBInitStatus FrameBuffer::applyVideoMode()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 double FrameBuffer::maxWindowZoom() const
 {
-  const int display = displayId(BufferType::Emulator);
+  const uInt32 display = displayId(BufferType::Emulator);
   double multiplier = 1;
 
   for(;;)
@@ -1404,8 +1085,8 @@ double FrameBuffer::maxWindowZoom() const
     const uInt32 width  = static_cast<double>(TIAConstants::viewableWidth)  * myBezel->ratioW() * multiplier;
     const uInt32 height = static_cast<double>(TIAConstants::viewableHeight) * myBezel->ratioH() * multiplier;
 
-    if((width > myAbsDesktopSize[display].w) ||
-       (height > myAbsDesktopSize[display].h))
+    if((width > myAbsDesktopSize.at(display).w) ||
+       (height > myAbsDesktopSize.at(display).h))
       break;
 
     multiplier += ZOOM_STEPS;
@@ -1467,8 +1148,8 @@ bool FrameBuffer::grabMouseAllowed()
   const bool emulation =
     myOSystem.eventHandler().state() == EventHandlerState::EMULATION;
   const bool analog = myOSystem.hasConsole() ?
-    (myOSystem.console().leftController().isAnalog() ||
-     myOSystem.console().rightController().isAnalog()) : false;
+    (myOSystem.console().leftController().usesMouse() ||
+     myOSystem.console().rightController().usesMouse()) : false;
   const bool usesLightgun = emulation && myOSystem.hasConsole() ?
     myOSystem.console().leftController().type() == Controller::Type::Lightgun ||
     myOSystem.console().rightController().type() == Controller::Type::Lightgun : false;
@@ -1625,3 +1306,43 @@ UIPaletteArray FrameBuffer::ourDarkUIPalette = {
     0x000000, 0x404040, 0xc0c0c0                                // other
   }
 };
+
+// Disassembly palettes — entry order matches kDisasmBlack..kDisasmWhite
+// "standard": muted shades readable on light UI backgrounds (Standard, Light)
+DisasmPaletteArray FrameBuffer::ourStandardDisasmPalette = {{
+  0x202020,  // Black
+  0xbb1100,  // Red
+  0xcc5500,  // Orange
+  0xaa7700,  // Yellow  (amber)
+  0x558800,  // Lime
+  0x226600,  // Green
+  0x006666,  // Teal
+  0x007799,  // Cyan
+  0x2255cc,  // Blue
+  0x333399,  // Indigo
+  0x6633aa,  // Violet
+  0x882288,  // Magenta
+  0xaa2266,  // Pink
+  0x774422,  // Brown
+  0x666666,  // Gray
+  0xf0f0f0,  // White
+}};
+// "dark": vivid shades readable on dark UI backgrounds (Classic, Dark)
+DisasmPaletteArray FrameBuffer::ourDarkDisasmPalette = {{
+  0x101010,  // Black
+  0xff6060,  // Red
+  0xff9944,  // Orange
+  0xffdd00,  // Yellow
+  0xaaff44,  // Lime
+  0x44dd44,  // Green
+  0x22ddbb,  // Teal
+  0x44ddff,  // Cyan
+  0x6699ff,  // Blue
+  0x8888ff,  // Indigo
+  0xbb77ff,  // Violet
+  0xff66ff,  // Magenta
+  0xff66aa,  // Pink
+  0xcc8855,  // Brown
+  0xaaaaaa,  // Gray
+  0xffffff,  // White
+}};

@@ -15,29 +15,60 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEAR_HXX
-#define CARTRIDGEAR_HXX
+#ifndef CARTRIDGE_AR_HXX
+#define CARTRIDGE_AR_HXX
 
 class System;
 
 #include "bspf.hxx"
 #include "Cart.hxx"
+#include "FSNode.hxx"
 #ifdef DEBUGGER_SUPPORT
   #include "CartARWidget.hxx"
 #endif
 
 /**
-  FIXME: This scheme needs to be be described in more detail.
+  Cartridge class for the Arcadia (aka Starpath) Supercharger.
+  Christopher Salomon provided most of the technical details used in
+  creating this class.  A good description of the Supercharger is
+  provided in the Cuttle Cart's manual.
 
-  This is the cartridge class for Arcadia (aka Starpath) Supercharger
-  games.  Christopher Salomon provided most of the technical details
-  used in creating this class.  A good description of the Supercharger
-  is provided in the Cuttle Cart's manual.
+  The Supercharger plugs into the cartridge port and loads game data
+  from audio cassette tape via the right difficulty switch input.  Game
+  data arrives as one or more 8448-byte "loads", each consisting of
+  8192 bytes of page data followed by a 256-byte header.
 
-  The Supercharger has four 2K banks.  There are three banks of RAM
-  and one bank of ROM.  All 6K of the RAM can be read and written.
+  The hardware contains 6K of RAM (three 2K banks: 0, 1, 2) and 2K of
+  ROM (bank 3, holding the SC BIOS).  These four 2K banks are mapped
+  into the standard 4K cartridge space ($F000-$FFFF) as two independent
+  2K windows:
 
-  @author  Bradford W. Mott
+    $F000-$F7FF  lower window  -> always a RAM bank (0, 1, or 2)
+    $F800-$FFFF  upper window  -> a RAM bank or ROM (bank 3)
+
+  The active banks for each window are selected by writing a 5-bit
+  configuration byte to hotspot $1FF8.  Bits D4-D2 choose one of eight
+  predefined bank-pair configurations; bit D1 enables RAM writes; bit D0
+  controls ROM power.
+
+  RAM writes use an unusual address-bus protocol rather than normal data
+  writes.  A read or write to $F0xx (with write-enable set) loads the low
+  byte of the address into a data-hold register and arms a pending write.
+  Exactly 5 distinct bus accesses later, a read or write to the
+  destination address commits the held byte to that RAM location.  More
+  than 5 intervening accesses cancel the pending write.  The distinct-
+  access count is tracked globally in M6502, since the Supercharger
+  hardware watches the entire address bus, not just the cart window.
+
+  Multi-load games store several 8448-byte loads end-to-end in the ROM
+  image.  The BIOS reads a load number from zero-page address $80 and
+  triggers a load via hotspot $1850 (when the ROM bank is mapped into
+  the upper window).  The SC BIOS is emulated by a small stub of 6502
+  code (ourDummyROMCode) patched at runtime to honour the 'fastscbios'
+  setting and to seed the accumulator with a random value on exit, as
+  the real BIOS does.
+
+  @author  Bradford W. Mott, Stephen Anthony
 */
 class CartridgeAR : public Cartridge
 {
@@ -52,12 +83,28 @@ class CartridgeAR : public Cartridge
     /**
       Create a new cartridge using the specified image and size
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
     */
-    CartridgeAR(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeAR(ByteSpan image, string_view md5, const Settings& settings);
+
+    /**
+      Create a new cartridge for sound-load mode.  The caller supplies the
+      real Supercharger BIOS ROM (exactly 2K) and pre-conditioned mono PCM
+      samples decoded from a WAV or MP3 file.  The BIOS receives tape bits
+      via the $1FF9 register, timed to the emulated CPU clock.
+
+      @param biosImage  Span of the 2K Supercharger BIOS ROM
+      @param pcmData    Conditioned mono PCM samples (threshold 0.0)
+      @param sampleRate Audio sample rate of pcmData (Hz)
+      @param tapeStarts Sample offset in pcmData where each tape begins (the
+                        first element is 0); its size is the number of tapes
+      @param md5        The md5sum of the source audio file
+      @param settings   A reference to the various settings (read-only)
+    */
+    CartridgeAR(ByteSpan biosImage, vector<float> pcmData, uInt32 sampleRate,
+                vector<size_t> tapeStarts, string_view md5,
                 const Settings& settings);
     ~CartridgeAR() override = default;
 
@@ -117,10 +164,9 @@ class CartridgeAR : public Cartridge
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span to the internal ROM image data
     */
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     /**
       Save the current state of this cart to the given Serializer.
@@ -173,6 +219,14 @@ class CartridgeAR : public Cartridge
 
   public:
     /**
+      Load a WAV or MP3 file as conditioned mono PCM samples for sound-load mode.
+      Called by CartCreator when building a sound-load CartridgeAR instance.
+
+      @return  Pair of (samples, sampleRate), or ({}, 0) on failure
+    */
+    static std::pair<vector<float>, uInt32> loadPCM(const FSNode& file);
+
+    /**
       Get the byte at the specified address
 
       @return The byte at the specified address
@@ -198,6 +252,27 @@ class CartridgeAR : public Cartridge
     // Sets up a "dummy" BIOS ROM in the ROM bank of the cartridge
     void initializeROM();
 
+    // Process the write-pending state machine; returns true if a RAM write occurred
+    bool handleHotspot(uInt16 addr);
+
+    // Synthesise a valid 256-byte header for the given load block from the
+    // current RAM/zero-page state, so a saved copy of the image can be reloaded
+    void finalizeLoad(uInt32 block);
+
+    // Called when the PCM stream is exhausted: finalises the active load and
+    // frees the PCM buffer, leaving the BIOS active
+    void finalizeSoundLoad();
+
+    // Remove DC bias in-place
+    static void conditionSignal(FloatMSpan samples);
+
+    // Compute the byte index into myImage/myRomAccessBase for a cartridge
+    // address, selecting the lower ($F000-$F7FF) or upper ($F800-$FFFF) 2K
+    // window's currently-mapped bank offset
+    size_t imageIndex(uInt16 address) const {
+      return (address & 0x07FF) + myImageOffset[(address & 0x0800) ? 1 : 0];
+    }
+
   private:
     // Indicates the offset within the image for the corresponding bank
     std::array<uInt32, 2> myImageOffset{};
@@ -208,14 +283,20 @@ class CartridgeAR : public Cartridge
     // The 256 byte header for the current 8448 byte load
     std::array<uInt8, 256> myHeader{};
 
-    // Size of the ROM image
-    size_t mySize{0};
-
     // All of the 8448 byte loads associated with the game
-    ByteBuffer myLoadImages;
+    ByteArray myLoadImages;
 
     // Indicates how many 8448 loads there are
     uInt8 myNumberOfLoadImages{0};
+
+    // Sound-load mode only: sample offset within the PCM stream where each
+    // tape's data begins (element 0 is always 0).  Used to advance the active
+    // load block as each tape streams in, so getImage()/saveROM emit a standard
+    // multi-load image (6K RAM + 2K blank BIOS + 256B header per tape).
+    vector<size_t> myTapeStartSamples;
+
+    // Sound-load mode only: the load block (tape) currently streaming into RAM
+    uInt32 myCurrentLoadBlock{0};
 
     // Indicates if the RAM is write enabled
     bool myWriteEnabled{false};
@@ -234,6 +315,18 @@ class CartridgeAR : public Cartridge
 
     // Indicates which bank is currently active
     uInt16 myCurrentBank{0};
+
+    // Sound-load mode: PCM samples streamed to the real BIOS via $1FF9
+    vector<float> myPCMData;
+    uInt32 myPCMSampleRate{0};
+    // Precomputed ratio: sampleRate / cpuFreq; avoids repeated division in peek()
+    double myPCMSamplesPerCycle{0.0};
+    bool myIsSoundLoad{false};
+    // CPU cycle when tape playback began (latched after play-delay expires)
+    uInt64 myPCMStartCycle{0};
+    bool myPCMStarted{false};
+    // Reads of $1FF9 to absorb before starting PCM (lets BIOS show "REWIND/PRESS PLAY")
+    uInt32 myPCMLoadDelay{0};
 
     // Fake SC-BIOS code to simulate the Supercharger load bars
     // This is not marked 'constexpr', since it's patched at runtime
@@ -285,4 +378,4 @@ class CartridgeAR : public Cartridge
     CartridgeAR& operator=(CartridgeAR&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_AR_HXX

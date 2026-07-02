@@ -50,8 +50,8 @@ class DevSettingsHandler
     std::array<bool, numSets>   myFrameStats{};
     std::array<bool, numSets>   myDetectedInfo{};
     std::array<bool, numSets>   myExternAccess{};
-    std::array<int, numSets>    myConsole{};
-    std::array<int, numSets>    myPlusROM{};
+    std::array<bool, numSets>   myConsole{};
+    std::array<bool, numSets>   myPlusROM{};
     std::array<bool, numSets>   myRandomBank{};
     std::array<bool, numSets>   myRandomizeTIA{};
     std::array<bool, numSets>   myRandomizeRAM{};
@@ -77,6 +77,9 @@ class DevSettingsHandler
     std::array<bool, numSets>   myPlLateHMove{};
     std::array<bool, numSets>   myMsLateHMove{};
     std::array<bool, numSets>   myBlLateHMove{};
+    std::array<bool, numSets>   myPlLateRespx{};
+    std::array<bool, numSets>   myMsLateRespx{};
+    std::array<bool, numSets>   myBlLateRespx{};
     std::array<bool, numSets>   myPFBits{};
     std::array<bool, numSets>   myPFColor{};
     std::array<bool, numSets>   myPFScore{};
@@ -93,6 +96,7 @@ class DevSettingsHandler
   private:
     void handleEnableDebugColors(bool enable);
 
+  private:
     // Following constructors and assignment operators not supported
     DevSettingsHandler() = delete;
     DevSettingsHandler(const DevSettingsHandler&) = delete;
@@ -101,4 +105,4 @@ class DevSettingsHandler
     DevSettingsHandler& operator=(DevSettingsHandler&&) = delete;
 };
 
-#endif
+#endif  // DEV_SETTINGS_HANDLER_HXX

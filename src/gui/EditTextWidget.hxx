@@ -49,7 +49,6 @@ class EditTextWidget : public EditableWidget
     void drawWidget(bool hilite) override;
     void lostFocusWidget() override;
 
-    void startEditMode() override;
     void endEditMode() override;
     void abortEditMode() override;
 
@@ -68,4 +67,4 @@ class EditTextWidget : public EditableWidget
     EditTextWidget& operator=(EditTextWidget&&) = delete;
 };
 
-#endif
+#endif  // EDIT_TEXT_WIDGET_HXX

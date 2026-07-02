@@ -52,8 +52,6 @@ class CommandReceiver
 
 class CommandSender
 {
-  // TODO - allow for multiple targets, i.e. store targets in a list
-  // and add methods addTarget/removeTarget.
   public:
     CommandSender() = default;
     explicit CommandSender(CommandReceiver* target)
@@ -68,7 +66,7 @@ class CommandSender
     {
       if(_target && cmd)
         _target->handleCommand(this, cmd, data, id);
-	}
+    }
 
   protected:
     CommandReceiver* _target{nullptr};
@@ -81,4 +79,4 @@ class CommandSender
     CommandSender& operator=(CommandSender&&) = delete;
 };
 
-#endif
+#endif  // COMMAND_HXX

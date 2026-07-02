@@ -52,6 +52,8 @@ documentation and/or software.
 #ifndef MD5_HXX
 #define MD5_HXX
 
+#include <bit>
+
 #include "bspf.hxx"
 
 class MD5
@@ -62,26 +64,28 @@ class MD5
       given length.  The digest consists of 32 hexadecimal digits.
 
       @param buffer  The message to compute the digest of
-      @param length  The length of the message
 
       @return   The message-digest
     */
-    static string hash(const ByteBuffer& buffer, size_t length);
-    static string hash(const uInt8* buffer, size_t length);
+    static string hash(ByteSpan buffer);
     static string hash(string_view buffer);
 
   public:
     MD5() = default;
-    ~MD5() = default;
 
   private:
     void init();
-    void update(const uInt8* input, uInt32 length);
+    void update(ByteSpan input);
     void finalize();
     string hexdigest() const;
-    void transform(const uInt8* block);
-    static void decode(uInt32* output, const uInt8* input, uInt32 len);
-    static void encode(uInt8* output, const uInt32* input, uInt32 len);
+
+    static constexpr uInt32 BLOCKSIZE = 64;
+    using BlockSpan  = std::span<const uInt8, BLOCKSIZE>;
+    using BlockMSpan = std::span<uInt32, 16>;
+
+    void transform(BlockSpan block);
+    static void decode(BlockMSpan output, BlockSpan input);
+    static void encode(ByteMSpan output, IntSpan input);
 
     // F, G, H and I are basic MD5 functions.
     static constexpr uInt32 F(uInt32 x, uInt32 y, uInt32 z) {
@@ -96,42 +100,32 @@ class MD5
     static constexpr uInt32 I(uInt32 x, uInt32 y, uInt32 z) {
       return y ^ (x | ~z);
     }
-    // rotate_left rotates x left n bits.
-    static constexpr uInt32 rotate_left(uInt32 x, int n) {
-      return (x << n) | (x >> (32-n));
-    }
     // FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
     // Rotation is separate from addition to prevent recomputation.
     static constexpr void FF(uInt32 &a, uInt32 b, uInt32 c,
                              uInt32 d, uInt32 x, uInt32 s, uInt32 ac) {
-      a = rotate_left(a+ F(b,c,d) + x + ac, s) + b;
+      a = std::rotl(a + F(b,c,d) + x + ac, s) + b;
     }
     static constexpr void GG(uInt32 &a, uInt32 b, uInt32 c, uInt32 d,
                              uInt32 x, uInt32 s, uInt32 ac) {
-      a = rotate_left(a + G(b,c,d) + x + ac, s) + b;
+      a = std::rotl(a + G(b,c,d) + x + ac, s) + b;
     }
     static constexpr void HH(uInt32 &a, uInt32 b, uInt32 c, uInt32 d,
                              uInt32 x, uInt32 s, uInt32 ac) {
-      a = rotate_left(a + H(b,c,d) + x + ac, s) + b;
+      a = std::rotl(a + H(b,c,d) + x + ac, s) + b;
     }
     static constexpr void II(uInt32 &a, uInt32 b, uInt32 c, uInt32 d,
                              uInt32 x, uInt32 s, uInt32 ac) {
-      a = rotate_left(a + I(b,c,d) + x + ac, s) + b;
+      a = std::rotl(a + I(b,c,d) + x + ac, s) + b;
     }
 
   private:
-    static constexpr uInt32 BLOCKSIZE = 64;
     bool finalized{false};
+
     std::array<uInt8, BLOCKSIZE> buffer{}; // bytes that didn't fit in last chunk
     std::array<uInt32, 2> count{};   // 64bit counter for number of bits (lo, hi)
     std::array<uInt32, 4> state{};   // digest so far
     std::array<uInt8, 16> digest{};  // the result
-
-  private:
-    MD5(const MD5&) = delete;
-    MD5(MD5&&) = delete;
-    MD5& operator=(const MD5&) = delete;
-    MD5& operator=(MD5&&) = delete;
 };
 
-#endif
+#endif  // MD5_HXX

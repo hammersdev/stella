@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEEFSC_HXX
-#define CARTRIDGEEFSC_HXX
+#ifndef CARTRIDGE_EFSC_HXX
+#define CARTRIDGE_EFSC_HXX
 
 class System;
 
@@ -27,10 +27,10 @@ class System;
 #endif
 
 /**
-  Cartridge class used for Homestar Runner by Paul Slocum.
-  There are 16 4K banks (total of 64K ROM) with 128 bytes of RAM.
-  Accessing $1FE0 - $1FEF switches to each bank.
-  RAM read port is $1080 - $10FF, write port is $1000 - $107F.
+  EFSC is EF with 128 bytes of SuperChip RAM.  Banking works identically to
+  EF: 16 4K banks (64K total), selected by accessing $1FE0-$1FEF.  The SC
+  RAM uses the standard split window: write port $1000-$107F, read port
+  $1080-$10FF.
 
   @author  Stephen Anthony, Thomas Jentzsch
 */
@@ -42,13 +42,12 @@ class CartridgeEFSC : public CartridgeEF
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeEFSC(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeEFSC(ByteSpan image, string_view md5,
                   const Settings& settings, size_t bsSize = 64_KB);
     ~CartridgeEFSC() override = default;
 
@@ -88,4 +87,4 @@ class CartridgeEFSC : public CartridgeEF
     CartridgeEFSC& operator=(CartridgeEFSC&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_EFSC_HXX

@@ -27,6 +27,21 @@
 #include "Base.hxx"
 
 namespace {
+  // Per-object collision bit patterns. Chosen so that, for any two distinct
+  // objects A and B, A & B is a single unique bit appearing in no other
+  // object's mask. Each object's mask is exactly the union of those unique
+  // pair bits — i.e. the set of pair collisions it participates in.
+  //
+  // Examples:
+  //   player0 & playfield = bit 10   (P0-PF)
+  //   player0 & ball      = bit 11   (P0-BL)
+  //   missile0 & missile1 = bit 14   (M0-M1)
+  //
+  // This lets updateCollision() compute all 15 pair collisions with a single
+  // 15-bit AND across all six objects; see TIA::updateCollision for the
+  // correctness argument and TIA::collCX* for how individual pair bits are
+  // extracted on read. Bit 15 is reserved by each sprite as a "visible this
+  // clock" latch (see TIA::renderPixel / sprite::isOn).
   enum CollisionMask: uInt16 {
     player0   = 0b0111110000000000,
     player1   = 0b0100001111000000,
@@ -36,6 +51,10 @@ namespace {
     playfield = 0b0000010001001011
   };
 
+  // Per-register color-clock delays applied when a TIA write is pushed onto
+  // the DelayQueue. Some games rely on these on real hardware (e.g. GRP0/1
+  // takes effect one clock after the write); see TIA::poke for which writes
+  // route through the queue.
   enum Delay: uInt8 {
     hmove = 6,
     pf = 2,
@@ -52,17 +71,23 @@ namespace {
     vblank = 1
   };
 
+  // RESPx/RESMx/RESBL counter targets — depend on whether the strobe lands
+  // in late HBLANK, regular HBLANK, or the visible region (see TIA::resxCounter).
   enum ResxCounter: uInt8 {
     hblank = 159,
     lateHblank = 158,
     frame = 157
   };
+
+  template<Bitmask::Type T>
+  constexpr bool bmBool(T v) noexcept { return Bitmask::Enum{v}.any(); }
 }  // namespace
 
-// This parameter still has room for tuning. If we go lower than 73, long005 will show
-// a slight artifact (still have to crosscheck on real hardware), if we go lower than
-// 70, the G.I. Joe will show an artifact (hole in roof).
-static constexpr uInt8 resxLateHblankThreshold = TIAConstants::H_CYCLES - 3;
+// Flags the last possible RESx write during extended HBLANK — CPU cycle 75.
+// Selects ResxCounter::lateHblank (158) vs ResxCounter::hblank (159) so that
+// the strobe lands on the correct sprite counter relative to the HMOVE
+// movement clocks (MOTCK).
+static constexpr uInt8 resxLateHblankThreshold = 73;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 TIA::TIA(ConsoleIO& console, const ConsoleTimingProvider& timingProvider,
@@ -70,6 +95,11 @@ TIA::TIA(ConsoleIO& console, const ConsoleTimingProvider& timingProvider,
   : myConsole{console},
     myTimingProvider{timingProvider},
     mySettings{settings},
+    // Each sprite's "disabled" collision mask is constructed as
+    //   ~CollisionMask::self & 0x7FFF
+    // so that when the sprite is silent it contributes ones everywhere
+    // except its own pair bits (and bit 15 — the visibility latch — is
+    // also cleared). See the CollisionMask enum above.
     myPlayfield{~CollisionMask::playfield & 0x7FFF},
     myMissile0{~CollisionMask::missile0 & 0x7FFF},
     myMissile1{~CollisionMask::missile1 & 0x7FFF},
@@ -144,7 +174,6 @@ void TIA::initialize()
   myHstate = HState::blank;
   myCollisionMask = 0;
   myLinesSinceChange = 0;
-  myCollisionUpdateRequired = myCollisionUpdateScheduled = false;
   myColorLossEnabled = myColorLossActive = false;
   myColorHBlank = 0;
   myLastCycle = 0;
@@ -171,6 +200,7 @@ void TIA::initialize()
   myTimestamp = 0;
   for (AnalogReadout& analogReadout : myAnalogReadouts)
     analogReadout.reset(myTimestamp);
+  myLastAnalogConnections.fill(AnalogReadout::disconnect());
 
   myDelayQueue.reset();
 
@@ -194,13 +224,15 @@ void TIA::initialize()
   myFrontBuffer.fill(0);
   myFramebuffer.fill(0);
 
+  myCurrentRowPtr = myBackBuffer.data();
+
   // Prepare variables for auto-phosphor
-  memset(&myPosP0, 0, sizeof(ObjectPos));
-  memset(&myPosP1, 0, sizeof(ObjectPos));
-  memset(&myPosM0, 0, sizeof(ObjectPos));
-  memset(&myPosM1, 0, sizeof(ObjectPos));
-  memset(&myPosBL, 0, sizeof(ObjectPos));
-  memset(&myPatPF, 0, sizeof(ObjectGfx));
+  myPosP0 = {};
+  myPosP1 = {};
+  myPosM0 = {};
+  myPosM1 = {};
+  myPosBL = {};
+  myPatPF = {};
   myFrameEnd = 0;
 
   applyDeveloperSettings();
@@ -219,7 +251,7 @@ void TIA::initialize()
 
 #ifdef DEBUGGER_SUPPORT
   createAccessArrays();
-#endif // DEBUGGER_SUPPORT
+#endif  // DEBUGGER_SUPPORT
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -241,7 +273,8 @@ void TIA::reset()
         cycle(1 + (mySystem->randGenerator().next() & 7)); // process delay queue
       }
     }
-    cycle(76); // just to be sure :)
+    cycle(76 * 3); // just to be sure :)
+    myTimestamp = 0;
   }
 }
 
@@ -303,8 +336,6 @@ bool TIA::save(Serializer& out) const
     out.putInt(myHctrDelta);
     out.putInt(myXAtRenderingStart);
 
-    out.putBool(myCollisionUpdateRequired);
-    out.putBool(myCollisionUpdateScheduled);
     out.putInt(myCollisionMask);
 
     out.putInt(myMovementClock);
@@ -318,8 +349,8 @@ bool TIA::save(Serializer& out) const
     out.putByte(mySubClock);
     out.putLong(myLastCycle);
 
-    out.putByte(mySpriteEnabledBits);
-    out.putByte(myCollisionsEnabledBits);
+    out.putByte(Bitmask::to_underlying(mySpriteEnabledBits));
+    out.putByte(Bitmask::to_underlying(myCollisionsEnabledBits));
 
     out.putByte(myColorHBlank);
 
@@ -381,8 +412,6 @@ bool TIA::load(Serializer& in)
     myHctrDelta = in.getInt();
     myXAtRenderingStart = in.getInt();
 
-    myCollisionUpdateRequired = in.getBool();
-    myCollisionUpdateScheduled = in.getBool();
     myCollisionMask = in.getInt();
 
     myMovementClock = in.getInt();
@@ -396,8 +425,8 @@ bool TIA::load(Serializer& in)
     mySubClock = in.getByte();
     myLastCycle = in.getLong();
 
-    mySpriteEnabledBits = in.getByte();
-    myCollisionsEnabledBits = in.getByte();
+    mySpriteEnabledBits = Bitmask::from_underlying<TIABit>(in.getByte());
+    myCollisionsEnabledBits = Bitmask::from_underlying<TIABit>(in.getByte());
 
     myColorHBlank = in.getByte();
 
@@ -423,6 +452,12 @@ bool TIA::load(Serializer& in)
 
     // Re-apply dev settings
     applyDeveloperSettings();
+
+    // myCurrentRowPtr is derived state not stored in the save file; recompute
+    // it from the restored y so renderPixel() writes to the correct scanline,
+    // including when the debugger saves and loads state mid-scanline
+    myCurrentRowPtr = myBackBuffer.data() +
+      static_cast<size_t>(myFrameManager->getY()) * TIAConstants::H_PIXEL;
   }
   catch(...)
   {
@@ -483,10 +518,13 @@ void TIA::bindToControllers()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt8 TIA::peek(uInt16 address)
 {
+  // Catch the TIA simulation up to the current system clock so the read
+  // observes correct collision/INPT state.
   updateEmulation();
 
-  // Start with all bits disabled
-  // In some cases both D7 and D6 are used; in other cases only D7 is used
+  // Only the low 4 bits matter: 8 collision latches (CX*) + 6 input ports
+  // (INPT0-5). Most CX* registers use both D7 and D6 (two pairs encoded in
+  // one register); CXBLPF and INPT* only use D7.
   uInt8 result = 0b0000000;
 
   switch (address & 0x0F) {
@@ -556,8 +594,10 @@ uInt8 TIA::peek(uInt16 address)
       break;
   }
 
-  // Bits D5 .. D0 are floating
-  // The options are either to use the last databus value, or use random data
+  // Bits D5..D0 are floating bus on real hardware: the TIA never drives
+  // them so whatever the CPU put on the bus last cycle (or random noise
+  // on real chips with weaker pull-downs) shows up. The 'tiapinsdriven'
+  // setting picks random noise to surface games that read these bits.
   return result | ((!myTIAPinsDriven ? mySystem->getDataBusState() :
     mySystem->randGenerator().next()) & 0b00111111);
 }
@@ -565,8 +605,19 @@ uInt8 TIA::peek(uInt16 address)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool TIA::poke(uInt16 address, uInt8 value)
 {
+  // Catch the TIA up to the current system clock so the write lands on
+  // the correct color clock.
   updateEmulation();
 
+  // Each write falls into one of three buckets:
+  //   - Strobes whose effect must be immediate (WSYNC/RSYNC/RESxx/CXCLR);
+  //     these call flushLineCache() if they change rendered state.
+  //   - State registers that change visible output but take effect
+  //     immediately (CTRLPF/COLUxx/NUSIZx/VDELxx); the per-sprite setColor
+  //     etc. flush the line cache only when actually needed.
+  //   - Pipelined writes (PFx/GRPx/ENAxx/HMxx/HMOVE/REFPx/VBLANK/...) that
+  //     go through myDelayQueue with a per-register color-clock delay
+  //     defined in the Delay enum above; delayedWrite() dispatches them.
   address &= 0x3F;
 
   switch (address)
@@ -576,6 +627,8 @@ bool TIA::poke(uInt16 address, uInt8 value)
       break;
 
     case RSYNC:
+      // RSYNC rewinds the horizontal counter and zeroes the rest of the
+      // line — anything cached for this line is no longer correct.
       flushLineCache();
       applyRsync();
       myShadowRegisters[address] = value;
@@ -722,6 +775,9 @@ bool TIA::poke(uInt16 address, uInt8 value)
     }
 
     case CTRLPF:
+      // Priority encoder mode, playfield reflect / color mode, and ball
+      // width can all change here — any of these may alter pixels already
+      // rendered on the current line.
       flushLineCache();
       myPriority = (value & 0x04) ? Priority::pfp :
                    (value & 0x02) ? Priority::score : Priority::normal;
@@ -732,6 +788,9 @@ bool TIA::poke(uInt16 address, uInt8 value)
 
     case COLUPF:
     {
+      // Playfield/ball color may have changed mid-line. (Could be tightened
+      // to "only when value differs and PF/BL is emitting" like the
+      // per-sprite setColor guards, but isn't.)
       flushLineCache();
       value &= 0xFE;
       if(myPFColorDelay)
@@ -792,28 +851,35 @@ bool TIA::poke(uInt16 address, uInt8 value)
       break;
 
     case RESM0:
+      // Missile position counter is being reset — anything already drawn
+      // for this line was drawn with the old counter.
       flushLineCache();
-      myMissile0.resm(resxCounter(), myHstate == HState::blank);
+      myMissile0.resm(resxCounter(), myHstate == HState::blank,
+        myHstate == HState::blank && myMovementInProgress && myMovementClock == 0);
       myShadowRegisters[address] = value;
       break;
 
     case RESM1:
+      // Same as RESM0 — counter reset invalidates the cached line.
       flushLineCache();
-      myMissile1.resm(resxCounter(), myHstate == HState::blank);
+      myMissile1.resm(resxCounter(), myHstate == HState::blank,
+        myHstate == HState::blank && myMovementInProgress && myMovementClock == 0);
       myShadowRegisters[address] = value;
       break;
 
     case RESMP0:
-      myMissile0.resmp(value, myPlayer0);
+      myMissile0.resmp(value);
       myShadowRegisters[address] = value;
       break;
 
     case RESMP1:
-      myMissile1.resmp(value, myPlayer1);
+      myMissile1.resmp(value);
       myShadowRegisters[address] = value;
       break;
 
     case NUSIZ0:
+      // Player copy count / missile width / decode table changing mid-line
+      // can affect every pixel since the last decode trigger.
       flushLineCache();
       myMissile0.nusiz(value);
       myPlayer0.nusiz(value, myHstate == HState::blank);
@@ -821,6 +887,7 @@ bool TIA::poke(uInt16 address, uInt8 value)
       break;
 
     case NUSIZ1:
+      // Same as NUSIZ0 — copy count / size change invalidates the line.
       flushLineCache();
       myMissile1.nusiz(value);
       myPlayer1.nusiz(value, myHstate == HState::blank);
@@ -865,14 +932,20 @@ bool TIA::poke(uInt16 address, uInt8 value)
     }
 
     case RESP0:
+      // Player position counter reset — any pixels already drawn used the
+      // old position; render-counter rewind in Player::resp may also
+      // affect this scanline.
       flushLineCache();
-      myPlayer0.resp(resxCounter());
+      myPlayer0.resp(resxCounter(),
+        myHstate == HState::blank && myMovementInProgress && myMovementClock == 0);
       myShadowRegisters[address] = value;
       break;
 
     case RESP1:
+      // Same as RESP0.
       flushLineCache();
-      myPlayer1.resp(resxCounter());
+      myPlayer1.resp(resxCounter(),
+        myHstate == HState::blank && myMovementInProgress && myMovementClock == 0);
       myShadowRegisters[address] = value;
       break;
 
@@ -907,8 +980,10 @@ bool TIA::poke(uInt16 address, uInt8 value)
       break;
 
     case RESBL:
+      // Ball position counter reset — same reasoning as RESPx/RESMx.
       flushLineCache();
-      myBall.resbl(resxCounter());
+      myBall.resbl(resxCounter(),
+        myHstate == HState::blank && myMovementInProgress && myMovementClock == 0);
       myShadowRegisters[address] = value;
       break;
 
@@ -922,6 +997,9 @@ bool TIA::poke(uInt16 address, uInt8 value)
       break;
 
     case CXCLR:
+      // Collision latches are shared state that subsequent reads on this
+      // line will observe; flush so updateCollision rebuilds them from
+      // the rewound counters rather than from a cloned line.
       flushLineCache();
       myCollisionMask = 0;
       myShadowRegisters[address] = value;
@@ -943,6 +1021,8 @@ bool TIA::saveDisplay(Serializer& out) const
     out.putByteArray(myBackBuffer);
     out.putByteArray(myFrontBuffer);
     out.putInt(myFramesSinceLastRender);
+
+    if(!myAudio.saveSamples(out)) return false;
   }
   catch(...)
   {
@@ -963,6 +1043,8 @@ bool TIA::loadDisplay(Serializer& in)
     in.getByteArray(myBackBuffer);
     in.getByteArray(myFrontBuffer);
     myFramesSinceLastRender = in.getInt();
+
+    if(!myAudio.loadSamples(in)) return false;
   }
   catch(...)
   {
@@ -979,43 +1061,63 @@ void TIA::applyDeveloperSettings()
   const bool devSettings = mySettings.getBool("dev.settings");
   if(devSettings)
   {
-    const bool custom =
-      BSPF::equalsIgnoreCase("custom", mySettings.getString("dev.tia.type"));
+    const string tiaType = mySettings.getString("dev.tia.type");
+    const bool custom = BSPF::equalsIgnoreCase("custom", tiaType);
 
     setPlInvertedPhaseClock(custom
-                            ? mySettings.getBool("dev.tia.plinvphase")
-                            : BSPF::equalsIgnoreCase("koolaidman", mySettings.getString("dev.tia.type")));
+      ? mySettings.getBool("dev.tia.plinvphase")
+      : BSPF::equalsIgnoreCase("koolaidman", tiaType));
     setMsInvertedPhaseClock(custom
-                            ? mySettings.getBool("dev.tia.msinvphase")
-                            : BSPF::equalsIgnoreCase("cosmicark", mySettings.getString("dev.tia.type")));
-    setBlInvertedPhaseClock(custom ? mySettings.getBool("dev.tia.blinvphase") : false);
+      ? mySettings.getBool("dev.tia.msinvphase")
+      : BSPF::equalsIgnoreCase("cosmicark", tiaType));
+    setBlInvertedPhaseClock(custom
+      ? mySettings.getBool("dev.tia.blinvphase")
+      : false);
     setPlShortLateHMove(custom
-                        ? mySettings.getBool("dev.tia.pllatehmove")
-                        : BSPF::equalsIgnoreCase("flashmenu", mySettings.getString("dev.tia.type")));
-    setMsShortLateHMove(custom ? mySettings.getBool("dev.tia.mslatehmove") : false);
-    setBlShortLateHMove(custom ? mySettings.getBool("dev.tia.bllatehmove") : false);
+      ? mySettings.getBool("dev.tia.pllatehmove")
+      : BSPF::equalsIgnoreCase("flashmenu", tiaType));
+    setMsShortLateHMove(custom
+      ? mySettings.getBool("dev.tia.mslatehmove")
+      : false);
+    setBlShortLateHMove(custom
+      ? mySettings.getBool("dev.tia.bllatehmove")
+      : false);
+    setPlLateRespx(custom
+      ? mySettings.getBool("dev.tia.pllaterespx")
+      : BSPF::equalsIgnoreCase("lightsixer", tiaType));
+    setMsLateRespx(custom
+      ? mySettings.getBool("dev.tia.mslaterespx")
+      : BSPF::equalsIgnoreCase("lightsixer", tiaType) || BSPF::equalsIgnoreCase("juniorbug", tiaType));
+    setBlLateRespx(custom
+      ? mySettings.getBool("dev.tia.bllaterespx")
+      : BSPF::equalsIgnoreCase("lightsixer", tiaType));
     setPFBitsDelay(custom
-                   ? mySettings.getBool("dev.tia.delaypfbits")
-                   : BSPF::equalsIgnoreCase("pesco", mySettings.getString("dev.tia.type")));
+      ? mySettings.getBool("dev.tia.delaypfbits")
+      : BSPF::equalsIgnoreCase("pesco", tiaType));
     setPFColorDelay(custom
-                    ? mySettings.getBool("dev.tia.delaypfcolor")
-                    : BSPF::equalsIgnoreCase("quickstep", mySettings.getString("dev.tia.type")));
+      ? mySettings.getBool("dev.tia.delaypfcolor")
+      : BSPF::equalsIgnoreCase("quickstep", tiaType));
     setPFScoreGlitch(custom
-                     ? mySettings.getBool("dev.tia.pfscoreglitch")
-                     : BSPF::equalsIgnoreCase("matchie", mySettings.getString("dev.tia.type")));
+      ? mySettings.getBool("dev.tia.pfscoreglitch")
+      : BSPF::equalsIgnoreCase("matchie", tiaType));
     setBKColorDelay(custom
-                    ? mySettings.getBool("dev.tia.delaybkcolor")
-                    : BSPF::equalsIgnoreCase("indy500", mySettings.getString("dev.tia.type")));
+      ? mySettings.getBool("dev.tia.delaybkcolor")
+      : BSPF::equalsIgnoreCase("indy500", tiaType));
     setPlSwapDelay(custom
-                   ? mySettings.getBool("dev.tia.delayplswap")
-                   : BSPF::equalsIgnoreCase("heman", mySettings.getString("dev.tia.type")));
-    setBlSwapDelay(custom ? mySettings.getBool("dev.tia.delayblswap") : false);
+      ? mySettings.getBool("dev.tia.delayplswap")
+      : BSPF::equalsIgnoreCase("heman", tiaType));
+    setBlSwapDelay(custom
+      ? mySettings.getBool("dev.tia.delayblswap")
+      : false);
   }
   else
   {
     setPlInvertedPhaseClock(false);
     setMsInvertedPhaseClock(false);
     setBlInvertedPhaseClock(false);
+    setPlLateRespx(false);
+    setMsLateRespx(false);
+    setBlLateRespx(false);
     setPFBitsDelay(false);
     setPFColorDelay(false);
     myPlayfield.setScoreGlitch(false);
@@ -1108,100 +1210,97 @@ bool TIA::electronBeamPos(uInt32& x, uInt32& y) const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool TIA::toggleBit(TIABit b, uInt8 mode)
+bool TIA::toggleBit(TIABit b, BitState mode)
 {
-  uInt8 mask = 0;
+  auto mask = TIABit{};
 
   switch (mode) {
-    case 0:
-      mask = 0;
+    case BitState::Off:
       break;
-
-    case 1:
+    case BitState::On:
       mask = b;
       break;
-
-    case 2:
-      mask = (~mySpriteEnabledBits & b);
+    case BitState::Toggle:
+      mask = ~mySpriteEnabledBits & b;
       break;
-
+    case BitState::Query:
+      mask = mySpriteEnabledBits & b;
+      break;
     default:
-      mask = (mySpriteEnabledBits & b);
       break;
   }
 
   mySpriteEnabledBits = (mySpriteEnabledBits & ~b) | mask;
 
-  myMissile0.toggleEnabled(mySpriteEnabledBits & TIABit::M0Bit);
-  myMissile1.toggleEnabled(mySpriteEnabledBits & TIABit::M1Bit);
-  myPlayer0.toggleEnabled(mySpriteEnabledBits & TIABit::P0Bit);
-  myPlayer1.toggleEnabled(mySpriteEnabledBits & TIABit::P1Bit);
-  myBall.toggleEnabled(mySpriteEnabledBits & TIABit::BLBit);
-  myPlayfield.toggleEnabled(mySpriteEnabledBits & TIABit::PFBit);
+  myMissile0.toggleEnabled(bmBool(mySpriteEnabledBits & TIABit::M0));
+  myMissile1.toggleEnabled(bmBool(mySpriteEnabledBits & TIABit::M1));
+  myPlayer0.toggleEnabled(bmBool(mySpriteEnabledBits & TIABit::P0));
+  myPlayer1.toggleEnabled(bmBool(mySpriteEnabledBits & TIABit::P1));
+  myBall.toggleEnabled(bmBool(mySpriteEnabledBits & TIABit::BL));
+  myPlayfield.toggleEnabled(bmBool(mySpriteEnabledBits & TIABit::PF));
 
-  return mask;
+  return Bitmask::to_underlying(mask) != 0;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool TIA::toggleBits(bool toggle)
 {
-  toggleBit(TIABit::AllBits, toggle
-    ? mySpriteEnabledBits > 0 ? 0 : 1
-    : mySpriteEnabledBits);
+  toggleBit(TIABit::All, toggle
+    ? Bitmask::Enum{mySpriteEnabledBits}.any() ? BitState::Off : BitState::On
+    : BitState::Query);
 
-  return mySpriteEnabledBits;
+  return Bitmask::Enum{mySpriteEnabledBits}.any();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool TIA::toggleCollision(TIABit b, uInt8 mode)
+bool TIA::toggleCollision(TIABit b, BitState mode)
 {
-  uInt8 mask = 0;
+  auto mask = TIABit{};
 
   switch (mode) {
-    case 0:
-      mask = 0;
+    case BitState::Off:
       break;
-
-    case 1:
+    case BitState::On:
       mask = b;
       break;
-
-    case 2:
-      mask = (~myCollisionsEnabledBits & b);
+    case BitState::Toggle:
+      mask = ~myCollisionsEnabledBits & b;
       break;
-
+    case BitState::Query:
+      mask = myCollisionsEnabledBits & b;
+      break;
     default:
-      mask = (myCollisionsEnabledBits & b);
       break;
   }
 
   myCollisionsEnabledBits = (myCollisionsEnabledBits & ~b) | mask;
 
-  myMissile0.toggleCollisions(myCollisionsEnabledBits & TIABit::M0Bit);
-  myMissile1.toggleCollisions(myCollisionsEnabledBits & TIABit::M1Bit);
-  myPlayer0.toggleCollisions(myCollisionsEnabledBits & TIABit::P0Bit);
-  myPlayer1.toggleCollisions(myCollisionsEnabledBits & TIABit::P1Bit);
-  myBall.toggleCollisions(myCollisionsEnabledBits & TIABit::BLBit);
-  myPlayfield.toggleCollisions(myCollisionsEnabledBits & TIABit::PFBit);
+  myMissile0.toggleCollisions(bmBool(myCollisionsEnabledBits & TIABit::M0));
+  myMissile1.toggleCollisions(bmBool(myCollisionsEnabledBits & TIABit::M1));
+  myPlayer0.toggleCollisions(bmBool(myCollisionsEnabledBits & TIABit::P0));
+  myPlayer1.toggleCollisions(bmBool(myCollisionsEnabledBits & TIABit::P1));
+  myBall.toggleCollisions(bmBool(myCollisionsEnabledBits & TIABit::BL));
+  myPlayfield.toggleCollisions(bmBool(myCollisionsEnabledBits & TIABit::PF));
 
-  return mask;
+  return Bitmask::BitmaskEnum{mask}.any();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool TIA::toggleCollisions(bool toggle)
 {
-  toggleCollision(TIABit::AllBits, toggle
-    ? myCollisionsEnabledBits > 0 ? 0 : 1
-    : myCollisionsEnabledBits);
+  toggleCollision(TIABit::All, toggle
+    ? Bitmask::Enum{myCollisionsEnabledBits}.any() ? BitState::Off : BitState::On
+    : BitState::Query);
 
-  return myCollisionsEnabledBits;
+  return Bitmask::BitmaskEnum{myCollisionsEnabledBits}.any();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool TIA::enableFixedColors(bool enable)
 {
-  const int timing = myTimingProvider() == ConsoleTiming::ntsc ? 0
-    : myTimingProvider() == ConsoleTiming::pal ? 1 : 2;
+  const ConsoleTiming timing_type = myTimingProvider();
+  const int timing = timing_type == ConsoleTiming::ntsc ? 0
+    : timing_type == ConsoleTiming::pal ? 1 : 2;
 
   myMissile0.setDebugColor(myFixedColorPalette[timing][FixedObject::M0]);
   myMissile1.setDebugColor(myFixedColorPalette[timing][FixedObject::M1]);
@@ -1370,6 +1469,12 @@ uInt8 TIA::registerValue(uInt8 reg) const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// Lazy catch-up: the CPU runs freely, and the TIA simulation only advances
+// when externally visible state matters. This is called on every peek/poke,
+// at the end of M6502::execute, and from controller analog-pin callbacks.
+// myLastCycle tracks the system-clock value at the end of the previous
+// catch-up; mySubClock carries the fractional color clock (0..2) since the
+// CPU clock is 1/3 of the color clock.
 void TIA::updateEmulation()
 {
   const uInt64 systemCycles = mySystem->cycles();
@@ -1537,6 +1642,19 @@ void TIA::onHalt()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// Per-color-clock simulation step. The order matters:
+//   1. Execute any DelayQueue entries scheduled for this clock (these are
+//      writes whose effect was pipelined N clocks back; see TIA::poke).
+//   2. Tick movement (only on every 4th color clock when HMOVE is active),
+//      then either the HBLANK or visible-frame tick for each sprite, then
+//      accumulate collisions (skipped during VBLANK to match real hardware).
+//   3. Advance the master horizontal counter; wrap into next scanline at 228.
+//   4. Tick audio (sums per-clock volumes; the two-phase clock fires at 4
+//      of 228 positions per scanline — see Audio::tick).
+//
+// The full sprite path (step 2) is bypassed once myLinesSinceChange reaches
+// 2: subsequent lines are memcpy clones of the previous one until the next
+// state change calls flushLineCache(). This is the line cache fast path.
 void TIA::cycle(uInt32 colorClocks)
 {
   for (uInt32 i = 0; i < colorClocks; ++i)
@@ -1545,21 +1663,20 @@ void TIA::cycle(uInt32 colorClocks)
       [this] (uInt8 address, uInt8 value) {delayedWrite(address, value);}
     );
 
-    myCollisionUpdateRequired = myCollisionUpdateScheduled;
-    myCollisionUpdateScheduled = false;
-
     if (myLinesSinceChange < 2) {
       tickMovement();
 
-      if (myHstate == HState::blank)
+      if (myHstate == HState::blank) [[unlikely]]
         tickHblank();
       else
         tickHframe();
 
-      if (myCollisionUpdateRequired && !myFrameManager->vblank()) updateCollision();
+      // Collisions are only latched during the visible portion of each
+      // scanline on real hardware — VBLANK gates the collision latches.
+      if (!myFrameManager->vblank()) updateCollision();
     }
 
-    if (++myHctr >= TIAConstants::H_CLOCKS)
+    if (++myHctr >= TIAConstants::H_CLOCKS) [[unlikely]]
       nextLine();
 
   #ifdef SOUND_SUPPORT
@@ -1571,9 +1688,13 @@ void TIA::cycle(uInt32 colorClocks)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// HMOVE distributes movement clocks at 1/4 of the color-clock rate (only
+// on color-clocks where the low 2 bits of myHctr are zero). The movement
+// counter saturates at 15 — beyond that no further per-sprite tick is
+// signalled, matching the HMxx high-nibble interpretation.
 FORCE_INLINE void TIA::tickMovement()
 {
-  if (!myMovementInProgress) return;
+  if (!myMovementInProgress) [[likely]] return;
 
   if ((myHctr & 0x03) == 0) {
     const bool hblank = myHstate == HState::blank;
@@ -1592,15 +1713,29 @@ FORCE_INLINE void TIA::tickMovement()
       myPlayer1.isMoving  ||
       myBall.isMoving;
 
-    myCollisionUpdateRequired = myCollisionUpdateRequired || myMovementInProgress;
-
     ++myMovementClock;
   }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void TIA::tickHblank()
+// During HBLANK each sprite's F1 latch still receives the CLKP color clock
+// (used to latch the display signal); tickClkpInHblank updates each
+// sprite's collision/visibility latch without advancing its counter or
+// sample logic — see Player::tickClkpInHblank / Missile::tickClkpInHblank
+// / Ball::tickClkpInHblank for the per-sprite split.
+//
+// HBLANK is normally 68 color clocks (H_BLANK_CLOCKS); HMOVE extends it
+// by 8 (myExtendedHblank). When extended, the playfield still starts
+// ticking inside HBLANK after the regular boundary so that pixels in the
+// HMOVE-comb region are produced correctly.
+FORCE_INLINE void TIA::tickHblank()
 {
+  myMissile0.tickClkpInHblank();
+  myMissile1.tickClkpInHblank();
+  myPlayer0.tickClkpInHblank();
+  myPlayer1.tickClkpInHblank();
+  myBall.tickClkpInHblank();
+
   switch (myHctr) {
     case 0:
       myExtendedHblank = false;
@@ -1614,7 +1749,7 @@ void TIA::tickHblank()
       if (myExtendedHblank) myHstate = HState::frame;
       break;
 
-    default:
+    [[likely]] default:
       break;
   }
 
@@ -1623,22 +1758,22 @@ void TIA::tickHblank()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void TIA::tickHframe()
+// Visible-frame per-color-clock tick. Missiles take the associated player
+// as an argument so their RESMP "lock to player" tracking can sample the
+// player's main-copy scan counter — see Missile::resmpTick.
+FORCE_INLINE void TIA::tickHframe()
 {
-  const uInt32 y = myFrameManager->getY();
   const uInt32 x = myHctr - TIAConstants::H_BLANK_CLOCKS - myHctrDelta;
 
-  myCollisionUpdateRequired = true;
-
   myPlayfield.tick(x);
-  myMissile0.tick(myHctr);
-  myMissile1.tick(myHctr);
   myPlayer0.tick();
   myPlayer1.tick();
+  myMissile0.tick(myHctr, myPlayer0);
+  myMissile1.tick(myHctr, myPlayer1);
   myBall.tick();
 
-  if (myFrameManager->isRendering())
-    renderPixel(x, y);
+  if (myFrameManager->isRendering()) [[likely]]
+    renderPixel(x);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1673,6 +1808,11 @@ FORCE_INLINE void TIA::nextLine()
   myHctrDelta = 0;
 
   myFrameManager->nextLine();
+  // y only advances here, so this is the single correct update point for the
+  // precomputed row pointer used in renderPixel()
+  myCurrentRowPtr = myBackBuffer.data() +
+    static_cast<size_t>(myFrameManager->getY()) * TIAConstants::H_PIXEL;
+
   myMissile0.nextLine();
   myMissile1.nextLine();
   myPlayer0.nextLine();
@@ -1682,11 +1822,13 @@ FORCE_INLINE void TIA::nextLine()
 
   if(myFrameManager->isRendering())
   {
+    // First rendered line of a new frame — discard any cache carried over
+    // from the previous frame so y=0 is rebuilt from a clean replay.
     if(myFrameManager->getY() == 0)
       flushLineCache();
 
     // Save positions of objects for auto-phosphor
-    if(myAutoPhosphorEnabled)
+    if(myAutoPhosphorEnabled) [[unlikely]]
     {
       // Test ROMs:
       // - missing phosphor:
@@ -1729,7 +1871,7 @@ FORCE_INLINE void TIA::nextLine()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void TIA::cloneLastLine()
 {
-  if(myIsLayoutDetector)
+  if(myIsLayoutDetector) [[unlikely]]
   {
     // y is always 0 in FrameLayoutDetector
     for(uInt32 i = 0 ; i < TIAConstants::H_PIXEL; ++i)
@@ -1741,11 +1883,14 @@ void TIA::cloneLastLine()
 
     if(!myFrameManager->isRendering() || y == 0) return;
 
-    std::copy_n(myBackBuffer.begin() + (y - 1) * TIAConstants::H_PIXEL,
-      TIAConstants::H_PIXEL, myBackBuffer.begin() + y * TIAConstants::H_PIXEL);
+    // myCurrentRowPtr points to row y here: cloneLastLine() is always called
+    // before myFrameManager->nextLine() advances y, so the pointer is still
+    // current and avoids two y*H_PIXEL multiplies
+    std::copy_n(myCurrentRowPtr - TIAConstants::H_PIXEL,
+      TIAConstants::H_PIXEL, myCurrentRowPtr);
 
     // Save positions of objects for auto-phosphor
-    if(myAutoPhosphorEnabled)
+    if(myAutoPhosphorEnabled) [[unlikely]]
     {
       myPosP0[y][myFlickerFrame] = myPosP0[y - 1][myFlickerFrame];
       myPosP1[y][myFlickerFrame] = myPosP1[y - 1][myFlickerFrame];
@@ -1758,12 +1903,23 @@ void TIA::cloneLastLine()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void TIA::scheduleCollisionUpdate()
-{
-  myCollisionUpdateScheduled = true;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// Compute all 15 pair-collisions in parallel using the unique-bit pattern
+// encoding from the CollisionMask enum above.
+//
+// Each sprite's .collision is one of two precomputed values:
+//   Enabled  = 0xFFFF           (object emits a pixel this clock)
+//   Disabled = ~Self & 0x7FFF   (object is silent this clock)
+//
+// For the pair-bit k shared by exactly two objects A and B:
+//   - If A is silent, ~A clears bit k -> AND result bit k = 0.
+//   - If B is silent, same via B -> AND result bit k = 0.
+//   - If both A and B emit, both contribute 1; every other object C
+//     contributes 1 either way (silent: bit k is not in C's mask so ~C
+//     keeps it set; emitting: C is all-ones).
+// So bit k is set in the AND iff A and B both emit this clock.
+//
+// The OR-accumulate into myCollisionMask mirrors per-pair latches: once a
+// pair has collided this frame, the bit sticks until CXCLR clears it.
 FORCE_INLINE void TIA::updateCollision()
 {
   myCollisionMask |= (
@@ -1777,9 +1933,9 @@ FORCE_INLINE void TIA::updateCollision()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-FORCE_INLINE void TIA::renderPixel(uInt32 x, uInt32 y)
+FORCE_INLINE void TIA::renderPixel(uInt32 x)
 {
-  if (x >= TIAConstants::H_PIXEL) return;
+  if (x >= TIAConstants::H_PIXEL) [[unlikely]] return;
 
   uInt8 color = 0;
 
@@ -1834,12 +1990,21 @@ FORCE_INLINE void TIA::renderPixel(uInt32 x, uInt32 y)
     }
   }
 
-  myBackBuffer[y * TIAConstants::H_PIXEL + x] = color;
-  if (myIsLayoutDetector)
+  // myCurrentRowPtr is precomputed once per scanline in nextLine(), avoiding
+  // a y*H_PIXEL multiply on every one of the 160 visible clocks per line
+  myCurrentRowPtr[x] = color;
+  if (myIsLayoutDetector) [[unlikely]]
     myFrameManager->pixelColor(color);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// Drop the line-cache fast path and replay the partial current line so
+// subsequent ticks see correct sprite-counter state. Always safe to call —
+// when nothing has actually changed, replay just rebuilds the same state.
+//
+// Call sites that guard with "if (newValue != oldValue)" or similar are
+// doing so as an optimization (avoiding a needless replay), not because
+// flushing on a no-op write would be incorrect.
 void TIA::flushLineCache()
 {
   const bool wasCaching = myLinesSinceChange >= 2;
@@ -1850,7 +2015,7 @@ void TIA::flushLineCache()
     const auto rewindCycles = myHctr;
 
     for (myHctr = 0; myHctr < rewindCycles; ++myHctr) {
-      if (myHstate == HState::blank)
+      if (myHstate == HState::blank) [[unlikely]]
         tickHblank();
       else
         tickHframe();
@@ -1943,8 +2108,33 @@ void TIA::setBlShortLateHMove(bool enable)
   myBall.setShortLateHMove(enable);
 }
 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::setPlLateRespx(bool enable)
+{
+  myPlayer0.setLateRespx(enable);
+  myPlayer1.setLateRespx(enable);
+}
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::setMsLateRespx(bool enable)
+{
+  myMissile0.setLateRespx(enable);
+  myMissile1.setLateRespx(enable);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::setBlLateRespx(bool enable)
+{
+  myBall.setLateRespx(enable);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// Executor for DelayQueue entries: dispatched once per color clock from
+// cycle() when an entry's slot comes due. Real register writes update the
+// shadow register here (so the debugger sees the value once it has taken
+// effect); DummyRegisters::shuffle* are pseudo-addresses (see TIA.hxx)
+// that don't correspond to real TIA registers and are skipped by the
+// shadow update.
 void TIA::delayedWrite(uInt8 address, uInt8 value)
 {
   if (address < 64)
@@ -1953,11 +2143,16 @@ void TIA::delayedWrite(uInt8 address, uInt8 value)
   switch (address)
   {
     case VBLANK:
+      // VBLANK gates updateCollision and (via the frame manager) the visible
+      // window; a mid-line transition changes what subsequent pixels do.
       flushLineCache();
       myFrameManager->setVblank(value & 0x02, myTimestamp / 3);
       break;
 
     case HMOVE:
+      // HMOVE extends HBLANK by 8 clocks, paints the comb pattern, and
+      // arms movement on every sprite — none of these can be reused from
+      // a cloned line.
       flushLineCache();
 
       myMovementClock = 0;
@@ -2095,6 +2290,11 @@ void TIA::updateAnalogReadout(uInt8 idx)
       throw std::runtime_error("invalid analog input");
   }
 
+  if (connection == myLastAnalogConnections[idx])
+    return;
+
+  myLastAnalogConnections[idx] = connection;
+  updateEmulation();
   myAnalogReadouts[idx].update(
     connection,
     myTimestamp,
@@ -2335,19 +2535,25 @@ void TIA::increaseAccessCounter(uInt16 address, bool isWrite)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string TIA::getAccessCounters() const
 {
-  std::ostringstream out;
+  string out;
 
-  out << "TIA reads:\n";
+  out += "TIA reads:\n";
   for(uInt16 addr = 0x00; addr < TIA_READ_SIZE; ++addr)
-    out << Common::Base::HEX4 << addr << ","
-    << Common::Base::toString(myAccessCounter[TIA_SIZE + addr], Common::Base::Fmt::_10_8) << ", ";
-  out << "\n";
-  out << "TIA writes:\n";
-  for(uInt16 addr = 0x00; addr < TIA_SIZE; ++addr)
-    out << Common::Base::HEX4 << addr << ","
-    << Common::Base::toString(myAccessCounter[addr], Common::Base::Fmt::_10_8) << ", ";
-  out << "\n";
+    out += std::format("{},{}, ",
+      Common::Base::toString(addr, Common::Base::Fmt::_16_4),
+      Common::Base::toString(myAccessCounter[TIA_SIZE + addr],
+                             Common::Base::Fmt::_10_8));
+  out += "\n";
 
-  return out.str();
+  out += "TIA writes:\n";
+  for(uInt16 addr = 0x00; addr < TIA_SIZE; ++addr)
+    out += std::format("{},{}, ",
+      Common::Base::toString(addr, Common::Base::Fmt::_16_4),
+      Common::Base::toString(myAccessCounter[addr],
+                             Common::Base::Fmt::_10_8));
+  out += "\n";
+
+  return out;
 }
-#endif // DEBUGGER_SUPPORT
+
+#endif  // DEBUGGER_SUPPORT

@@ -48,6 +48,7 @@ void Player::reset()
   myInvertedPhaseClock = false;
   myUseInvertedPhaseClock = false;
   myUseShortLateHMove = false;
+  myUseLateRespx = false;
   myPattern = 0;
 
   setDivider(1);
@@ -60,6 +61,10 @@ void Player::grp(uInt8 pattern)
 
   myPatternNew = pattern;
 
+  // Without VDEL the new pattern is what's actually rendered — flush when
+  // it really differs. (With VDEL, the live pattern is myPatternOld until
+  // shufflePatterns latches the new one, so no flush is needed here.)
+  // The guards on this branch are optimizations; see TIA::flushLineCache.
   if (!myIsDelaying && myPatternNew != oldPatternNew) {
     myTIA->flushLineCache();
     updatePattern();
@@ -171,8 +176,11 @@ void Player::nusiz(uInt8 value, bool hblank)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Player::resp(uInt8 counter)
+void Player::resp(uInt8 counter, bool lateRespxCondition)
 {
+  if (myUseLateRespx && lateRespxCondition)
+    counter = (counter + TIAConstants::H_PIXEL - 1) % TIAConstants::H_PIXEL;
+
   myCounter = counter;
 
   // This tries to account for the effects of RESP during draw counter decode as
@@ -189,6 +197,9 @@ void Player::refp(uInt8 value)
   myIsReflected = (value & 0x08) > 0;
 
   if (oldIsReflected != myIsReflected) {
+    // REFP changed: updatePattern() will re-bit-reverse myPattern, so
+    // anything already drawn this line was rendered with the wrong bit
+    // order. The "if changed" guard is just an optimization.
     myTIA->flushLineCache();
     updatePattern();
   }
@@ -202,6 +213,8 @@ void Player::vdelp(uInt8 value)
   myIsDelaying = (value & 0x01) > 0;
 
   if (oldIsDelaying != myIsDelaying) {
+    // VDEL flip switches which of myPatternOld/New is rendered — the live
+    // pattern source changes mid-line. Guarded optimization.
     myTIA->flushLineCache();
     updatePattern();
   }
@@ -226,6 +239,10 @@ void Player::toggleCollisions(bool enabled)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Player::setColor(uInt8 color)
 {
+  // Color may have changed mid-line — cached pixels used the old value.
+  // The extra "&& myPattern" guard is an optimization: when the pattern is
+  // empty the player isn't emitting, so the color isn't on screen anyway.
+  // Flushing unconditionally would also be correct (see TIA::flushLineCache).
   if (color != myObjectColor && myPattern) myTIA->flushLineCache();
 
   myObjectColor = color;
@@ -235,6 +252,8 @@ void Player::setColor(uInt8 color)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Player::setDebugColor(uInt8 color)
 {
+  // Debug palette override changed — any pixels drawn this line used the
+  // previous override.
   myTIA->flushLineCache();
   myDebugColor = color;
   applyColors();
@@ -243,6 +262,7 @@ void Player::setDebugColor(uInt8 color)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Player::enableDebugColors(bool enabled)
 {
+  // Toggling debug colors switches the rendered color source.
   myTIA->flushLineCache();
   myDebugEnabled = enabled;
   applyColors();
@@ -251,6 +271,7 @@ void Player::enableDebugColors(bool enabled)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Player::applyColorLoss()
 {
+  // PAL color-loss flips the LSB of the rendered color.
   myTIA->flushLineCache();
   applyColors();
 }
@@ -265,6 +286,12 @@ void Player::setInvertedPhaseClock(bool enable)
 void Player::setShortLateHMove(bool enable)
 {
   myUseShortLateHMove = enable;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Player::setLateRespx(bool enable)
+{
+  myUseLateRespx = enable;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -289,6 +316,8 @@ void Player::shufflePatterns()
 
   myPatternOld = myPatternNew;
 
+  // With VDEL active myPatternOld is the live pattern — latching a
+  // different value mid-line changes what gets drawn from here on.
   if (myIsDelaying && myPatternOld != oldPatternOld) {
     myTIA->flushLineCache();
     updatePattern();
@@ -317,6 +346,7 @@ uInt8 Player::getRespClock() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Player::setGRPOld(uInt8 pattern)
 {
+  // Debugger-only direct write into the VDEL-old pattern slot.
   myTIA->flushLineCache();
 
   myPatternOld = pattern;
@@ -348,7 +378,6 @@ void Player::updatePattern()
 
   if (myIsRendering && myRenderCounter >= myRenderCounterTripPoint) {
     collision = (myPattern & (1 << mySampleCounter)) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
-    myTIA->scheduleCollisionUpdate();
   }
 }
 
@@ -411,6 +440,9 @@ uInt8 Player::getPosition() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Player::setPosition(uInt8 newPosition)
 {
+  // Debugger-only direct move — the position counter is the live source
+  // for the next decode, so any cached line for the current scanline is
+  // about to disagree with reality.
   myTIA->flushLineCache();
 
   const uInt8 shift = myDivider == 1 ? 0 : 1;
@@ -456,6 +488,7 @@ bool Player::save(Serializer& out) const
     out.putBool(myIsReflected);
     out.putBool(myIsDelaying);
     out.putBool(myInvertedPhaseClock);
+    out.putBool(myUseLateRespx);
   }
   catch(...)
   {
@@ -504,6 +537,7 @@ bool Player::load(Serializer& in)
     myIsReflected = in.getBool();
     myIsDelaying = in.getBool();
     myInvertedPhaseClock = in.getBool();
+    myUseLateRespx = in.getBool();
 
     applyColors();
   }

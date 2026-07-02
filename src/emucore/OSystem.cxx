@@ -29,15 +29,12 @@
 #endif
 #ifdef GUI_SUPPORT
   #include "BrowserDialog.hxx"
-  #include "OptionsMenu.hxx"
-  #include "CommandMenu.hxx"
-  #include "HighScoresMenu.hxx"
-  #include "MessageMenu.hxx"
-  #include "PlusRomsMenu.hxx"
+  #include "OverlayMenu.hxx"
   #include "Launcher.hxx"
   #include "TimeMachine.hxx"
 #endif
 
+#include "AsciiFold.hxx"
 #include "FSNode.hxx"
 #include "MD5.hxx"
 #include "Cart.hxx"
@@ -93,10 +90,8 @@ OSystem::OSystem()
   #endif
 
   // Get build info
-  std::ostringstream info;
-  info << "Build " << STELLA_BUILD << ", using " << MediaFactory::backendName()
-       << " [" << BSPF::ARCH << "]";
-  myBuildInfo = info.view();
+  myBuildInfo = std::format("Build {}, using {} [{}]",
+    STELLA_BUILD, MediaFactory::backendName(), BSPF::ARCH);
 
   mySettings = MediaFactory::createSettings();
 
@@ -124,23 +119,25 @@ bool OSystem::initialize(const Settings::Options& options)
 
   Logger::debug("Creating the OSystem ...");
 
-  std::ostringstream buf;
-  buf << "Stella " << STELLA_VERSION << '\n'
-      << "  Features: " << myFeatures << '\n'
-      << "  " << myBuildInfo << "\n\n"
-      << "Base directory:     '"
-      << myBaseDir.getShortPath() << "'\n"
-      << "State directory:    '"
-      << myStateDir.getShortPath() << "'\n"
-      << "NVRam directory:    '"
-      << myNVRamDir.getShortPath() << "'\n"
-      << "Persistence:        '"
-      << describePresistence() << "'\n"
-      << "Cheat file:         '"
-      << myCheatFile.getShortPath() << "'\n"
-      << "Palette file:       '"
-      << myPaletteFile.getShortPath() << "'\n";
-  Logger::info(buf.view());
+  Logger::info(std::format(
+    "Stella {}\n"
+    "  Features: {}\n"
+    "  {}\n\n"
+    "Base directory:     '{}'\n"
+    "State directory:    '{}'\n"
+    "NVRam directory:    '{}'\n"
+    "Persistence:        '{}'\n"
+    "Cheat file:         '{}'\n"
+    "Palette file:       '{}'\n",
+    STELLA_VERSION,
+    myFeatures,
+    myBuildInfo,
+    AsciiFold::toAscii(myBaseDir.getShortPath()),
+    AsciiFold::toAscii(myStateDir.getShortPath()),
+    AsciiFold::toAscii(myNVRamDir.getShortPath()),
+    AsciiFold::toAscii(describePersistence()),
+    AsciiFold::toAscii(myCheatFile.getShortPath()),
+    AsciiFold::toAscii(myPaletteFile.getShortPath())));
 
   // NOTE: The framebuffer MUST be created before any other object!!!
   // Get relevant information about the video hardware
@@ -172,7 +169,8 @@ bool OSystem::initialize(const Settings::Options& options)
   createSound();
 
   // Create random number generator
-  myRandom = std::make_unique<Random>(static_cast<uInt32>(TimerManager::getTicks()));
+  const int seed = mySettings->getInt("seed");
+  myRandom = std::make_unique<Random>(seed ? seed : static_cast<uInt32>(TimerManager::getTicks()));
 
 #ifdef CHEATCODE_SUPPORT
   myCheatManager = std::make_unique<CheatManager>(*this);
@@ -181,12 +179,8 @@ bool OSystem::initialize(const Settings::Options& options)
 
 #ifdef GUI_SUPPORT
   // Create various subsystems (menu and launcher GUI objects, etc)
-  myOptionsMenu = std::make_unique<OptionsMenu>(*this);
-  myCommandMenu = std::make_unique<CommandMenu>(*this);
   myHighScoresManager = std::make_unique<HighScoresManager>(*this);
-  myHighScoresMenu = std::make_unique<HighScoresMenu>(*this);
-  myMessageMenu = std::make_unique<MessageMenu>(*this);
-  myPlusRomMenu = std::make_unique<PlusRomsMenu>(*this);
+  myOverlayMenu = std::make_unique<OverlayMenu>(*this);
   myTimeMachine = std::make_unique<TimeMachine>(*this);
   myLauncher = std::make_unique<Launcher>(*this);
 
@@ -273,16 +267,15 @@ void OSystem::setConfigPaths()
   // Make sure all required directories actually exist
   const auto buildDirIfRequired = [](FSNode& path,
                                      const FSNode& initialPath,
-                                     string_view pathToAppend = EmptyString())
+                                     string_view pathToAppend = {})
   {
     path = initialPath;
-    if(pathToAppend != EmptyString())
+    if(!pathToAppend.empty())
       path /= pathToAppend;
     if(!path.isDirectory())
       path.makeDir();
   };
 
-  buildDirIfRequired(myStateDir, myBaseDir, "state");
   buildDirIfRequired(myNVRamDir, myBaseDir, "nvram");
 #ifdef DEBUGGER_SUPPORT
   buildDirIfRequired(myCfgDir, myBaseDir, "cfg");
@@ -290,23 +283,34 @@ void OSystem::setConfigPaths()
 
   myCheatFile = myBaseDir;  myCheatFile /= "stella.cht";
   myPaletteFile = myBaseDir;  myPaletteFile /= "stella.pal";
+}
 
-#if 0
-  // Debug code
-  auto dbgPath = [](string_view desc, const FSNode& location)
-  {
-    cerr << desc << ": " << location << '\n';
-  };
-  dbgPath("base dir  ", myBaseDir);
-  dbgPath("state dir ", myStateDir);
-  dbgPath("nvram dir ", myNVRamDir);
-  dbgPath("cfg dir   ", myCfgDir);
-  dbgPath("ssave dir ", mySnapshotSaveDir);
-  dbgPath("sload dir ", mySnapshotLoadDir);
-  dbgPath("bezel dir ", myBezelDir);
-  dbgPath("cheat file", myCheatFile);
-  dbgPath("pal file  ", myPaletteFile);
-#endif
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+const FSNode& OSystem::stateDir()
+{
+  if(mySettings->getBool("statewithrom") && myRomFile.isFile())
+    myStateDir = myRomFile.getParent();
+  else
+    myStateDir = configuredStateDir();
+  if(!myStateDir.isDirectory())
+    myStateDir.makeDir();
+
+  return myStateDir;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+FSNode OSystem::configuredStateDir() const
+{
+  const string_view sDir = mySettings->getString("statedir");
+  return sDir.empty() ? defaultStateDir() : FSNode(sDir);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+FSNode OSystem::defaultStateDir() const
+{
+  FSNode node = myBaseDir;
+  node /= "state";
+  return node;
 }
 
 #ifdef IMAGE_SUPPORT
@@ -314,7 +318,7 @@ void OSystem::setConfigPaths()
 const FSNode& OSystem::snapshotSaveDir()
 {
   const string_view ssSaveDir = mySettings->getString("snapsavedir");
-  if(ssSaveDir == EmptyString())
+  if(ssSaveDir.empty())
     mySnapshotSaveDir = userDir();
   else
     mySnapshotSaveDir = FSNode(ssSaveDir);
@@ -328,7 +332,7 @@ const FSNode& OSystem::snapshotSaveDir()
 const FSNode& OSystem::snapshotLoadDir()
 {
   const string_view ssLoadDir = mySettings->getString("snaploaddir");
-  if(ssLoadDir == EmptyString())
+  if(ssLoadDir.empty())
     mySnapshotLoadDir = userDir();
   else
     mySnapshotLoadDir = FSNode(ssLoadDir);
@@ -342,7 +346,7 @@ const FSNode& OSystem::snapshotLoadDir()
 const FSNode& OSystem::bezelDir()
 {
   const string_view bezelDir = mySettings->getString("bezel.dir");
-  if(bezelDir == EmptyString())
+  if(bezelDir.empty())
     myBezelDir = userDir();
   else
     myBezelDir = FSNode(bezelDir);
@@ -351,7 +355,7 @@ const FSNode& OSystem::bezelDir()
 
   return myBezelDir;
 }
-#endif
+#endif  // IMAGE_SUPPORT
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void OSystem::setUserDir(string_view path)
@@ -366,7 +370,7 @@ bool OSystem::checkUserPalette(bool outputError) const
 {
   try
   {
-    ByteBuffer palette;
+    ByteArray palette;
     const size_t size = paletteFile().read(palette);
 
     // Make sure the contains enough data for the NTSC, PAL and SECAM palettes
@@ -394,18 +398,6 @@ FBInitStatus OSystem::createFrameBuffer()
   FBInitStatus fbstatus = FBInitStatus::FailComplete;
   switch(myEventHandler->state())
   {
-    case EventHandlerState::EMULATION:
-    case EventHandlerState::PAUSE:
-  #ifdef GUI_SUPPORT
-    case EventHandlerState::OPTIONSMENU:
-    case EventHandlerState::CMDMENU:
-    case EventHandlerState::TIMEMACHINE:
-  #endif
-    case EventHandlerState::PLAYBACK:
-      if(fbstatus = myConsole->initializeVideo(); fbstatus != FBInitStatus::Success)
-        return fbstatus;
-      break;
-
   #ifdef GUI_SUPPORT
     case EventHandlerState::LAUNCHER:
       if(fbstatus = myLauncher->initializeVideo(); fbstatus != FBInitStatus::Success)
@@ -420,9 +412,18 @@ FBInitStatus OSystem::createFrameBuffer()
       break;
   #endif
 
-    case EventHandlerState::NONE:  // Should never happen
     default:
-      Logger::error("ERROR: Unknown emulation state in createFrameBuffer()");
+      // Console states from which a video rebuild can be triggered: emulation,
+      // pause, playback, time machine, and the Options/Command menus (both
+      // expose video settings). hasConsole() is a defensive guard; no other
+      // state reaches here.
+      if(hasConsole())
+      {
+        if(fbstatus = myConsole->initializeVideo(); fbstatus != FBInitStatus::Success)
+          return fbstatus;
+      }
+      else
+        Logger::error("ERROR: No console in createFrameBuffer()");
       break;
   }
   return fbstatus;
@@ -459,11 +460,14 @@ string OSystem::createConsole(const FSNode& rom, string_view md5sum, bool newrom
     mySettings->setValue("romloadcount", -1); // we move to the next game initially
   }
 
+  // Seed the default phosphor blend from the current global 'tv.phosblend',
+  // so a ROM whose 'Display.PPBlend' is unset inherits it when its properties
+  // are loaded below
+  Properties::setDefault(PropType::Display_PPBlend,
+                         mySettings->getString(PhosphorHandler::SETTING_BLEND));
+
   // Create an instance of the 2600 game console
-  std::ostringstream buf;
-
   myEventHandler->handleConsoleStartupEvents();
-
   try
   {
     closeConsole();
@@ -471,9 +475,9 @@ string OSystem::createConsole(const FSNode& rom, string_view md5sum, bool newrom
   }
   catch(const std::runtime_error& e)
   {
-    buf << "ERROR: " << e.what();
-    Logger::error(buf.view());
-    return buf.str();
+    const string err = std::format("ERROR: {}", e.what());
+    Logger::error(err);
+    return err;
   }
 
   if(myConsole)
@@ -513,13 +517,14 @@ string OSystem::createConsole(const FSNode& rom, string_view md5sum, bool newrom
         myFrameBuffer->showTextMessage("Multicart " +
           myConsole->cartridge().detectedType() + ", loading ROM" + id);
     }
-    buf << "Game console created:\n"
-        << "  ROM file: " << myRomFile.getShortPath() << '\n';
-    const FSNode propsFile(myRomFile.getPathWithExt(".pro"));
+    const FSNode propsFile = myRomFile.getSiblingNode(".pro");
+    string info = std::format("Game console created:\n  ROM file: {}\n",
+      myRomFile.getShortPath());
     if(propsFile.exists())
-      buf << "  PRO file: " << propsFile.getShortPath() << '\n';
-    buf << '\n' << getROMInfo(*myConsole);
-    Logger::info(buf.view());
+      info += std::format("  PRO file: {}\n", propsFile.getShortPath());
+    info += '\n';
+    info += getROMInfo(*myConsole);
+    Logger::info(info);
 
     myFrameBuffer->setCursorState();
 
@@ -535,52 +540,46 @@ string OSystem::createConsole(const FSNode& rom, string_view md5sum, bool newrom
     {
       if(settings().getBool(devSettings ? "dev.detectedinfo" : "plr.detectedinfo"))
       {
-        std::ostringstream msg;
-
-        msg << myConsole->leftController().name() << "/" << myConsole->rightController().name()
-          << " - " << myConsole->cartridge().detectedType()
-          << (myConsole->cartridge().isPlusROM() ? " PlusROM " : "")
-          << " - " << myConsole->getFormatString();
-        myFrameBuffer->showTextMessage(msg.view());
+        myFrameBuffer->showTextMessage(std::format("{}/{} - {}{} - {}",
+          myConsole->leftController().name(),
+          myConsole->rightController().name(),
+          myConsole->cartridge().detectedType(),
+          myConsole->cartridge().isPlusROM() ? " PlusROM " : "",
+          myConsole->getFormatString()));
       }
       else if(!myLauncherUsed)
-      {
-        std::ostringstream msg;
-
-        msg << "Stella " << STELLA_VERSION;
-        myFrameBuffer->showTextMessage(msg.view());
-      }
+        myFrameBuffer->showTextMessage(std::format("Stella {}", STELLA_VERSION));
     }
 
     // Check for first PlusROM start
     if(myConsole->cartridge().isPlusROM())
     {
-      if(settings().getString("plusroms.fixedid") == EmptyString())
+      if(settings().getString("plusroms.fixedid").empty())
       {
         // Make sure there always is an id
-        constexpr int ID_LEN = 32;
-        constexpr string_view HEX_DIGITS{ "0123456789ABCDEF" };
-        char id_chr[ID_LEN] = { 0 };
+        constexpr string_view HEX_DIGITS{"0123456789ABCDEF"};
+        std::array<char, 32> id_chr{};
         const Random rnd;
+        std::ranges::generate(id_chr,
+          [&]{ return HEX_DIGITS[rnd.next() % 16]; });
 
-        for(char& c : id_chr)
-          c = HEX_DIGITS[rnd.next() % 16];
-
-        settings().setValue("plusroms.fixedid", string(id_chr, ID_LEN));
+        settings().setValue("plusroms.fixedid",
+                            string_view{id_chr.data(), id_chr.size()});
 
         myEventHandler->changeStateByEvent(Event::PlusRomsSetupMode);
       }
 
       string id = settings().getString("plusroms.id");
 
-      if(id == EmptyString())
+      if(id.empty())
         id = settings().getString("plusroms.fixedid");
 
-      Logger::info("PlusROM Nick: " + settings().getString("plusroms.nick") + ", ID: " + id);
+      Logger::info(std::format("PlusROM Nick: {}, ID: {}",
+        settings().getString("plusroms.nick"), id));
     }
   }
 
-  return EmptyString();
+  return string{};
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -588,9 +587,9 @@ std::optional<string> OSystem::reloadConsole(bool nextrom)
 {
   mySettings->setValue("romloadprev", !nextrom);
 
-  const string result = createConsole(myRomFile, myRomMD5, false);
+  const auto result = createConsole(myRomFile, myRomMD5, false);
 
-  return result == EmptyString() ? std::nullopt : std::optional<string>(result);
+  return result.empty() ? std::nullopt : std::optional<string>(result);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -650,9 +649,7 @@ string OSystem::getROMInfo(const FSNode& romfile)
   }
   catch(const std::runtime_error& e)
   {
-    std::ostringstream buf;
-    buf << "ERROR: Couldn't get ROM info (" << e.what() << ")";
-    return buf.str();
+    return std::format("ERROR: Couldn't get ROM info ({})", e.what());
   }
 
   return getROMInfo(*console);
@@ -676,9 +673,16 @@ unique_ptr<Console> OSystem::openConsole(const FSNode& romfile, string& md5)
 {
   unique_ptr<Console> console;
 
+  // WAV/MP3 files don't need a ROM image; CartCreator handles them via PCM loading
+  const bool isSoundLoad = romfile.hasExtension({".mp3", ".wav"});
+
   // Open the cartridge image and read it in
-  size_t size = 0;
-  if(const ByteBuffer image = openROM(romfile, md5, size); image != nullptr)
+  ByteArray image;
+  if(isSoundLoad)
+    md5 = MD5::hash(romfile.getPath());  // no image to hash; derive from path
+  else
+    image = openROM(romfile, md5);
+  if(isSoundLoad || !image.empty())
   {
     // Get a valid set of properties, including any entered on the commandline
     // For initial creation of the Cart, we're only concerned with the BS type
@@ -698,7 +702,7 @@ unique_ptr<Console> OSystem::openConsole(const FSNode& romfile, string& md5)
 
     // Now create the cartridge
     string cartmd5 = md5;
-    const string& type = props.get(PropType::Cart_Type);
+    string_view type = props.get(PropType::Cart_Type);
     const Cartridge::messageCallback callback = [&os = *this](string_view msg)
     {
       const bool devSettings = os.settings().getBool("dev.settings");
@@ -708,22 +712,26 @@ unique_ptr<Console> OSystem::openConsole(const FSNode& romfile, string& md5)
     };
 
     unique_ptr<Cartridge> cart =
-      CartCreator::create(romfile, image, size, cartmd5, type, *mySettings);
+      CartCreator::create(romfile, image, cartmd5, type, *mySettings, myBaseDir);
     cart->setMessageCallback(callback);
 
     // Some properties may not have a name set; we can't leave it blank
-    if(props.get(PropType::Cart_Name) == EmptyString())
-      props.set(PropType::Cart_Name, romfile.getNameWithExt(""));
+    if(props.get(PropType::Cart_Name).empty())
+      props.set(PropType::Cart_Name, romfile.getBaseName());
 
     // It's possible that the cart created was from a piece of the image,
     // and that the md5 (and hence the cart) has changed
     if(props.get(PropType::Cart_MD5) != cartmd5)
     {
+      // getMD5 resets props to defaults before searching, so save the name
+      // derived above so it isn't lost when the lookup finds no entry
+      const string savedName{props.get(PropType::Cart_Name)};
       if(!myPropSet->getMD5(cartmd5, props))
       {
         // Cart md5 wasn't found, so we create a new props for it
         props.set(PropType::Cart_MD5, cartmd5);
-        props.set(PropType::Cart_Name, props.get(PropType::Cart_Name)+cart->multiCartID());
+        props.set(PropType::Cart_Name, std::format("{}{}", savedName,
+                                                   cart->multiCartID()));
         myPropSet->insert(props, false);
       }
     }
@@ -735,12 +743,13 @@ unique_ptr<Console> OSystem::openConsole(const FSNode& romfile, string& md5)
     CMDLINE_PROPS_UPDATE("rc", PropType::Controller_Right);
     CMDLINE_PROPS_UPDATE("rq1", PropType::Controller_Right1);
     CMDLINE_PROPS_UPDATE("rq2", PropType::Controller_Right2);
-    const string& bc = mySettings->getString("bc");
-    if(!bc.empty()) {
+    const string_view bc = mySettings->getString("bc");
+    if(!bc.empty())
+    {
       props.set(PropType::Controller_Left, bc);
       props.set(PropType::Controller_Right, bc);
     }
-    const string& aq = mySettings->getString("aq");
+    const string_view aq = mySettings->getString("aq");
     if(!aq.empty())
     {
       props.set(PropType::Controller_Left1, aq);
@@ -784,42 +793,43 @@ void OSystem::closeConsole()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteBuffer OSystem::openROM(const FSNode& rom, string& md5, size_t& size)
+ByteArray OSystem::openROM(const FSNode& rom, string& md5)
 {
   // This method has a documented side-effect:
   // It not only loads a ROM and creates an array with its contents,
   // but also adds a properties entry if the one for the ROM doesn't
   // contain a valid name
 
-  ByteBuffer image = openROM(rom, size, true);  // handle error message here
-  if(image)
+  ByteArray image = openROM(rom, true);  // handle error message here
+  if(!image.empty())
   {
     // If we get to this point, we know we have a valid file to open
     // Now we make sure that the file has a valid properties entry
     // To save time, only generate an MD5 if we really need one
     if(md5.empty())
-      md5 = MD5::hash(image, size);
+      md5 = MD5::hash(image);
 
     // Make sure to load a per-ROM properties entry, if one exists
     myPropSet->loadPerROM(rom, md5);
   }
-
   return image;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string OSystem::getROMMD5(const FSNode& rom)
 {
-  size_t size = 0;
-  const ByteBuffer image = openROM(rom, size, false);  // ignore error message
+  const ByteArray image = openROM(rom, false);  // ignore error message
 
-  return image ? MD5::hash(image, size) : EmptyString();
+  return image.empty() ? string{} : MD5::hash(image);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteBuffer OSystem::openROM(const FSNode& rom, size_t& size,
-                            bool showErrorMessage)
+ByteArray OSystem::openROM(const FSNode& rom, bool showErrorMessage)
 {
+  // WAV/MP3 files are loaded via CartCreator::createFromSoundLoad, not as raw images
+  if(rom.hasExtension({".mp3", ".wav"}))
+    return {};
+
   // First check if this is a valid ROM filename
   const bool isValidROM = rom.isFile() && Bankswitch::isValidRomName(rom);
   if(!isValidROM && showErrorMessage)
@@ -828,8 +838,8 @@ ByteBuffer OSystem::openROM(const FSNode& rom, size_t& size,
   // Next check for a proper file size
   // Streaming ROMs read only a portion of the file
   // Otherwise the size to read is 0 (meaning read the entire file)
-  const size_t sizeToRead = CartDetector::isProbablyMVC(rom);  // TODO: optimize this
-  const bool isStreaming = sizeToRead > 0;
+  const size_t sizeToRead = CartDetector::isProbablyMVC(rom);
+  const bool isStreaming  = sizeToRead > 0;
 
   // Make sure we only read up to the maximum supported cart size
   const bool isValidSize = isValidROM && (isStreaming ||
@@ -839,22 +849,21 @@ ByteBuffer OSystem::openROM(const FSNode& rom, size_t& size,
     if(showErrorMessage)
       throw std::runtime_error("ROM file too large");
     else
-      return nullptr;
+      return {};
   }
 
   // Now we can try to open the file
-  ByteBuffer image;
+  ByteArray image;
   try
   {
-    if(size = rom.read(image, sizeToRead); size == 0)
-      return nullptr;
+    if(rom.read(image, sizeToRead) == 0)
+      return {};
   }
   catch(const std::runtime_error&)
   {
     if(showErrorMessage)  // If caller wants error messages, pass it back
       throw;
   }
-
   return image;
 }
 
@@ -862,16 +871,17 @@ ByteBuffer OSystem::openROM(const FSNode& rom, size_t& size,
 string OSystem::getROMInfo(const Console& console)
 {
   const ConsoleInfo& info = console.about();
-  std::ostringstream buf;
 
-  buf << "  Cart Name:       " << info.CartName << '\n'
-      << "  Cart MD5:        " << info.CartMD5 << '\n'
-      << "  Controller 0:    " << info.Control0 << '\n'
-      << "  Controller 1:    " << info.Control1 << '\n'
-      << "  Display Format:  " << info.DisplayFormat << '\n'
-      << "  Bankswitch Type: " << info.BankSwitch << '\n';
-
-  return buf.str();
+  return std::format(
+    "  Cart Name:       {}\n"
+    "  Cart MD5:        {}\n"
+    "  Controller 0:    {}\n"
+    "  Controller 1:    {}\n"
+    "  Display Format:  {}\n"
+    "  Bankswitch Type: {}\n",
+    info.CartName, info.CartMD5,
+    info.Control0, info.Control1,
+    info.DisplayFormat, info.BankSwitch);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -978,11 +988,23 @@ void OSystem::mainLoop()
       virtualTime = high_resolution_clock::now();
     }
 
-    double timesliceSeconds;  // NOLINT
+    double timesliceSeconds;  // NOLINT(cppcoreguidelines-init-variables)
 
     if (myEventHandler->state() == EventHandlerState::EMULATION)
+    {
       // Dispatch emulation and render frame (if applicable)
       timesliceSeconds = dispatchEmulation(emulationWorker);
+    #ifdef IMAGE_SUPPORT
+      if(mySnapshotFrames > 0) [[unlikely]]
+      {
+        if(--mySnapshotFrames == 0)
+        {
+          myPNGLib->takeSnapshot();
+          myQuitLoop = true;
+        }
+      }
+    #endif
+    }
     else if(myEventHandler->state() == EventHandlerState::PLAYBACK)
     {
       // Playback at emulation speed
@@ -1026,7 +1048,3 @@ void OSystem::mainLoop()
   myCheatManager->saveCheatDatabase();
 #endif
 }
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-string OSystem::ourOverrideBaseDir;
-bool OSystem::ourOverrideBaseDirWithApp = false;

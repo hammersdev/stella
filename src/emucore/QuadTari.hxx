@@ -51,7 +51,7 @@ class QuadTari : public Controller
     ~QuadTari() override = default;
 
   public:
-     using Controller::read;
+    using Controller::read;
 
     /**
       Read the value of the specified digital pin for this controller.
@@ -93,10 +93,9 @@ class QuadTari : public Controller
     const Controller& secondController() const { return *mySecondController; }
 
     /**
-      Answers whether the controller is intrinsically an analog controller.
-      Depends on the attached controllers.
+      Whether the mouse should be used; depends on the attached controllers.
     */
-    bool isAnalog() const override;
+    bool usesMouse() const override;
 
     /**
       Determines how this controller will treat values received from the
@@ -137,4 +136,4 @@ class QuadTari : public Controller
     QuadTari& operator=(QuadTari&&) = delete;
   };
 
-#endif
+#endif  // QUADTARI_HXX

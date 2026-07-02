@@ -40,7 +40,7 @@
 namespace GUI {
 
 // Font character bitmap data.
-static const uInt16 consoleMedium_font_bits[] = {  // NOLINT : too complicated to convert
+static const uInt16 consoleMedium_font_bits[] = {
 
   /* MODIFIED
   Character 29 (0x1d): ellipsis
@@ -3789,4 +3789,4 @@ static const FontDesc consoleMediumDesc = {
 
 } // End of namespace GUI
 
-#endif
+#endif  // CONSOLEMEDIUM_FONT_DATA_HXX

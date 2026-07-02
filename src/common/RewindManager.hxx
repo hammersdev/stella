@@ -51,6 +51,7 @@ class RewindManager
     ~RewindManager() = default;
 
   public:
+    static constexpr uInt32 MIN_BUF_SIZE = 20;
     static constexpr uInt32 MAX_BUF_SIZE = 1000;
     static constexpr int NUM_INTERVALS = 7;
     // cycle values for the intervals
@@ -64,7 +65,7 @@ class RewindManager
       76 * 262 * 60 * 10
     };
     // settings values for the intervals
-    const std::array<string, NUM_INTERVALS> INT_SETTINGS = {
+    static constexpr std::array<string_view, NUM_INTERVALS> INT_SETTINGS = {
       "1f",
       "3f",
       "10f",
@@ -75,7 +76,7 @@ class RewindManager
     };
 
     static constexpr int NUM_HORIZONS = 8;
-    // cycle values for the horzions
+    // cycle values for the horizons
     static constexpr std::array<uInt64, NUM_HORIZONS> HORIZON_CYCLES = {
       uInt64{76} * 262 * 60 * 3,
       uInt64{76} * 262 * 60 * 10,
@@ -86,8 +87,8 @@ class RewindManager
       uInt64{76} * 262 * 60 * 60 * 30,
       uInt64{76} * 262 * 60 * 60 * 60
     };
-    // settings values for the horzions
-    const std::array<string, NUM_HORIZONS> HOR_SETTINGS = {
+    // settings values for the horizons
+    static constexpr std::array<string_view, NUM_HORIZONS> HOR_SETTINGS = {
       "3s",
       "10s",
       "30s",
@@ -154,8 +155,8 @@ class RewindManager
     */
     string getUnitString(Int64 cycles);
 
-    uInt32 getCurrentIdx() { return myStateList.currentIdx(); }
-    uInt32 getLastIdx() { return myStateList.size(); }
+    uInt32 getCurrentIdx() const { return myStateList.currentIdx(); }
+    uInt32 getLastIdx() const { return myStateList.size(); }
 
     uInt64 getFirstCycles() const;
     uInt64 getCurrentCycles() const;
@@ -189,14 +190,19 @@ class RewindManager
       RewindState() = default;
       ~RewindState() = default;
       RewindState(const RewindState& rs) : cycles(rs.cycles) { }
-      RewindState& operator= (const RewindState& rs) { cycles = rs.cycles; return *this; }  // NOLINT: we don't worry about self-assignment here
+      RewindState& operator=(const RewindState& rs) {
+        if(this != &rs)
+          cycles = rs.cycles;
+        return *this;
+      }
       RewindState(RewindState&&) = delete;
       RewindState& operator=(RewindState&&) = delete;
 
-      // Output object info; used for debugging only
+    #ifdef DEBUG_BUILD
       friend std::ostream& operator<<(std::ostream& os, const RewindState& s) {
         return os << "msg: " << s.message << "   cycle: " << s.cycles;
       }
+    #endif
     };
 
     // The linked-list to store states (internally it takes care of reducing
@@ -224,4 +230,4 @@ class RewindManager
     RewindManager& operator=(RewindManager&&) = delete;
 };
 
-#endif
+#endif  // REWIND_MANAGER_HXX

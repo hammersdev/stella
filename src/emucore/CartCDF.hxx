@@ -77,13 +77,11 @@ class CartridgeCDF : public CartridgeARM
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
     */
-    CartridgeCDF(const ByteBuffer& image, size_t size, string_view md5,
-                 const Settings& settings);
+    CartridgeCDF(ByteSpan image, string_view md5, const Settings& settings);
     ~CartridgeCDF() override = default;
 
     /**
@@ -133,10 +131,9 @@ class CartridgeCDF : public CartridgeARM
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span to the internal ROM image data
     */
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     /**
       Save the current state of this cart to the given Serializer.
@@ -282,19 +279,16 @@ class CartridgeCDF : public CartridgeARM
     static constexpr uInt16 LDAXY_OVERRIDE_INACTIVE = 0xFFFF;
 
     // The ROM image of the cartridge
-    ByteBuffer myImage{nullptr};
+    ByteArray myImage;
 
-    // The size of the ROM image
-    size_t mySize{0};
+    // Subspan into myImage for the program ROM
+    ByteMSpan myProgramImage;
 
-    // Pointer to the program ROM image of the cartridge
-    uInt8* myProgramImage{nullptr};
+    // Subspan into the display data in myRAM
+    ByteMSpan myDisplayImage;
 
-    // Pointer to the display ROM image of the cartridge
-    uInt8* myDisplayImage{nullptr};
-
-    // Pointer to the driver image in RAM
-    uInt8* myDriverImage{nullptr};
+    // Subspan into the driver image in myRAM
+    ByteMSpan myDriverImage;
 
     // The CDFJ 8K RAM image, used as:
     //   $0000 - 2K Driver
@@ -331,13 +325,13 @@ class CartridgeCDF : public CartridgeARM
       r14 = timer base  */
 
     // The music counters, ARM FIQ shadow registers r8, r9, r10
-    std::array<uInt32, 3> myMusicCounters{0};
+    std::array<uInt32, 3> myMusicCounters{};
 
     // The music frequency, ARM FIQ shadow registers r11, r12, r13
-    std::array<uInt32, 3> myMusicFrequencies{0};
+    std::array<uInt32, 3> myMusicFrequencies{};
 
     // The music waveform sizes
-    std::array<uInt8, 3> myMusicWaveformSize{0};
+    std::array<uInt8, 3> myMusicWaveformSize{};
 
     // Fractional CDF music, OSC clocks unused during the last update
     double myFractionalClocks{0.0};
@@ -402,4 +396,4 @@ class CartridgeCDF : public CartridgeARM
     CartridgeCDF& operator=(CartridgeCDF&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_CDF_HXX

@@ -34,6 +34,7 @@ class DispatchResult;
   #include "TimerMap.hxx"
 #endif
 
+#include <climits>
 #include "bspf.hxx"
 #include "Device.hxx"
 #include "Serializable.hxx"
@@ -130,12 +131,30 @@ class M6502 : public Serializable
     bool fatalError() const { return myExecutionStatus & FatalErrorBit; }
 
     /**
-      Get the 16-bit value of the Program Counter register.
+      Get the number of memory accesses to distinct memory locations
 
-      @return The program counter register
+      @return The number of memory accesses to distinct memory locations
     */
-    // uInt16 getPC() const { return PC; }
+    uInt32 distinctAccesses() const { return myNumberOfDistinctAccesses; }
 
+    /**
+      Saves the current state of this device to the given Serializer.
+
+      @param out The serializer device to save to.
+      @return The result of the save.  True on success, false on failure.
+    */
+    bool save(Serializer& out) const override;
+
+    /**
+      Loads the current state of this device from the given Serializer.
+
+      @param in The Serializer device to load from.
+      @return The result of the load.  True on success, false on failure.
+    */
+    bool load(Serializer& in) override;
+
+#ifdef DEBUGGER_SUPPORT
+  public:
     /**
       Check the type of the last peek().
 
@@ -192,31 +211,6 @@ class M6502 : public Serializable
     Int32 lastSrcAddressX() const { return myLastSrcAddressX; }
     Int32 lastSrcAddressY() const { return myLastSrcAddressY; }
 
-    /**
-      Get the number of memory accesses to distinct memory locations
-
-      @return The number of memory accesses to distinct memory locations
-    */
-    uInt32 distinctAccesses() const { return myNumberOfDistinctAccesses; }
-
-    /**
-      Saves the current state of this device to the given Serializer.
-
-      @param out The serializer device to save to.
-      @return The result of the save.  True on success, false on failure.
-    */
-    bool save(Serializer& out) const override;
-
-    /**
-      Loads the current state of this device from the given Serializer.
-
-      @param in The Serializer device to load from.
-      @return The result of the load.  True on success, false on failure.
-    */
-    bool load(Serializer& in) override;
-
-#ifdef DEBUGGER_SUPPORT
-  public:
     // Attach the specified debugger.
     void attach(Debugger& debugger);
 
@@ -226,22 +220,38 @@ class M6502 : public Serializable
     BreakpointMap& breakPoints() { return myBreakPoints; }
 
     // methods for 'breakif' handling
-    uInt32 addCondBreak(Expression* e, string_view name, bool oneShot = false);
+    uInt32 addCondBreak(unique_ptr<Expression> e, string_view name, bool oneShot = false);
     bool delCondBreak(uInt32 idx);
     void clearCondBreaks();
     const StringList& getCondBreakNames() const;
 
     // methods for 'savestateif' handling
-    uInt32 addCondSaveState(Expression* e, string_view name);
+    uInt32 addCondSaveState(unique_ptr<Expression> e, string_view name);
     bool delCondSaveState(uInt32 idx);
     void clearCondSaveStates();
     const StringList& getCondSaveStateNames() const;
 
     // methods for 'trapif' handling
-    uInt32 addCondTrap(Expression* e, string_view name);
+    struct CondTrap {
+      bool read{false};
+      bool write{false};
+      uInt32 begin{0};
+      uInt32 end{0};
+      string condition;  // elaborated full expression (used for duplicate detection)
+      string name;       // user-visible condition string, or "" for unconditional traps
+      unique_ptr<Expression> expr;
+
+      CondTrap(bool r, bool w, uInt32 b, uInt32 e,
+               string_view cond, string_view nm, unique_ptr<Expression> ex)
+        : read(r), write(w), begin(b), end(e),
+          condition(cond), name(nm), expr(std::move(ex)) {}
+    };
+    uInt32 addCondTrap(bool read, bool write, uInt32 begin, uInt32 end,
+                       string_view condition, string_view name,
+                       unique_ptr<Expression> expr);
     bool delCondTrap(uInt32 idx);
     void clearCondTraps();
-    const StringList& getCondTrapNames() const;
+    const vector<CondTrap>& getCondTraps() const { return myCondTraps; }
 
     // methods for 'timer' handling:
     uInt32 addTimer(uInt16 fromAddr, uInt16 toAddr, uInt8 fromBank, uInt8 toBank,
@@ -286,23 +296,27 @@ class M6502 : public Serializable
     */
     void poke(uInt16 address, uInt8 value, Device::AccessFlags flags = Device::NONE);
 
+    // Returns non-zero if the two addresses are on different pages
+    static constexpr uInt16 NOTSAMEPAGE(uInt16 a, uInt16 b) noexcept {
+      return (a ^ b) & 0xff00;
+    }
+
     /**
       Get the 8-bit value of the Processor Status register.
 
       @return The processor status register
     */
     uInt8 PS() const {
-      uInt8 ps = 0x20;
-
-      if(N)     ps |= 0x80;
-      if(V)     ps |= 0x40;
-      if(B)     ps |= 0x10;
-      if(D)     ps |= 0x08;
-      if(I)     ps |= 0x04;
-      if(!notZ) ps |= 0x02;
-      if(C)     ps |= 0x01;
-
-      return ps;
+      return static_cast<uInt8>(
+        0x20U
+        | (static_cast<uInt8>(N)     << 7)
+        | (static_cast<uInt8>(V)     << 6)
+        | (static_cast<uInt8>(B)     << 4)
+        | (static_cast<uInt8>(D)     << 3)
+        | (static_cast<uInt8>(I)     << 2)
+        | (static_cast<uInt8>(!notZ) << 1)
+        | static_cast<uInt8>(C)
+      );
     }
 
     /**
@@ -403,9 +417,6 @@ class M6502 : public Serializable
     /// is set to zero
     uInt16 myDataAddressForPoke{0};
 
-    /// Indicates the number of system cycles per processor cycle
-    static constexpr uInt32 SYSTEM_CYCLES_PER_CPU = 1;
-
     /// Called when the processor enters halt state
     onHaltCallback myOnHaltCallback{nullptr};
 
@@ -413,7 +424,8 @@ class M6502 : public Serializable
     bool myHaltRequested{false};
 
 #ifdef DEBUGGER_SUPPORT
-    Int32 evalCondBreaks() {
+    Int32 evalCondBreaks()
+    {
       for(Int32 i = static_cast<Int32>(myCondBreaks.size()) - 1; i >= 0; --i)
         if(myCondBreaks[i]->evaluate())
           return i;
@@ -432,8 +444,8 @@ class M6502 : public Serializable
 
     Int32 evalCondTraps()
     {
-      for(Int32 i = static_cast<Int32>(myTrapConds.size()) - 1; i >= 0; --i)
-        if(myTrapConds[i]->evaluate())
+      for(Int32 i = static_cast<Int32>(myCondTraps.size()) - 1; i >= 0; --i)
+        if(myCondTraps[i].expr->evaluate())
           return i;
 
       return -1; // no trapif hit
@@ -459,11 +471,9 @@ class M6502 : public Serializable
     StringList myCondBreakNames;
     vector<unique_ptr<Expression>> myCondSaveStates;
     StringList myCondSaveStateNames;
-    vector<unique_ptr<Expression>> myTrapConds;
-    StringList myTrapCondNames;
+    vector<CondTrap> myCondTraps;
 
     TimerMap myTimer;
-
 #endif  // DEBUGGER_SUPPORT
 
     bool myGhostReadsTrap{false};          // trap on ghost reads
@@ -482,4 +492,4 @@ class M6502 : public Serializable
     M6502& operator=(M6502&&) = delete;
 };
 
-#endif
+#endif  // M6502_HXX

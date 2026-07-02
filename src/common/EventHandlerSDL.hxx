@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef EVENTHANDLER_SDL_HXX
-#define EVENTHANDLER_SDL_HXX
+#ifndef EVENT_HANDLER_SDL_HXX
+#define EVENT_HANDLER_SDL_HXX
 
 #include "SDL_lib.hxx"
 #include "EventHandler.hxx"
@@ -43,6 +43,7 @@ class EventHandlerSDL : public EventHandler
     */
     void copyText(const string& text) const override;
     string pasteText(string& text) const override;
+    bool hasClipboardText() const override;
 
   protected:
     /**
@@ -60,7 +61,7 @@ class EventHandlerSDL : public EventHandler
     {
       public:
         explicit JoystickSDL(int idx);
-        virtual ~JoystickSDL();
+        ~JoystickSDL() override;
 
       private:
         SDL_Joystick* myStick{nullptr};
@@ -84,4 +85,4 @@ class EventHandlerSDL : public EventHandler
     EventHandlerSDL& operator=(EventHandlerSDL&&) = delete;
 };
 
-#endif
+#endif  // EVENT_HANDLER_SDL_HXX

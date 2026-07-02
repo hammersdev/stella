@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEGL_HXX
-#define CARTRIDGEGL_HXX
+#ifndef CARTRIDGE_GL_HXX
+#define CARTRIDGE_GL_HXX
 
 #include "CartEnhanced.hxx"
 #ifdef DEBUGGER_SUPPORT
@@ -25,7 +25,7 @@
 #include "System.hxx"
 
 /**
-  Cartridge class used for the GameLine Master module. In this bankswitching 
+  Cartridge class used for the GameLine Master module. In this bankswitching
   scheme the 2600's 4K cartridge address space is broken into four 1K segments.
   The desired 1K bank of the ROM or RAM is selected as follows:
   - $0480 + x: 1st 1K segment
@@ -39,7 +39,7 @@
   The scheme supports 4K ROM and 2K RAM.
 
   $0c80.. and $0d80.. control the modem (not implemented, except for PROM access).
-  
+
   @author  Thomas Jentzsch
 */
 class CartridgeGL : public CartridgeEnhanced
@@ -50,13 +50,12 @@ class CartridgeGL : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeGL(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeGL(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 4_KB);
     ~CartridgeGL() override = default;
 
@@ -116,7 +115,7 @@ class CartridgeGL : public CartridgeEnhanced
 
   private:
     // Initial RAM data from the cart (doesn't always exist)
-    ByteBuffer myInitialRAM{nullptr};
+    ByteArray myInitialRAM;
 
     bool myEnablePROM{false};
 
@@ -131,4 +130,4 @@ class CartridgeGL : public CartridgeEnhanced
     CartridgeGL& operator=(CartridgeGL&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_GL_HXX

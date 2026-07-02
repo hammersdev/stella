@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef TIASURFACE_HXX
-#define TIASURFACE_HXX
+#ifndef TIA_SURFACE_HXX
+#define TIA_SURFACE_HXX
 
 class TIA;
 class Console;
@@ -178,21 +178,20 @@ class TIASurface
     void render(bool shade = false);
 
     /**
-      This method prepares the current frame for taking a snapshot.
-      In particular, in phosphor modes the blending is adjusted slightly to
-      generate better images.
-    */
-    void renderForSnapshot();
-
-    /**
-      Save a snapshot after rendering.
-    */
-    void saveSnapShot() { mySaveSnapFlag = true; }
-
-    /**
       Update surface settings.
      */
     void updateSurfaceSettings();
+
+    /**
+      Prepare the current frame for taking a snapshot.
+      In phosphor modes, blends current and previous frames for a better image.
+     */
+    void renderForSnapshot();
+
+    /**
+      Signal that a snapshot should be taken on the next render.
+     */
+    void saveSnapShot() { mySaveSnapFlag = true; }
 
   private:
     enum class ScanlineMask: uInt8 {
@@ -214,10 +213,13 @@ class TIASurface
     };
 
   private:
-    /**
-      Average current calculated buffer's pixel with previous calculated buffer's pixel (50:50).
-    */
-    uInt32 averageBuffers(uInt32 bufOfs);
+
+    // Average current and previous RGB framebuffer pixels at the given offset.
+    FORCE_INLINE uInt32 averageBuffers(uInt32 bufOfs) const {
+      const uInt32 c = myRGBFramebuffer[bufOfs];
+      const uInt32 p = myPrevRGBFramebuffer[bufOfs];
+      return (((c ^ p) >> 1) & 0x7F7F7FU) + (c & p);
+    }
 
     // Is plain video mode enabled?
     bool correctAspect() const;
@@ -246,12 +248,14 @@ class TIASurface
     // Phosphor blend
     int myPBlend{0};
 
-    std::array<uInt32, static_cast<std::size_t>
+    std::array<uInt32, static_cast<size_t>
       (AtariNTSC::outWidth(TIAConstants::frameBufferWidth) *
-      TIAConstants::frameBufferHeight)> myRGBFramebuffer{};
-    std::array<uInt32, static_cast<std::size_t>
+      TIAConstants::frameBufferHeight)> myRGBFramebuffer0{};
+    std::array<uInt32, static_cast<size_t>
       (AtariNTSC::outWidth(TIAConstants::frameBufferWidth) *
-        TIAConstants::frameBufferHeight)> myPrevRGBFramebuffer{};
+        TIAConstants::frameBufferHeight)> myRGBFramebuffer1{};
+    uInt32* myRGBFramebuffer{myRGBFramebuffer0.data()};
+    uInt32* myPrevRGBFramebuffer{myRGBFramebuffer1.data()};
     /////////////////////////////////////////////////////////////
 
     // Use scanlines in TIA rendering mode
@@ -260,11 +264,11 @@ class TIASurface
     // Palette for normal TIA rendering mode
     PaletteArray myPalette{};
 
-    // Flag for saving a snapshot
-    bool mySaveSnapFlag{false};
-
     // The palette handler
     unique_ptr<PaletteHandler> myPaletteHandler;
+
+    // Flag for saving a snapshot
+    bool mySaveSnapFlag{false};
 
   private:
     // Following constructors and assignment operators not supported
@@ -275,4 +279,4 @@ class TIASurface
     TIASurface& operator=(TIASurface&&) = delete;
 };
 
-#endif
+#endif  // TIA_SURFACE_HXX

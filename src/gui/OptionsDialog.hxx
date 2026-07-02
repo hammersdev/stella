@@ -23,7 +23,6 @@ class DialogContainer;
 class GuiObject;
 class OSystem;
 
-#include "OptionsMenu.hxx"
 #include "Dialog.hxx"
 
 class OptionsDialog : public Dialog
@@ -75,4 +74,4 @@ class OptionsDialog : public Dialog
     OptionsDialog& operator=(OptionsDialog&&) = delete;
 };
 
-#endif
+#endif  // OPTIONS_DIALOG_HXX

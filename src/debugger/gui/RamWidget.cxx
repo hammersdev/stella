@@ -44,9 +44,7 @@ RamWidget::RamWidget(GuiObject* boss, const GUI::Font& lfont, const GUI::Font& n
 {
   const int bwidth  = lfont.getStringWidth("Compare " + ELLIPSIS),
             bheight = myLineHeight + 2;
-  //const int VGAP = 4;
   const int VGAP = myFontHeight / 4;
-  StaticTextWidget* s = nullptr;  // NOLINT (erroneously marked as const)
   WidgetArray wid;
 
   int ypos = y + myLineHeight;
@@ -138,7 +136,7 @@ RamWidget::RamWidget(GuiObject* boss, const GUI::Font& lfont, const GUI::Font& n
 
   // Add Binary display of selected RAM cell
   xpos = x + w - 9.6 * myFontWidth - 9;
-  s = new StaticTextWidget(boss, lfont, xpos, ypos, "%");
+  auto* s = new StaticTextWidget(boss, lfont, xpos, ypos, "%");
   myBinValue = new DataGridWidget(boss, nfont, s->getRight() + myFontWidth * 0.1, ypos-2,
                                   1, 1, 8, 8, Common::Base::Fmt::_2);
   myBinValue->setHelpAnchor(helpAnchor, true);
@@ -193,9 +191,7 @@ RamWidget::RamWidget(GuiObject* boss, const GUI::Font& lfont, const GUI::Font& n
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-RamWidget::~RamWidget()  // NOLINT (we need an empty d'tor)
-{
-}
+RamWidget::~RamWidget() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void RamWidget::handleCommand(CommandSender* sender, int cmd, int data, int id)
@@ -290,7 +286,7 @@ void RamWidget::handleCommand(CommandSender* sender, int cmd, int data, int id)
 
     case kSValEntered:
     {
-      const string& result = doSearch(myInputBox->getResult());
+      const string_view result = doSearch(myInputBox->getResult());
       if(!result.empty())
         myInputBox->setMessage(result);
       else
@@ -300,7 +296,7 @@ void RamWidget::handleCommand(CommandSender* sender, int cmd, int data, int id)
 
     case kCValEntered:
     {
-      const string& result = doCompare(myInputBox->getResult());
+      const string_view result = doCompare(myInputBox->getResult());
       if(!result.empty())
         myInputBox->setMessage(result);
       else
@@ -392,7 +388,7 @@ void RamWidget::showInputBox(int cmd)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-string RamWidget::doSearch(string_view str)
+string_view RamWidget::doSearch(string_view str)
 {
   bool comparisonSearch = true;
 
@@ -445,11 +441,11 @@ string RamWidget::doSearch(string_view str)
   // Finally, show the search results in the list
   showSearchResults();
 
-  return EmptyString();
+  return {};
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-string RamWidget::doCompare(string_view str)
+string_view RamWidget::doCompare(string_view str)
 {
   bool comparativeSearch = false;
   int searchVal = 0, offset = 0;
@@ -523,7 +519,7 @@ string RamWidget::doCompare(string_view str)
   // Finally, show the search results in the list
   showSearchResults();
 
-  return EmptyString();
+  return {};
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

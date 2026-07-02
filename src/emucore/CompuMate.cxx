@@ -17,165 +17,270 @@
 
 #include "Console.hxx"
 #include "Event.hxx"
+#include "EventHandler.hxx"
+#include "FSNode.hxx"
+#include "OSystem.hxx"
 #include "System.hxx"
 #include "CompuMate.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CompuMate::CompuMate(const Console& console, const Event& event,
-                     const System& system)
-  : myConsole{console},
-    myEvent{event}
+CompuMate::CompuMate(OSystem& osystem, const Console& console,
+                     const Event& event, const System& system)
+  : myOSystem{osystem},
+    myConsole{console},
+    myEvent{event},
+    mySystem{system},
+    myCassette(osystem, system)
 {
   // These controller pointers will be retrieved by the Console, which will
   // also take ownership of them
   myLeftController  = std::make_unique<CMControl>(*this, Controller::Jack::Left, event, system);
   myRightController = std::make_unique<CMControl>(*this, Controller::Jack::Right, event, system);
-
-  myLeftController->setPin(Controller::AnalogPin::Nine, AnalogReadout::connectToGround());
-  myLeftController->setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-  myRightController->setPin(Controller::AnalogPin::Nine, AnalogReadout::connectToVcc());
-  myRightController->setPin(Controller::AnalogPin::Five, AnalogReadout::connectToGround());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CompuMate::update()
 {
-  // Handle SWCHA changes - the following comes almost directly from z26
-  Controller& lp = myConsole.leftController();
-  Controller& rp = myConsole.rightController();
+  // Handle SWCHA changes - the following is modelled on code from z26
+  auto& lp = static_cast<CMControl&>(myConsole.leftController());
+  auto& rp = static_cast<CMControl&>(myConsole.rightController());
 
-  lp.setPin(Controller::AnalogPin::Nine, AnalogReadout::connectToGround());
-  lp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-  lp.setPin(Controller::DigitalPin::Six, true);
-  rp.setPin(Controller::AnalogPin::Nine, AnalogReadout::connectToVcc());
-  rp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToGround());
-  rp.setPin(Controller::DigitalPin::Six, true);
+  using E  = Event::Type;
+  using DP = Controller::DigitalPin;
+  using AP = Controller::AnalogPin;
 
-  if (myEvent.get(Event::CompuMateShift))
-    rp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-  if (myEvent.get(Event::CompuMateFunc))
-    lp.setPin(Controller::AnalogPin::Nine, AnalogReadout::connectToVcc());
+  lp.setPin(AP::Nine,  AnalogReadout::connectToGround());
+  lp.setPin(AP::Five,  AnalogReadout::connectToVcc());
+  lp.setPin(DP::Six,   true);
+  rp.setPin(AP::Nine,  AnalogReadout::connectToVcc());
+  rp.setPin(AP::Five,  AnalogReadout::connectToGround());
+  rp.setPin(DP::Six,   true);
+  rp.setPin(DP::Three, true);
+  rp.setPin(DP::Four,  true);
 
-  rp.setPin(Controller::DigitalPin::Three, true);
-  rp.setPin(Controller::DigitalPin::Four, true);
+  if(myEvent.get(Event::CompuMateFunc))
+    lp.setPin(AP::Nine, AnalogReadout::connectToVcc());
+  if(myEvent.get(Event::CompuMateShift))
+    rp.setPin(AP::Five, AnalogReadout::connectToVcc());
 
-  switch(myColumn)  // This is updated inside CartCM class
-  {
-    case 0:
-      if (myEvent.get(Event::CompuMate7)) lp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateU)) rp.setPin(Controller::DigitalPin::Three, false);
-      if (myEvent.get(Event::CompuMateJ)) rp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateM)) rp.setPin(Controller::DigitalPin::Four, false);
-      break;
-    case 1:
-      if (myEvent.get(Event::CompuMate6)) lp.setPin(Controller::DigitalPin::Six, false);
-      // Emulate the '?' character (Shift-6) with the actual question key
-      if (myEvent.get(Event::CompuMateQuestion))
-      {
-        rp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-        lp.setPin(Controller::DigitalPin::Six, false);
-      }
-      if (myEvent.get(Event::CompuMateY)) rp.setPin(Controller::DigitalPin::Three, false);
-      if (myEvent.get(Event::CompuMateH)) rp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateN)) rp.setPin(Controller::DigitalPin::Four, false);
-      break;
-    case 2:
-      if (myEvent.get(Event::CompuMate8)) lp.setPin(Controller::DigitalPin::Six, false);
-      // Emulate the '[' character (Shift-8) with the actual key
-      if (myEvent.get(Event::CompuMateLeftBracket))
-      {
-        rp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-        lp.setPin(Controller::DigitalPin::Six, false);
-      }
-      if (myEvent.get(Event::CompuMateI)) rp.setPin(Controller::DigitalPin::Three, false);
-      if (myEvent.get(Event::CompuMateK)) rp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateComma)) rp.setPin(Controller::DigitalPin::Four, false);
-      break;
-    case 3:
-      if (myEvent.get(Event::CompuMate2)) lp.setPin(Controller::DigitalPin::Six, false);
-      // Emulate the '-' character (Shift-2) with the actual minus key
-      if (myEvent.get(Event::CompuMateMinus))
-      {
-        rp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-        lp.setPin(Controller::DigitalPin::Six, false);
-      }
-      if (myEvent.get(Event::CompuMateW)) rp.setPin(Controller::DigitalPin::Three, false);
-      if (myEvent.get(Event::CompuMateS)) rp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateX)) rp.setPin(Controller::DigitalPin::Four, false);
-      break;
-    case 4:
-      if (myEvent.get(Event::CompuMate3)) lp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateE)) rp.setPin(Controller::DigitalPin::Three, false);
-      if (myEvent.get(Event::CompuMateD)) rp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateC)) rp.setPin(Controller::DigitalPin::Four, false);
-      break;
-    case 5:
-      if (myEvent.get(Event::CompuMate0)) lp.setPin(Controller::DigitalPin::Six, false);
-      // Emulate the quote character (Shift-0) with the actual quote key
-      if (myEvent.get(Event::CompuMateQuote))
-      {
-        rp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-        lp.setPin(Controller::DigitalPin::Six, false);
-      }
-      if (myEvent.get(Event::CompuMateP)) rp.setPin(Controller::DigitalPin::Three, false);
-      if (myEvent.get(Event::CompuMateEnter)) rp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateSpace)) rp.setPin(Controller::DigitalPin::Four, false);
-      // Emulate Ctrl-space (aka backspace) with the actual Backspace key
-      if (myEvent.get(Event::CompuMateBackspace))
-      {
-        lp.setPin(Controller::AnalogPin::Nine, AnalogReadout::connectToVcc());
-        rp.setPin(Controller::DigitalPin::Four, false);
-      }
-      break;
-    case 6:
-      if (myEvent.get(Event::CompuMate9)) lp.setPin(Controller::DigitalPin::Six, false);
-      // Emulate the ']' character (Shift-9) with the actual key
-      if (myEvent.get(Event::CompuMateRightBracket))
-      {
-        rp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-        lp.setPin(Controller::DigitalPin::Six, false);
-      }
-      if (myEvent.get(Event::CompuMateO)) rp.setPin(Controller::DigitalPin::Three, false);
-      if (myEvent.get(Event::CompuMateL)) rp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMatePeriod)) rp.setPin(Controller::DigitalPin::Four, false);
-      break;
-    case 7:
-      if (myEvent.get(Event::CompuMate5)) lp.setPin(Controller::DigitalPin::Six, false);
-      // Emulate the '=' character (Shift-5) with the actual equals key
-      if (myEvent.get(Event::CompuMateEquals))
-      {
-        rp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-        lp.setPin(Controller::DigitalPin::Six, false);
-      }
-      if (myEvent.get(Event::CompuMateT)) rp.setPin(Controller::DigitalPin::Three, false);
-      if (myEvent.get(Event::CompuMateG)) rp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateB)) rp.setPin(Controller::DigitalPin::Four, false);
-      break;
-    case 8:
-      if (myEvent.get(Event::CompuMate1)) lp.setPin(Controller::DigitalPin::Six, false);
-      // Emulate the '+' character (Shift-1) with the actual plus key (Shift-=)
-      if (myEvent.get(Event::CompuMatePlus))
-      {
-        rp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-        lp.setPin(Controller::DigitalPin::Six, false);
-      }
-      if (myEvent.get(Event::CompuMateQ)) rp.setPin(Controller::DigitalPin::Three, false);
-      if (myEvent.get(Event::CompuMateA)) rp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateZ)) rp.setPin(Controller::DigitalPin::Four, false);
-      break;
-    case 9:
-      if (myEvent.get(Event::CompuMate4)) lp.setPin(Controller::DigitalPin::Six, false);
-      // Emulate the '/' character (Shift-4) with the actual slash key
-      if (myEvent.get(Event::CompuMateSlash))
-      {
-        rp.setPin(Controller::AnalogPin::Five, AnalogReadout::connectToVcc());
-        lp.setPin(Controller::DigitalPin::Six, false);
-      }
-      if (myEvent.get(Event::CompuMateR)) rp.setPin(Controller::DigitalPin::Three, false);
-      if (myEvent.get(Event::CompuMateF)) rp.setPin(Controller::DigitalPin::Six, false);
-      if (myEvent.get(Event::CompuMateV)) rp.setPin(Controller::DigitalPin::Four, false);
-      break;
-    default:
-      break;
+  // LUT for CompuMate keys; faster than manual if statements
+  struct ColMap {
+    E lp6, rp3, rp6, rp4;
+    E shiftKey;  // key that mimics Shift+lp6 (sets RP.A5 high)
+    E funcKey;   // key that mimics Func+rp4  (sets LP.A9 high)
+  };
+
+  /**
+    Note that several CompuMate keys are mapped to actual keyboard keys
+    for convenience, in addition to their normal mapping.  This mapping
+    is done at a higher level; we just handle the CompuMate-specific
+    events here:
+                                             Actual key on real keyboard
+      // CompuMateQuote        (Shift-0)  -> "
+      // CompuMatePlus         (Shift-1)  -> + (Shift =)
+      // CompuMateMinus        (Shift-2)  -> -
+      // CompuMateSlash        (Shift-4)  -> /
+      // CompuMateEquals       (Shift-5)  -> =
+      // CompuMateQuestion     (Shift-6)  -> ?
+      // CompuMateLeftBracket  (Shift-8)  -> [
+      // CompuMateRightBracket (Shift-9)  -> ]
+      // CompuMateBackspace (Ctrl-space)  -> Backspace
+  */
+  static constexpr std::array<ColMap, 10> columns {{
+    { E::CompuMate7, E::CompuMateU, E::CompuMateJ, E::CompuMateM,
+      E::NoType, E::NoType },
+    { E::CompuMate6, E::CompuMateY, E::CompuMateH, E::CompuMateN,
+      E::CompuMateQuestion, E::NoType },
+    { E::CompuMate8, E::CompuMateI, E::CompuMateK, E::CompuMateComma,
+      E::CompuMateLeftBracket, E::NoType },
+    { E::CompuMate2, E::CompuMateW, E::CompuMateS, E::CompuMateX,
+      E::CompuMateMinus, E::NoType },
+    { E::CompuMate3, E::CompuMateE, E::CompuMateD, E::CompuMateC,
+      E::NoType, E::NoType },
+    { E::CompuMate0, E::CompuMateP, E::CompuMateEnter, E::CompuMateSpace,
+      E::CompuMateQuote, E::CompuMateBackspace },
+    { E::CompuMate9, E::CompuMateO, E::CompuMateL, E::CompuMatePeriod,
+      E::CompuMateRightBracket, E::NoType },
+    { E::CompuMate5, E::CompuMateT, E::CompuMateG, E::CompuMateB,
+      E::CompuMateEquals, E::NoType },
+    { E::CompuMate1, E::CompuMateQ, E::CompuMateA, E::CompuMateZ,
+      E::CompuMatePlus, E::NoType },
+    { E::CompuMate4, E::CompuMateR, E::CompuMateF, E::CompuMateV,
+      E::CompuMateSlash, E::NoType },
+  }};
+
+  // myColumn is updated inside CartCM class
+  const auto& col = columns[myColumn];
+
+  if(col.lp6        != E::NoType && myEvent.get(col.lp6))
+    lp.setPin(DP::Six,   false);
+  if(col.rp3        != E::NoType && myEvent.get(col.rp3))
+    rp.setPin(DP::Three, false);
+  if(col.rp6        != E::NoType && myEvent.get(col.rp6))
+    rp.setPin(DP::Six,   false);
+  if(col.rp4        != E::NoType && myEvent.get(col.rp4))
+    rp.setPin(DP::Four,  false);
+
+  if(col.shiftKey != E::NoType && myEvent.get(col.shiftKey)) {
+    rp.setPin(AP::Five, AnalogReadout::connectToVcc());
+    lp.setPin(DP::Six,  false);
   }
+  if(col.funcKey  != E::NoType && myEvent.get(col.funcKey)) {
+    lp.setPin(AP::Nine, AnalogReadout::connectToVcc());
+    rp.setPin(DP::Four, false);
+  }
+  if(myBackspaceReleaseCycle && mySystem.cycles() >= myBackspaceReleaseCycle)
+  {
+    myOSystem.eventHandler().handleEvent(Event::CompuMateBackspace, false);
+    myBackspaceReleaseCycle = 0;
+  }
+
+  // Returns true if any non-Enter character key is currently pressed
+  const auto anyCharPressed = [&]() -> bool {
+    return std::ranges::any_of(columns, [&](const auto& cc) {
+      return (cc.lp6     != E::NoType && myEvent.get(cc.lp6))
+          || (cc.rp3     != E::NoType && myEvent.get(cc.rp3))
+          || (cc.rp6     != E::NoType && cc.rp6 != E::CompuMateEnter && myEvent.get(cc.rp6))
+          || (cc.rp4     != E::NoType && myEvent.get(cc.rp4))
+          || (cc.shiftKey != E::NoType && myEvent.get(cc.shiftKey));
+    });
+  };
+
+  // Detect Func+J (LOAD command) followed by Enter to start cassette playback
+  if(!myLoadArm.seen)
+  {
+    if(myEvent.get(E::CompuMateFunc) && myEvent.get(E::CompuMateJ))
+    {
+      myLoadArm.seen = true;
+      myLoadArm.bufLen = 1;  // LOAD is a single token
+      myLoadArm.waitingForRelease = true;
+    }
+  }
+
+  if(myLoadArm.seen)
+  {
+    // Open the file browser once J is released; by then the ROM has had time
+    // to print 'LOAD' onscreen
+    if(myLoadArm.waitingForRelease && !myEvent.get(E::CompuMateJ))
+    {
+      myLoadArm.waitingForRelease = false;
+      myLoadArm.prevAnyChar = false;
+  #ifdef GUI_SUPPORT
+      myOSystem.eventHandler().openBrowserDialog("Load Cassette",
+        "~",
+        BrowserDialog::Mode::FileLoad,
+        [this](bool ok, const FSNode& node) {
+          if(ok)
+            myPendingLoadPath = node;
+          else
+            cancelCassetteLoad();
+          myOSystem.eventHandler().leaveMenuMode();
+          // leaveMenuMode() calls setState(), which clears all pending events;
+          // the injected Backspace (which erases 'LOAD' from the ROM screen on
+          // cancel) must therefore be set *after* the state transition
+          if(!ok)
+          {
+            myOSystem.eventHandler().handleEvent(Event::CompuMateBackspace, true);
+            myBackspaceReleaseCycle = mySystem.cycles() + BACKSPACE_HOLD_CYCLES;
+          }
+        },
+        [](const FSNode& node) {
+          return node.isDirectory() || node.hasExtension(".bin");
+        });
+  #endif
+    }
+
+    // Backspace removes the last token; if the buffer empties, load is cancelled
+    const bool backspaceNow = myEvent.get(E::CompuMateBackspace) != 0;
+    if(myLoadArm.seen && backspaceNow && !myLoadArm.prevBackspace)
+      if(--myLoadArm.bufLen == 0)
+        myLoadArm.seen = false;
+    myLoadArm.prevBackspace = backspaceNow;
+
+    // Track character keypresses to keep buffer length in sync with the ROM
+    if(myLoadArm.seen && !myLoadArm.waitingForRelease)
+    {
+      const bool anyCharNow = anyCharPressed();
+      if(anyCharNow && !myLoadArm.prevAnyChar)
+        ++myLoadArm.bufLen;
+      myLoadArm.prevAnyChar = anyCharNow;
+    }
+
+    const bool enterNow = myEvent.get(E::CompuMateEnter) != 0;
+    if(enterNow && !myLoadArm.prevEnter && myLoadArm.seen)
+    {
+      myCassette.load(myPendingLoadPath, myConsole.timing());
+      // Only begin playback if the load produced data; otherwise the
+      // synthesised "Loading cassette" gauge would mask load()'s error message.
+      if(myCassette.isLoaded())
+        myCassette.startPlayback(mySystem.cycles());
+      myLoadArm.seen = false;
+    }
+    myLoadArm.prevEnter = enterNow;
+  }
+
+  // Detect Func+H (SAVE command) followed by Enter to start cassette save
+  if(!myCassette.isRecording())
+  {
+    if(myEvent.get(E::CompuMateFunc) && myEvent.get(E::CompuMateH) && !mySaveArm.seen)
+    {
+      mySaveArm.seen = true;
+      mySaveArm.bufLen = 1;  // SAVE is a single token
+      mySaveArm.waitingForRelease = true;
+    }
+
+    // Open the file browser once H is released; by then the ROM has had time
+    // to print 'SAVE' onscreen
+    if(mySaveArm.seen && mySaveArm.waitingForRelease && !myEvent.get(E::CompuMateH))
+    {
+      mySaveArm.waitingForRelease = false;
+      mySaveArm.prevAnyChar = false;
+  #ifdef GUI_SUPPORT
+      myOSystem.eventHandler().openBrowserDialog("Save Cassette",
+        myPendingLoadPath.getParent().getPath(),
+        BrowserDialog::Mode::FileSave,
+        [this](bool ok, const FSNode& node) {
+          if(ok)
+            myCassette.setSavePath(node);
+          else
+            cancelCassetteSave();
+          myOSystem.eventHandler().leaveMenuMode();
+          // As with LOAD: inject a Backspace after the state change to erase
+          // 'SAVE' from the ROM screen on cancel
+          if(!ok)
+          {
+            myOSystem.eventHandler().handleEvent(Event::CompuMateBackspace, true);
+            myBackspaceReleaseCycle = mySystem.cycles() + BACKSPACE_HOLD_CYCLES;
+          }
+        },
+        [](const FSNode& node) {
+          return node.isDirectory() || node.hasExtension(".bin");
+        });
+  #endif
+    }
+
+    const bool backspaceNow = myEvent.get(E::CompuMateBackspace) != 0;
+    if(mySaveArm.seen && backspaceNow && !mySaveArm.prevBackspace)
+      if(--mySaveArm.bufLen == 0)
+        mySaveArm.seen = false;
+    mySaveArm.prevBackspace = backspaceNow;
+
+    if(mySaveArm.seen && !mySaveArm.waitingForRelease)
+    {
+      const bool anyCharNow = anyCharPressed();
+      if(anyCharNow && !mySaveArm.prevAnyChar)
+        ++mySaveArm.bufLen;
+      mySaveArm.prevAnyChar = anyCharNow;
+    }
+
+    const bool enterNow = myEvent.get(E::CompuMateEnter) != 0;
+    if(enterNow && !mySaveArm.prevEnter && mySaveArm.seen)
+    {
+      myCassette.startRecord();
+      mySaveArm.seen = false;
+    }
+    mySaveArm.prevEnter = enterNow;
+  }
+  else
+    myCassette.checkTimeout(mySystem.cycles());
 }

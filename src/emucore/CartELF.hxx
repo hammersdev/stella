@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGE_ELF
-#define CARTRIDGE_ELF
+#ifndef CARTRIDGE_ELF_HXX
+#define CARTRIDGE_ELF_HXX
 
 #include "bspf.hxx"
 #include "Cart.hxx"
@@ -34,6 +34,25 @@ class ElfLinker;
   class CartridgeELFStateWidget;
 #endif
 
+/**
+  ELF cartridges contain a standard ARM ELF binary that is dynamically linked
+  and loaded at startup into a private ARM address space managed by a CortexM0
+  emulator. Unlike the flat Thumb binaries used by BUS/CDF/DPC+, the image is
+  a proper relocatable object file that the ElfLinker resolves at load time.
+
+  The ARM core runs concurrently with the 6502. Communication between the two
+  CPUs is handled through a BusTransactionQueue: the ARM pushes (address, data)
+  tuples that are replayed to overdrive the 6502 data bus on precisely timed
+  cycles. The ARM code calls standard vcsLib stubs (vcsWrite3, vcsSta3, vcsJmp3,
+  etc.); the linker resolves those stubs to shim addresses that enqueue the
+  corresponding bus transactions.
+
+  There is no fixed bank layout or hotspot in the traditional sense -- the ARM
+  binary drives the entire cartridge address space. ROM size is unbounded by the
+  scheme, limited only by available host memory.
+
+  @author  Christian Speckner (DirtyHairy)
+*/
 class CartridgeELF: public Cartridge {
 #ifdef DEBUGGER_SUPPORT
   friend CartridgeELFWidget;
@@ -46,8 +65,7 @@ class CartridgeELF: public Cartridge {
     static constexpr uInt32 MIPS_DEF = 150;
 
   public:
-    CartridgeELF(const ByteBuffer& image, size_t size, string_view md5,
-                 const Settings& settings);
+    CartridgeELF(ByteSpan image, string_view md5, const Settings& settings);
     ~CartridgeELF() override = default;
 
   // Methods from Device
@@ -73,7 +91,7 @@ class CartridgeELF: public Cartridge {
 
     bool patch(uInt16 address, uInt8 value) override { return false; }
 
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     string name() const override { return "CartridgeELF"; }
 
@@ -96,7 +114,7 @@ class CartridgeELF: public Cartridge {
   public:
     string getDebugLog() const;
 
-    std::pair<unique_ptr<uInt8[]>, size_t> getArmImage() const;
+    ByteArray getArmImage() const;
 
   private:
     class BusFallbackDelegate: public CortexM0::BusTransactionDelegate {
@@ -149,14 +167,13 @@ class CartridgeELF: public Cartridge {
     void runArm();
 
   private:
-    ByteBuffer myImage;
-    size_t myImageSize{0};
+    ByteArray myImage;
 
     bool myConfigStrictMode{false};
     uInt32 myConfigMips{100};
     elfEnvironment::SystemType myConfigSystemType{elfEnvironment::SystemType::ntsc};
 
-    unique_ptr<uint8_t[]> myLastPeekResult;
+    ByteArray myLastPeekResult;
     BusTransactionQueue myTransactionQueue;
 
     bool myIsBusDriven{false};
@@ -168,11 +185,11 @@ class CartridgeELF: public Cartridge {
     ElfParser myElfParser;
     unique_ptr<ElfLinker> myLinker;
 
-    unique_ptr<uInt8[]> mySectionStack;
-    unique_ptr<uInt8[]> mySectionText;
-    unique_ptr<uInt8[]> mySectionData;
-    unique_ptr<uInt8[]> mySectionRodata;
-    unique_ptr<uInt8[]> mySectionTables;
+    ByteArray mySectionStack;
+    ByteArray mySectionText;
+    ByteArray mySectionData;
+    ByteArray mySectionRodata;
+    ByteArray mySectionTables;
 
     VcsLib myVcsLib;
     BusFallbackDelegate myFallbackDelegate;
@@ -191,7 +208,6 @@ class CartridgeELF: public Cartridge {
     CartridgeELF(CartridgeELF&&) = delete;
     CartridgeELF& operator=(const CartridgeELF&) = delete;
     CartridgeELF& operator=(CartridgeELF&&) = delete;
-
 };
 
-#endif // CARTRIDGE_ELF
+#endif  // CARTRIDGE_ELF_HXX

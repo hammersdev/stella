@@ -21,10 +21,9 @@
 #include "CartDPC.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CartridgeDPC::CartridgeDPC(const ByteBuffer& image, size_t size,
-                           string_view md5, const Settings& settings,
-                           size_t bsSize)
-  : CartridgeF8(image, size, md5, settings, bsSize)
+CartridgeDPC::CartridgeDPC(ByteSpan image, string_view md5,
+                           const Settings& settings, size_t bsSize)
+  : CartridgeF8(image, md5, settings, bsSize)
 {
 }
 
@@ -61,8 +60,8 @@ void CartridgeDPC::install(System& system)
 
   myRomOffset = 0x80;
 
-  // Pointer to the display ROM (2K @ 8K offset)
-  myDisplayImage = myImage.get() + 8_KB;
+  // Subspan for the display ROM (2K @ 8K offset)
+  myDisplayImage = ByteMSpan{myImage}.subspan(8_KB, 2_KB);
 
   createRomAccessArrays(8_KB);
 
@@ -106,7 +105,7 @@ FORCE_INLINE void CartridgeDPC::updateMusicModeDataFetchers()
     return;
 
   // Let's update counters and flags of the music mode data fetchers
-  for(int x = 5; x <= 7; ++x)
+  for(int x = 5; x < 8; ++x)
   {
     // Update only if the data fetcher is in music mode
     if(myMusicMode[x - 5])

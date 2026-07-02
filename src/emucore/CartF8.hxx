@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEF8_HXX
-#define CARTRIDGEF8_HXX
+#ifndef CARTRIDGE_F8_HXX
+#define CARTRIDGE_F8_HXX
 
 #include "CartEnhanced.hxx"
 #ifdef DEBUGGER_SUPPORT
@@ -24,8 +24,12 @@
 #endif
 
 /**
-  Cartridge class used for Atari's 8K bankswitched games.  There are two
-  4K banks, accessible by read/write to $1FF8 - $1FF9.
+  Cartridge class used for Atari's 8K bankswitched games.  F8 is the most
+  widely used Atari bankswitching scheme: two 4K banks selected by accessing
+  $1FF8 (bank 0) or $1FF9 (bank 1).  The switch fires on both reads and
+  writes.  Used by a large fraction of all 8K 2600 titles including Pac-Man,
+  Missile Command, and Pitfall.  F6 (16K) and F4 (32K) are direct extensions
+  of this scheme.  The F8SC variant adds 128 bytes of SuperChip RAM.
 
   @author  Bradford W. Mott, Thomas Jentzsch
 */
@@ -37,13 +41,12 @@ class CartridgeF8 : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeF8(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeF8(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 8_KB);
     ~CartridgeF8() override = default;
 
@@ -68,6 +71,7 @@ class CartridgeF8 : public CartridgeEnhanced
   #endif
 
     uInt16 hotspot() const override { return 0x1FF8; }
+    bool supportsSaveDisassembly() const override { return true; }
 
   private:
     bool checkSwitchBank(uInt16 address, uInt8 value) override;
@@ -82,4 +86,4 @@ class CartridgeF8 : public CartridgeEnhanced
     CartridgeF8& operator=(CartridgeF8&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_F8_HXX

@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEF0_HXX
-#define CARTRIDGEF0_HXX
+#ifndef CARTRIDGE_F0_HXX
+#define CARTRIDGE_F0_HXX
 
 #include "CartEnhanced.hxx"
 #ifdef DEBUGGER_SUPPORT
@@ -24,9 +24,12 @@
 #endif
 
 /**
-  Cartridge class used for Dynacom Megaboy
-  There are 16 4K banks.
-  Accessing $1FF0 switches to next bank.
+  Cartridge class used for the Dynacom Megaboy (also known as the F0 scheme).
+  The cart holds 16 4K banks (64K total).  Unlike schemes that select a bank
+  by address, F0 uses a sequential "next bank" trigger: any access to $1FF0
+  advances to the next bank in sequence, wrapping from bank 15 back to bank 0.
+  Because the game cannot jump to an arbitrary bank, the program layout must
+  be structured so that each bank is visited in order.
 
   @author  Eckhard Stolberg, Thomas Jentzsch
 */
@@ -38,13 +41,12 @@ class CartridgeF0 : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeF0(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeF0(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 64_KB);
     ~CartridgeF0() override = default;
 
@@ -83,4 +85,4 @@ class CartridgeF0 : public CartridgeEnhanced
     CartridgeF0& operator=(CartridgeF0&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_F0_HXX

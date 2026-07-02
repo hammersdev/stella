@@ -43,7 +43,7 @@ StellaSettingsDialog::StellaSettingsDialog(OSystem& osystem, DialogContainer& pa
             HBORDER      = Dialog::hBorder(),
             VGAP         = Dialog::vGap(),
             INDENT       = Dialog::indent();
-  ButtonWidget* bw = nullptr;  // NOLINT (erroneously marked as const)
+  ButtonWidget* bw = nullptr;
 
   WidgetArray wid;
 
@@ -87,9 +87,7 @@ StellaSettingsDialog::StellaSettingsDialog(OSystem& osystem, DialogContainer& pa
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-StellaSettingsDialog::~StellaSettingsDialog() // NOLINT (we need an empty d'tor)
-{
-}
+StellaSettingsDialog::~StellaSettingsDialog() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void StellaSettingsDialog::addUIOptions(WidgetArray& wid, int xpos, int& ypos)
@@ -243,7 +241,7 @@ void StellaSettingsDialog::loadConfig()
   handleOverscanChange();
 
   // Controllers
-  if (instance().hasConsole())
+  if(instance().hasConsole())
   {
     myGameProperties = instance().console().properties();
   }
@@ -296,7 +294,7 @@ void StellaSettingsDialog::saveConfig()
   instance().saveConfig();
 
   // In any event, inform the Console
-  if (instance().hasConsole())
+  if(instance().hasConsole())
   {
     instance().console().setProperties(myGameProperties);
   }
@@ -327,7 +325,7 @@ void StellaSettingsDialog::setDefaults()
 
   // Load the default game properties
   Properties defaultProperties;
-  const string& md5 = myGameProperties.get(PropType::Cart_MD5);
+  string_view md5 = myGameProperties.get(PropType::Cart_MD5);
 
   instance().propSet().getMD5(md5, defaultProperties, true);
 
@@ -338,7 +336,7 @@ void StellaSettingsDialog::setDefaults()
 void StellaSettingsDialog::handleCommand(CommandSender* sender, int cmd,
   int data, int id)
 {
-  switch (cmd)
+  switch(cmd)
   {
     case GuiObject::kDefaultsCmd:
       setDefaults();
@@ -348,7 +346,7 @@ void StellaSettingsDialog::handleCommand(CommandSender* sender, int cmd,
       saveConfig();
       [[fallthrough]];
     case GuiObject::kCloseCmd:
-      if (myMode != AppMode::emulator)
+      if(myMode != AppMode::emulator)
         close();
       else
         instance().eventHandler().leaveMenuMode();
@@ -360,7 +358,7 @@ void StellaSettingsDialog::handleCommand(CommandSender* sender, int cmd,
 
     case kConfirmSwitchCmd:
       instance().settings().setValue("basic_settings", false);
-      if (myMode != AppMode::emulator)
+      if(myMode != AppMode::emulator)
         close();
       else
         instance().eventHandler().leaveMenuMode();
@@ -398,7 +396,7 @@ void StellaSettingsDialog::handleCommand(CommandSender* sender, int cmd,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void StellaSettingsDialog::handleOverscanChange()
 {
-  if (myTVOverscan->getValue() == 0)
+  if(myTVOverscan->getValue() == 0)
   {
     myTVOverscan->setValueLabel("Off");
     myTVOverscan->setValueUnit("");
@@ -435,17 +433,14 @@ void StellaSettingsDialog::loadControllerProperties(const Properties& props)
   // in launcher mode
   bool enable = false;
 
-  // Note: The state returned seems not consistent here
-  switch (instance().eventHandler().state())
+  switch(instance().eventHandler().state())
   {
-    case EventHandlerState::OPTIONSMENU: // game is running!
-    case EventHandlerState::CMDMENU: // game is running!
-      enable = true;
-      break;
     case EventHandlerState::LAUNCHER:
       enable = !instance().launcher().selectedRomMD5().empty();
       break;
     default:
+      // Any in-game menu: enabled whenever a console is running behind it
+      enable = instance().hasConsole();
       break;
   }
 
@@ -457,9 +452,9 @@ void StellaSettingsDialog::loadControllerProperties(const Properties& props)
   myRightPortLabel->setEnabled(enable);
   myRightPortDetected->setEnabled(enable);
 
-  if (enable)
+  if(enable)
   {
-    string controller = props.get(PropType::Controller_Left);
+    string controller{props.get(PropType::Controller_Left)};
     myLeftPort->setSelected(controller, "AUTO");
     controller = props.get(PropType::Controller_Right);
     myRightPort->setSelected(controller, "AUTO");
@@ -494,9 +489,9 @@ int StellaSettingsDialog::valueToLevel(int value)
     0, 5, 11, 18, 26, 35, 45, 56, 68, 81, 95
   };
 
-  for (int i = NUM_LEVELS - 1; i > 0; --i)
+  for(int i = NUM_LEVELS - 1; i > 0; --i)
   {
-    if (std::cmp_greater_equal(value, values[i]))
+    if(std::cmp_greater_equal(value, values[i]))
       return i;
   }
   return 0;
@@ -506,7 +501,7 @@ int StellaSettingsDialog::valueToLevel(int value)
 void StellaSettingsDialog::openHelp()
 {
   // Create an help dialog, similar to the in-game one
-  if (myHelpDialog == nullptr)
+  if(myHelpDialog == nullptr)
     myHelpDialog = std::make_unique<HelpDialog>(instance(), parent(), _font);
   myHelpDialog->open();
 }
@@ -514,52 +509,47 @@ void StellaSettingsDialog::openHelp()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void StellaSettingsDialog::updateControllerStates()
 {
-  bool autoDetect = false;
-  ByteBuffer image;
-  string md5 = myGameProperties.get(PropType::Cart_MD5);
-  size_t size = 0;
+  ByteArray image;
+  string md5{myGameProperties.get(PropType::Cart_MD5)};
 
   // try to load the image for auto detection
   if(!instance().hasConsole())
   {
     const FSNode& node = FSNode(instance().launcher().selectedRom());
-
-    autoDetect = node.exists() && !node.isDirectory() && (image = instance().openROM(node, md5, size)) != nullptr;
+    if(node.exists() && !node.isDirectory())
+      image = instance().openROM(node, md5);
   }
+
   string label;
   Controller::Type type = Controller::getType(myLeftPort->getSelectedTag().toString());
-
   if(type == Controller::Type::Unknown)
   {
     if(instance().hasConsole())
       label = (instance().console().leftController().name()) + " detected";
-    else if(autoDetect)
-      label = ControllerDetector::detectName(image, size, type,
+    else if(!image.empty())
+      label = std::format("{} detected", ControllerDetector::detectName(image, type,
                                              Controller::Jack::Left,
-                                             instance().settings()) + " detected";
+                                             instance().settings()));
   }
   myLeftPortDetected->setLabel(label);
 
   label = "";
   type = Controller::getType(myRightPort->getSelectedTag().toString());
-
   if(type == Controller::Type::Unknown)
   {
     if(instance().hasConsole())
       label = (instance().console().rightController().name()) + " detected";
-    else if(autoDetect)
-      label = ControllerDetector::detectName(image, size, type,
+    else if(!image.empty())
+      label = std::format("{} detected", ControllerDetector::detectName(image, type,
                                              Controller::Jack::Right,
-                                             instance().settings()) + " detected";
+                                             instance().settings()));
   }
   myRightPortDetected->setLabel(label);
 
   // Compumate bankswitching scheme doesn't allow to select controllers
   const bool enableSelectControl = myGameProperties.get(PropType::Cart_Type) != "CM";
-
   myLeftPortLabel->setEnabled(enableSelectControl);
   myRightPortLabel->setEnabled(enableSelectControl);
   myLeftPort->setEnabled(enableSelectControl);
   myRightPort->setEnabled(enableSelectControl);
 }
-

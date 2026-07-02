@@ -91,48 +91,12 @@ class FBBackendSDL : public FBBackend
     bool fullScreen() const override;
 
     /**
-      This method is called to retrieve the R/G/B data from the given pixel.
-
-      @param pixel  The pixel containing R/G/B data
-      @param r      The red component of the color
-      @param g      The green component of the color
-      @param b      The blue component of the color
+      Retrieve the R/G/B/A masks from the FrameBuffer backend renderer.
     */
-    FORCE_INLINE void getRGB(uInt32 pixel, uInt8* r, uInt8* g, uInt8* b) const override
-      { SDL_GetRGB(pixel, myPixelFormat, nullptr, r, g, b); }
-
-    /**
-      This method is called to retrieve the R/G/B/A data from the given pixel.
-
-      @param pixel  The pixel containing R/G/B data
-      @param r      The red component of the color
-      @param g      The green component of the color
-      @param b      The blue component of the color
-      @param a      The alpha component of the color.
-    */
-    FORCE_INLINE void getRGBA(uInt32 pixel, uInt8* r, uInt8* g, uInt8* b, uInt8* a) const override
-      { SDL_GetRGBA(pixel, myPixelFormat, nullptr, r, g, b, a); }
-
-    /**
-      This method is called to map a given R/G/B triple to the screen palette.
-
-      @param r  The red component of the color.
-      @param g  The green component of the color.
-      @param b  The blue component of the color.
-    */
-    uInt32 mapRGB(uInt8 r, uInt8 g, uInt8 b) const override
-      { return SDL_MapRGB(myPixelFormat, nullptr, r, g, b); }
-
-    /**
-      This method is called to map a given R/G/B/A triple to the screen palette.
-
-      @param r  The red component of the color.
-      @param g  The green component of the color.
-      @param b  The blue component of the color.
-      @param a  The alpha component of the color.
-    */
-    uInt32 mapRGBA(uInt8 r, uInt8 g, uInt8 b, uInt8 a) const override
-      { return SDL_MapRGBA(myPixelFormat, nullptr, r, g, b, a); }
+    FORCE_INLINE uInt32 rMask() const override { return myPixelFormat->Rmask; }
+    FORCE_INLINE uInt32 gMask() const override { return myPixelFormat->Gmask; }
+    FORCE_INLINE uInt32 bMask() const override { return myPixelFormat->Bmask; }
+    FORCE_INLINE uInt32 aMask() const override { return myPixelFormat->Amask; }
 
     /**
       This method is called to get a copy of the viewable framebuffer area
@@ -140,9 +104,9 @@ class FBBackendSDL : public FBBackend
       that may be in use; it should return the actual data as it is currently
       seen onscreen.
 
-      @param surface  The surface used to store the current framebuffer.
+      @return  The surface used to store the current framebuffer.
     */
-    void getSurface(FBSurface& surface) const override;
+    const FBSurface& compositedSurface() override;
 
     /**
       This method is called to query if the current window is not centered
@@ -172,6 +136,7 @@ class FBBackendSDL : public FBBackend
       Clear the frame buffer.
     */
     void clear() override;
+    void flush() override;
 
     /**
       This method is called to query and initialize the video hardware
@@ -182,8 +147,8 @@ class FBBackendSDL : public FBBackend
       @param windowedRes    Maximum resolution supported in windowed mode
       @param renderers      List of renderer names (internal name -> end-user name)
     */
-    void queryHardware(vector<Common::Size>& fullscreenRes,
-                       vector<Common::Size>& windowedRes,
+    void queryHardware(std::unordered_map<uInt32, Common::Size>& fullscreenRes,
+                       std::unordered_map<uInt32, Common::Size>& windowedRes,
                        VariantList& renderers) override;
 
     /**
@@ -196,7 +161,7 @@ class FBBackendSDL : public FBBackend
       @return  False on any errors, else true
     */
     bool setVideoMode(const VideoModeHandler::Mode& mode,
-                      int winIdx, const Common::Point& winPos) override;
+                      uInt32 winIdx, const Common::Point& winPos) override;
 
     /**
       This method is called to create a surface with the given attributes.
@@ -212,7 +177,7 @@ class FBBackendSDL : public FBBackend
           uInt32 h,
           ScalingInterpolation inter,
           const uInt32* data
-        ) const override;
+        ) override;
 
     /**
       Grabs or ungrabs the mouse based on the given boolean value.
@@ -265,13 +230,13 @@ class FBBackendSDL : public FBBackend
       Checks if the display refresh rate should be adapted to game refresh
       rate in (real) fullscreen mode.
 
-      @param displayIndex   The display which should be checked
+      @param displayId      The display which should be checked
       @param adaptedSdlMode The best matching mode if the refresh rate
                             should be changed
 
       @return  True if the refresh rate should be changed
     */
-    bool adaptRefreshRate(Int32 displayIndex, SDL_DisplayMode& adaptedSdlMode);
+    bool adaptRefreshRate(SDL_DisplayID displayId, SDL_DisplayMode& adaptedSdlMode);
 
     /**
       After the renderer has been created, detect the features it supports.
@@ -300,14 +265,13 @@ class FBBackendSDL : public FBBackend
     SDL_Window* myWindow{nullptr};
     SDL_Renderer* myRenderer{nullptr};
 
-    // Used by mapRGB (when palettes are created)
+    // Used when palettes and textures are created
     const SDL_PixelFormatDetails* myPixelFormat{nullptr};
 
-    // Are we in fullscreen mode?
-    // There seem to be issues with creating the window and renderer separately,
-    // and doing so means we can't query the window for fullscreen status
-    // So we do it at window creation and cache the result
-    // TODO: Is this a bug in SDL?
+    // Cached fullscreen state. SDL_ShowWindow triggers X11 _NET_WM_STATE
+    // PropertyNotify events that SDL processes, resetting SDL_WINDOW_FULLSCREEN
+    // before the WM has applied it. We capture the flag before SDL_ShowWindow
+    // to preserve the correct value; direct SDL queries afterwards are unreliable.
     bool myIsFullscreen{false};
 
     // Text events are sometimes enabled before a window exists
@@ -329,6 +293,10 @@ class FBBackendSDL : public FBBackend
     // Window and renderer dimensions
     int myWindowW{0}, myWindowH{0}, myRenderW{0}, myRenderH{0};
 
+    // Used by compositedSurface() when a surface representing the complete
+    // renderer image is needed
+    unique_ptr<FBSurface> myCompositedSurface;
+
   private:
     // Following constructors and assignment operators not supported
     FBBackendSDL() = delete;
@@ -338,4 +306,4 @@ class FBBackendSDL : public FBBackend
     FBBackendSDL& operator=(FBBackendSDL&&) = delete;
 };
 
-#endif
+#endif  // FB_BACKEND_SDL_HXX

@@ -15,10 +15,11 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef FRAMEBUFFER_HXX
-#define FRAMEBUFFER_HXX
+#ifndef FRAME_BUFFER_HXX
+#define FRAME_BUFFER_HXX
 
 #include <list>
+#include <unordered_map>
 
 class OSystem;
 class Console;
@@ -35,6 +36,7 @@ class Bezel;
 #include "Variant.hxx"
 #include "TIAConstants.hxx"
 #include "FBBackend.hxx"
+#include "FBMessageHandler.hxx"
 #include "FrameBufferConstants.hxx"
 #include "EventHandlerConstants.hxx"
 #include "VideoModeHandler.hxx"
@@ -188,6 +190,15 @@ class FrameBuffer
     void setUIPalette();
 
     /**
+      Set disassembly syntax colors.  The active UI theme determines which
+      disasm palette is used: light themes (standard, light) use the standard
+      disasm palette; dark themes (classic, dark) use the dark one.
+      Called automatically by setUIPalette(); can also be called standalone
+      when only the disassembly palette needs refreshing.
+    */
+    void setDisasmPalette();
+
+    /**
       Returns the current dimensions of the framebuffer image.
       Note that this will take into account the current scaling (if any)
       as well as image 'centering'.
@@ -203,10 +214,11 @@ class FrameBuffer
     const Common::Rect& screenRect() const { return myActiveVidMode.screenR; }
 
     /**
-      Returns the dimensions of the mode specific users' desktop.
+      Returns the dimensions of the mode specific users' desktop, or if
+      BufferType::None, return the dimensions of the current active screen.
     */
-    const Common::Size& desktopSize(BufferType bufferType) const {
-      return myDesktopSize[displayId(bufferType)];
+    const Common::Size& desktopSize(BufferType bufferType = BufferType::None) const {
+      return myDesktopSize.at(displayId(bufferType));
     }
 
     /**
@@ -230,17 +242,18 @@ class FrameBuffer
     */
     TIASurface& tiaSurface() const { return *myTIASurface; }
 
-#if 0
     /**
-      Get the viewable surface associated with the framebuffer, minus any
-      centering/blank space.  Note that this takes into account any post-processing,
-      including Blargg filtering, scanlines, etc.
+      This method is called to get the specified ARGB data from the viewable
+      FrameBuffer area.  Note that this isn't the same as any internal
+      surfaces that may be in use; it should return the actual data as it
+      is currently seen onscreen.
 
       Currently this is used only for taking PNG snapshots.  As such, it is slow
       and should not be used for anything else.
     */
-    const FBSurface& renderedTIASurface();
-#endif
+    const FBSurface& compositedSurface() {
+      return myBackend->compositedSurface();
+    }
 
     /**
       Toggles between fullscreen and window mode.
@@ -316,14 +329,14 @@ class FrameBuffer
       Answer whether hidpi mode is allowed.  In this mode, all FBSurfaces
       are scaled to 2x normal size.
     */
-    bool hidpiAllowed() const { return myHiDPIAllowed[displayId()]; }
+    bool hidpiAllowed() const { return myHiDPIAllowed.at(displayId()); }
 
     /**
       Answer whether hidpi mode is enabled.  In this mode, all FBSurfaces
       are scaled to 2x normal size.
     */
-    bool hidpiEnabled() const { return myHiDPIEnabled[displayId()]; }
-    uInt32 hidpiScaleFactor() const { return myHiDPIEnabled[displayId()] ? 2 : 1; }
+    bool hidpiEnabled() const { return myHiDPIEnabled.at(displayId()); }
+    uInt32 hidpiScaleFactor() const { return myHiDPIEnabled.at(displayId()) ? 2 : 1; }
 
     /**
       This method should be called to save the current settings of all
@@ -350,7 +363,7 @@ class FrameBuffer
       @return  The description of the font
     */
     static FontDesc getFontDesc(string_view name);
-  #endif
+  #endif  // GUI_SUPPORT
 
     /**
       Shows or hides the cursor based on the given boolean value.
@@ -370,76 +383,21 @@ class FrameBuffer
     bool updateTheme();
 
     /**
-      This method is called to retrieve the R/G/B data from the given pixel.
-
-      @param pixel  The pixel containing R/G/B data
-      @param r      The red component of the color
-      @param g      The green component of the color
-      @param b      The blue component of the color
+      Retrieve the R/G/B/A masks from the FrameBuffer backend renderer.
     */
-    void getRGB(uInt32 pixel, uInt8* r, uInt8* g, uInt8* b) const {
-      myBackend->getRGB(pixel, r, g, b);
-    }
-
-    /**
-      This method is called to retrieve the R/G/B/A data from the given pixel.
-
-      @param pixel  The pixel containing R/G/B data
-      @param r      The red component of the color
-      @param g      The green component of the color
-      @param b      The blue component of the color
-      @param a      The alpha component of the color.
-    */
-    void getRGBA(uInt32 pixel, uInt8* r, uInt8* g, uInt8* b, uInt8* a) const {
-      myBackend->getRGBA(pixel, r, g, b, a);
-    }
-
-    /**
-      This method is called to map a given R/G/B triple to the screen palette.
-
-      @param r  The red component of the color.
-      @param g  The green component of the color.
-      @param b  The blue component of the color.
-    */
-    uInt32 mapRGB(uInt8 r, uInt8 g, uInt8 b) const {
-      return myBackend->mapRGB(r, g, b);
-    }
-
-    /**
-      This method is called to map a given R/G/B/A triple to the screen palette.
-
-    @param r  The red component of the color.
-    @param g  The green component of the color.
-    @param b  The blue component of the color.
-      @param a  The alpha component of the color.
-    */
-    uInt32 mapRGBA(uInt8 r, uInt8 g, uInt8 b, uInt8 a) const {
-      return myBackend->mapRGBA(r, g, b, a);
-    }
-
-#if 0
-    /**
-      This method is called to get the specified ARGB data from the viewable
-      FrameBuffer area.  Note that this isn't the same as any internal
-      surfaces that may be in use; it should return the actual data as it
-      is currently seen onscreen.
-
-      @param buffer  The actual pixel data in ARGB8888 format
-      @param pitch   The pitch (in bytes) for the pixel data
-      @param rect    The bounding rectangle for the buffer
-    */
-    void readPixels(uInt8* buffer, size_t pitch, const Common::Rect& rect) const {
-      myBackend->readPixels(buffer, pitch, rect);
-    }
-#endif
+    uInt32 rMask() const { return myBackend->rMask(); }
+    uInt32 gMask() const { return myBackend->gMask(); }
+    uInt32 bMask() const { return myBackend->bMask(); }
+    uInt32 aMask() const { return myBackend->aMask(); }
 
     /**
       Clear the framebuffer.
     */
     void clear() { myBackend->clear(); }
+    void flush() { myBackend->flush(); }
 
     /**
-      Transform from window to renderer coordinates, x/y direction
+      Transform from window to renderer coordinates, x/y direction.
      */
     int scaleX(int x) const { return myBackend->scaleX(x); }
     int scaleY(int y) const { return myBackend->scaleY(y); }
@@ -467,40 +425,10 @@ class FrameBuffer
     //void renderTIA(bool shade = false, bool doClear = true);
     void renderTIA(bool doClear = true, bool shade = false);
 
-  #ifdef GUI_SUPPORT
-    /**
-      Helps to create a basic message onscreen.
-
-      @param message  The message to be shown
-      @param position Onscreen position for the message
-      @param force    Force showing this message, even if messages are disabled
-    */
-    void createMessage(string_view message, MessagePosition position,
-                       bool force = false);
-  #endif
-
-    /**
-      Draw pending messages.
-
-      @return  Indicates whether any changes actually occurred.
-    */
-    bool drawMessage();
-
-    /**
-      Hide pending messages.
-    */
-    void hideMessage();
-
-    /**
-      Draws the frame stats overlay.
-    */
-    void drawFrameStats(float framesPerSecond);
-
-
     /**
       Get the display used for the current mode.
     */
-    int displayId(BufferType bufferType = BufferType::None) const;
+    uInt32 displayId(BufferType bufferType = BufferType::None) const;
 
     /**
       Build an applicable video mode based on the current settings in
@@ -527,7 +455,7 @@ class FrameBuffer
       Setup the UI fonts
     */
     void setupFonts();
-  #endif
+  #endif  // GUI_SUPPORT
 
   private:
     // The parent system for the framebuffer
@@ -539,24 +467,24 @@ class FrameBuffer
     // Indicates the number of times the framebuffer was initialized
     uInt32 myInitializedCount{0};
 
-    // Used to set intervals between messages while in pause mode
-    Int32 myPausedCount{0};
-
-    // Maximum dimensions of the desktop area
+    // Maximum dimensions of each attached display desktop area
     // Note that this takes 'hidpi' mode into account, so in some cases
     // it will be less than the absolute desktop size
-    vector<Common::Size> myDesktopSize;
+    std::unordered_map<uInt32, Common::Size> myDesktopSize;
 
-    // Maximum absolute dimensions of the desktop area
-    vector<Common::Size> myAbsDesktopSize;
+    // Maximum absolute dimensions of each attached display desktop area
+    std::unordered_map<uInt32, Common::Size> myAbsDesktopSize;
 
-    // The resolution of the attached displays in fullscreen mode
-    // The primary display is typically the first in the array
+    // The resolution of each attached display in fullscreen mode
     // Windowed modes use myDesktopSize directly
-    vector<Common::Size> myFullscreenDisplays;
+    std::unordered_map<uInt32, Common::Size> myFullscreenDisplays;
 
-    // The resolution of the attached displays in windowed mode
-    vector<Common::Size> myWindowedDisplays;
+    // The resolution of each attached display in windowed mode
+    std::unordered_map<uInt32, Common::Size> myWindowedDisplays;
+
+    // HiDPI settings of each attached display
+    std::unordered_map<uInt32, bool> myHiDPIAllowed;
+    std::unordered_map<uInt32, bool> myHiDPIEnabled;
 
     // Supported renderers
     VariantList myRenderers;
@@ -584,7 +512,7 @@ class FrameBuffer
 
     // The font object to use for the ROM launcher
     unique_ptr<GUI::Font> myLauncherFont;
-  #endif
+  #endif  // GUI_SUPPORT
 
     // The TIASurface class takes responsibility for TIA rendering
     shared_ptr<TIASurface> myTIASurface;
@@ -592,29 +520,11 @@ class FrameBuffer
     // The BezelSurface which blends over the TIA surface
     unique_ptr<Bezel> myBezel;
 
-    // Used for onscreen messages and frame statistics
-    // (scanline count and framerate)
-    struct Message {
-      string text;
-      int counter{-1};
-      int x{0}, y{0}, w{0}, h{0};
-      MessagePosition position{MessagePosition::BottomCenter};
-      ColorId color{kNone};
-      shared_ptr<FBSurface> surface;
-      bool enabled{false};
-      bool dirty{false};
-      bool showGauge{false};
-      float value{0.F};
-      string valueText;
-    };
-    Message myMsg;
-    Message myStatsMsg;
-    bool myStatsEnabled{false};
-    uInt32 myLastScanlines{0};
+    // The FBMessageHandler class takes responsibility for all onscreen
+    // message and frame-statistics overlay functionality
+    FBMessageHandler myMsgHandler;
 
     bool myGrabMouse{false};
-    vector<bool> myHiDPIAllowed;
-    vector<bool> myHiDPIEnabled;
 
     // Minimum TIA zoom level that can be used for this framebuffer
     double myTIAMinZoom{2.};
@@ -622,15 +532,12 @@ class FrameBuffer
     // Holds a reference to all the surfaces that have been created
     std::list<shared_ptr<FBSurface>> mySurfaceList;
 
-    // Maximum message width [chars]
-    static constexpr int MESSAGE_WIDTH = 56;
-    // Maximum gauge bar width [chars]
-    static constexpr int GAUGEBAR_WIDTH = 30;
-
     FullPaletteArray myFullPalette{0};
     // Holds UI palette data (for each variation)
     static UIPaletteArray ourStandardUIPalette, ourClassicUIPalette,
                           ourLightUIPalette, ourDarkUIPalette;
+    // Holds disassembly palette data (independent of UI theme)
+    static DisasmPaletteArray ourStandardDisasmPalette, ourDarkDisasmPalette;
 
   private:
     // Following constructors and assignment operators not supported
@@ -641,4 +548,4 @@ class FrameBuffer
     FrameBuffer& operator=(FrameBuffer&&) = delete;
 };
 
-#endif
+#endif  // FRAME_BUFFER_HXX

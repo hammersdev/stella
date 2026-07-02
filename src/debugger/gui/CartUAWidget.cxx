@@ -18,6 +18,8 @@
 #include "CartUA.hxx"
 #include "CartUAWidget.hxx"
 
+using Common::Base;
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 CartridgeUAWidget::CartridgeUAWidget(
       GuiObject* boss, const GUI::Font& lfont, const GUI::Font& nfont,
@@ -32,23 +34,16 @@ CartridgeUAWidget::CartridgeUAWidget(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeUAWidget::description()
 {
-  std::ostringstream info;
-
-  info << "8K UA cartridge" << (mySwappedHotspots ? " (swapped banks)" : "")
-       << ", two 4K banks\n"
-       << CartridgeEnhancedWidget::description();
-
-  return info.str();
+  return std::format("8K UA cartridge{}, two 4K banks\n{}",
+    mySwappedHotspots ? " (swapped banks)" : "",
+    CartridgeEnhancedWidget::description());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeUAWidget::hotspotStr(int bank, int, bool prefix)
 {
-  std::ostringstream info;
   const uInt16 hotspot = myCart.hotspot() + (bank ^ (mySwappedHotspots ? 1 : 0)) * myHotspotDelta;
-
-  info << "(" << (prefix ? "hotspot " : "")
-       << "$" << Common::Base::HEX1 << hotspot << ", $" << (hotspot | 0x80) << ")";
-
-  return info.str();
+  return std::format("({}${}, ${}, ${})",
+    prefix ? "hotspot " : "",
+    Base::hex4(hotspot), Base::hex4(hotspot | 0x80), Base::hex4(hotspot | 0xD90));
 }

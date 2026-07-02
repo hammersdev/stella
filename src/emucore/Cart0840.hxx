@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGE0840_HXX
-#define CARTRIDGE0840_HXX
+#ifndef CARTRIDGE_0840_HXX
+#define CARTRIDGE_0840_HXX
 
 #include "bspf.hxx"
 #include "CartEnhanced.hxx"
@@ -30,6 +30,11 @@
   are two 4K banks, which are switched by accessing $0800 (bank 0) and
   $0840 (bank 1).
 
+  Unlike most Atari bankswitching schemes whose hotspots live in the upper
+  cartridge window ($1FE0-$1FFF), 0840 triggers on addresses below $1000
+  (outside the cartridge ROM window entirely).  The name "0840" comes from the
+  two hotspot addresses.  Any read or write to either address fires the switch.
+
   @author  Fred X. Quimby, Thomas Jentzsch
 */
 class Cartridge0840 : public CartridgeEnhanced
@@ -40,13 +45,12 @@ class Cartridge0840 : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    Cartridge0840(const ByteBuffer& image, size_t size, string_view md5,
+    Cartridge0840(ByteSpan image, string_view md5,
                   const Settings& settings, size_t bsSize = 8_KB);
     ~Cartridge0840() override = default;
 
@@ -113,4 +117,4 @@ class Cartridge0840 : public CartridgeEnhanced
     Cartridge0840& operator=(Cartridge0840&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_0840_HXX

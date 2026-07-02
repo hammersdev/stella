@@ -190,7 +190,6 @@ void VideoAudioDialog::addDisplayTab()
     Event::VSizeAdjustDecrease, Event::VSizeAdjustIncrease);
   wid.push_back(myVSizeAdjust);
 
-
   // Add message concerning usage
   ypos = myTab->getHeight() - fontHeight - ifont.getFontHeight() - VGAP - VBORDER;
   const int iwidth =
@@ -226,7 +225,7 @@ void VideoAudioDialog::addPaletteTab()
   items.clear();
   VarList::push_back(items, "Standard", PaletteHandler::SETTING_STANDARD);
   VarList::push_back(items, "z26", PaletteHandler::SETTING_Z26);
-  if (instance().checkUserPalette())
+  if(instance().checkUserPalette())
     VarList::push_back(items, "User", PaletteHandler::SETTING_USER);
   VarList::push_back(items, "Custom", PaletteHandler::SETTING_CUSTOM);
   myTIAPalette = new PopUpWidget(myTab, _font, xpos, ypos, pwidth,
@@ -527,6 +526,7 @@ void VideoAudioDialog::addBezelTab()
   wid.push_back(myWinBottomSlider);
 
   // Add items for tab 3
+  addToFocusList(wid, myTab, tabID);
 
   myTab->parentWidget(tabID)->setHelpAnchor("VideoAudioBezels");
 }
@@ -927,7 +927,7 @@ void VideoAudioDialog::saveConfig()
   // DPC Pitch
   audioSettings.setDpcPitch(myDpcPitch->getValue());
   // update if current cart is Pitfall II
-  if (instance().hasConsole() &&
+  if(instance().hasConsole() &&
       instance().console().cartridge().name() == "CartridgeDPC")
   {
     auto& cart = static_cast<CartridgeDPC&>(instance().console().cartridge());
@@ -938,7 +938,7 @@ void VideoAudioDialog::saveConfig()
       (myModePopup->getSelectedTag().toInt());
   audioSettings.setPreset(preset);
 
-  if (preset == AudioSettings::Preset::custom) {
+  if(preset == AudioSettings::Preset::custom) {
     // Fragsize
     audioSettings.setSampleRate(myFreqPopup->getSelectedTag().toInt());
     audioSettings.setHeadroom(myHeadroomSlider->getValue());
@@ -1107,11 +1107,7 @@ void VideoAudioDialog::handlePaletteChange()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void VideoAudioDialog::handleShiftChanged(SliderWidget* widget)
 {
-  std::ostringstream ss;
-
-  ss << std::setw(4) << std::fixed << std::setprecision(1)
-    << (0.1 * (widget->getValue())) << DEGREE;
-  widget->setValueLabel(ss.view());
+  widget->setValueLabel(std::format("{:4.1f}{}", 0.1 * widget->getValue(), DEGREE));
   handlePaletteUpdate();
 }
 
@@ -1153,12 +1149,9 @@ void VideoAudioDialog::handlePaletteUpdate()
   {
     instance().frameBuffer().tiaSurface().paletteHandler().setPalette();
 
-    constexpr int NUM_LUMA = 8;
-    constexpr int NUM_CHROMA = 16;
-
-    for(int idx = 0; idx < NUM_CHROMA; ++idx)  // NOLINT
-      for(int lum = 0; lum < NUM_LUMA; ++lum)  // NOLINT
-        myColor[idx][lum]->setDirty();
+    for(auto& row: myColor)
+      for(auto* w: row)
+        w->setDirty();
   }
 }
 
@@ -1176,7 +1169,7 @@ void VideoAudioDialog::handleFullScreenChange()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void VideoAudioDialog::handleOverscanChange()
 {
-  if (myTVOverscan->getValue() == 0)
+  if(myTVOverscan->getValue() == 0)
   {
     myTVOverscan->setValueLabel("Off");
     myTVOverscan->setValueUnit("");
@@ -1210,7 +1203,7 @@ void VideoAudioDialog::handleBezelChange()
 void VideoAudioDialog::handleCommand(CommandSender* sender, int cmd,
                                      int data, int id)
 {
-  switch (cmd)
+  switch(cmd)
   {
     case GuiObject::kOKCmd:
       saveConfig();
@@ -1261,7 +1254,7 @@ void VideoAudioDialog::handleCommand(CommandSender* sender, int cmd,
     {
       const int adjust = myVSizeAdjust->getValue();
 
-      if (!adjust)
+      if(!adjust)
       {
         myVSizeAdjust->setValueLabel("Default");
         myVSizeAdjust->setValueUnit("");
@@ -1294,7 +1287,7 @@ void VideoAudioDialog::handleCommand(CommandSender* sender, int cmd,
       break;
 
     case kScanlinesChanged:
-      if (myTVScanIntense->getValue() == 0)
+      if(myTVScanIntense->getValue() == 0)
       {
         myTVScanIntense->setValueLabel("Off");
         myTVScanIntense->setValueUnit("");
@@ -1312,7 +1305,7 @@ void VideoAudioDialog::handleCommand(CommandSender* sender, int cmd,
       break;
 
     case kPhosBlendChanged:
-      if (myTVPhosLevel->getValue() == 0)
+      if(myTVPhosLevel->getValue() == 0)
       {
         myTVPhosLevel->setValueLabel("Off");
         myTVPhosLevel->setValueUnit("");
@@ -1345,19 +1338,14 @@ void VideoAudioDialog::handleCommand(CommandSender* sender, int cmd,
       break;
 
     case kHeadroomChanged:
-    {
-      std::ostringstream ss;  // NOLINT (ss is not a const)
-      ss << std::fixed << std::setprecision(1) << (0.5 * myHeadroomSlider->getValue()) << " frames";
-      myHeadroomSlider->setValueLabel(ss.view());
+      myHeadroomSlider->setValueLabel(
+        std::format("{:.1f} frames", 0.5 * myHeadroomSlider->getValue()));
       break;
-    }
+
     case kBufferSizeChanged:
-    {
-      std::ostringstream ss;  // NOLINT (ss is not a const)
-      ss << std::fixed << std::setprecision(1) << (0.5 * myBufferSizeSlider->getValue()) << " frames";
-      myBufferSizeSlider->setValueLabel(ss.view());
+      myBufferSizeSlider->setValueLabel(
+        std::format("{:.1f} frames", 0.5 * myBufferSizeSlider->getValue()));
       break;
-    }
 
     default:
       Dialog::handleCommand(sender, cmd, data, 0);
@@ -1391,8 +1379,8 @@ void VideoAudioDialog::addPalette(int x, int y, int w, int h)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void VideoAudioDialog::colorPalette()
 {
-  constexpr int NUM_LUMA = 8;
-  constexpr int NUM_CHROMA = 16;
+  constexpr int NUM_CHROMA = std::tuple_size_v<decltype(myColor)>;
+  constexpr int NUM_LUMA = std::tuple_size_v<decltype(myColor)::value_type>;
 
   if(instance().hasConsole())
   {
@@ -1405,20 +1393,18 @@ void VideoAudioDialog::colorPalette()
 
     for(int idx = 0; idx < NUM_CHROMA; ++idx)
     {
-      std::ostringstream ss;
       const int color = order[type][idx];
 
-      ss << Common::Base::HEX1 << std::uppercase << color;
-      myColorLbl[idx]->setLabel(ss.view());
+      myColorLbl[idx]->setLabel(std::format("{:1X}", color));
       for(int lum = 0; lum < NUM_LUMA; ++lum)
         myColor[idx][lum]->setColor(color * NUM_CHROMA + lum * 2); // skip grayscale colors
     }
   }
   else
     // disable palette
-    for(int idx = 0; idx < NUM_CHROMA; ++idx)  // NOLINT
-      for(int lum = 0; lum < NUM_LUMA; ++lum)  // NOLINT
-        myColor[idx][lum]->setEnabled(false);
+    for(const auto& row: myColor)
+      for(auto* w: row)
+        w->setEnabled(false);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

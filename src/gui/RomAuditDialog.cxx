@@ -86,9 +86,7 @@ RomAuditDialog::RomAuditDialog(OSystem& osystem, DialogContainer& parent,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-RomAuditDialog::~RomAuditDialog()  // NOLINT (we need an empty d'tor)
-{
-}
+RomAuditDialog::~RomAuditDialog() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void RomAuditDialog::loadConfig()
@@ -111,24 +109,17 @@ void RomAuditDialog::auditRoms()
   myResults2->setText("");
 
   const FSNode node(auditPath);
-  FSList files;  // NOLINT (files is not a const)
+  FSList files;
   files.reserve(2048);
   node.getChildren(files, FSNode::ListMode::FilesOnly);
 
   // Create a progress dialog box to show the progress of processing
   // the ROMs, since this is usually a time-consuming operation
-  // NOLINTBEGIN (the following are not a const)
-  std::ostringstream buf;
   ProgressDialog progress(this, instance().frameBuffer().font());
-  // NOLINTEND
-
-  buf << "Auditing ROM files" << ELLIPSIS;
-  progress.setMessage(buf.view());
+  progress.setMessage("Auditing ROM files" + ELLIPSIS);
   progress.setRange(0, static_cast<int>(files.size()) - 1, 5);
   progress.open();
 
-  // NOLINTBEGIN: several variables are tagged as const by clang-tidy,
-  //              but they obviously cannot be; suspect a bug in the tool
   Properties props;
   uInt32 renamed = 0, notfound = 0;
   for(uInt32 idx = 0; idx < files.size() && !progress.isCancelled(); ++idx)
@@ -144,7 +135,7 @@ void RomAuditDialog::auditRoms()
       const string& md5 = OSystem::getROMMD5(files[idx]);
       if(instance().propSet().getMD5(md5, props))
       {
-        const string& name = props.get(PropType::Cart_Name);
+        string_view name = props.get(PropType::Cart_Name);
 
         // Only rename the file if we found a valid properties entry
         if(!name.empty() && name != files[idx].getName())
@@ -164,7 +155,6 @@ void RomAuditDialog::auditRoms()
     // Update the progress bar, indicating one more ROM has been processed
     progress.incProgress();
   }
-  // NOLINTEND
 
   progress.close();
 
@@ -176,12 +166,12 @@ void RomAuditDialog::auditRoms()
 void RomAuditDialog::handleCommand(CommandSender* sender, int cmd,
                                    int data, int id)
 {
-  switch (cmd)
+  switch(cmd)
   {
     case GuiObject::kOKCmd:
       if(!myConfirmMsg)
       {
-        StringList msg;  // NOLINT (msg is not a const)
+        StringList msg;
         msg.emplace_back("This operation cannot be undone.  Your ROMs");
         msg.emplace_back("will be modified, and as such there is a chance");
         msg.emplace_back("that files may be lost.  You are recommended");

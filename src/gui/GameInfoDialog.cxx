@@ -705,9 +705,7 @@ void GameInfoDialog::addHighScoresTab()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-GameInfoDialog::~GameInfoDialog()  // NOLINT (we need an empty d'tor)
-{
-}
+GameInfoDialog::~GameInfoDialog() = default;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void GameInfoDialog::loadConfig()
@@ -724,7 +722,7 @@ void GameInfoDialog::loadConfig()
     myGameFile = FSNode(instance().launcher().selectedRom());
   }
 
-  string title = "Game properties - " + myGameProperties.get(PropType::Cart_Name);
+  string title = std::format("Game properties - {}", myGameProperties.get(PropType::Cart_Name));
   if(_font.getStringWidth(title) > getWidth() - fontWidth() * 6)
     title = title.substr(0, getWidth() / fontWidth() - 7) + ELLIPSIS;
   setTitle(title);
@@ -757,19 +755,17 @@ void GameInfoDialog::loadEmulationProperties(const Properties& props)
       // remove '*':
       if(pos != string::npos)
         bs = bs.substr(0, pos) + bs.substr(pos + 1);
-      bsDetected = bs + "detected";
+      bsDetected = std::format("{} detected", bs);
     }
     else
     {
-      string md5 = props.get(PropType::Cart_MD5);
-      size_t size = 0;
+      string md5{props.get(PropType::Cart_MD5)};
 
       // Try to load the image for auto detection
       if(myGameFile.exists() && !myGameFile.isDirectory())
-        if(const ByteBuffer image = instance().openROM(myGameFile, md5, size);
-           image != nullptr)
-          bsDetected = Bankswitch::typeToDesc(
-              CartDetector::autodetectType(image, size)) + " detected";
+        if(ByteArray image = instance().openROM(myGameFile, md5); !image.empty())
+          bsDetected = std::format("{} detected",
+              Bankswitch::typeToDesc(CartDetector::autodetectType(image)));
     }
   }
   myTypeDetected->setLabel(bsDetected);
@@ -785,7 +781,7 @@ void GameInfoDialog::loadEmulationProperties(const Properties& props)
   }
   else
   {
-    const string& startBank = props.get(PropType::Cart_StartBank);
+    string_view startBank = props.get(PropType::Cart_StartBank);
 
     VarList::push_back(items, startBank, startBank);
   }
@@ -819,7 +815,7 @@ void GameInfoDialog::loadEmulationProperties(const Properties& props)
   else
     myPhosphor->setLabel("Phosphor");
 
-  const string& blend = props.get(PropType::Display_PPBlend);
+  string_view blend = props.get(PropType::Display_PPBlend);
   myPPBlend->setValue(BSPF::stoi(blend));
 
   // set vertical center
@@ -844,7 +840,7 @@ void GameInfoDialog::loadConsoleProperties(const Properties& props)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void GameInfoDialog::loadControllerProperties(const Properties& props)
 {
-  string controller = props.get(PropType::Controller_Left);
+  string controller{props.get(PropType::Controller_Left)};
   myLeftPort->setSelected(controller, "AUTO");
   controller = props.get(PropType::Controller_Right);
   myRightPort->setSelected(controller, "AUTO");
@@ -857,10 +853,10 @@ void GameInfoDialog::loadControllerProperties(const Properties& props)
   myPaddleYCenter->setValue(BSPF::stoi(props.get(PropType::Controller_PaddlesYCenter)));
 
   // MouseAxis property (potentially contains 'range' information)
-  istringstream m_axis(props.get(PropType::Controller_MouseAxis));
-  string m_control, m_range;
-  m_axis >> m_control;
-  const bool autoAxis = equalsIgnoreCase(m_control, "AUTO");
+  const string_view axisStr = props.get(PropType::Controller_MouseAxis);
+  const bool autoAxis = equalsIgnoreCase(axisStr, "AUTO") ||
+                        axisStr.empty() ||
+                        axisStr[0] == 'A';
   myMouseControl->setState(!autoAxis);
   if(autoAxis)
   {
@@ -869,19 +865,23 @@ void GameInfoDialog::loadControllerProperties(const Properties& props)
   }
   else
   {
-    myMouseX->setSelected(m_control[0] - '0');
-    myMouseY->setSelected(m_control[1] - '0');
+    myMouseX->setSelected(axisStr[0] - '0');
+    myMouseY->setSelected(axisStr[1] - '0');
   }
   myMouseX->setEnabled(!autoAxis);
   myMouseY->setEnabled(!autoAxis);
-  if(m_axis >> m_range)
+
+  // Parse optional range value after the control string
+  const auto spacePos = axisStr.find(' ');
+  if(spacePos != string_view::npos)
   {
-    myMouseRange->setValue(BSPF::stoi(m_range));
+    int range = 100;
+    const string_view rangeStr = axisStr.substr(spacePos + 1);
+    std::from_chars(rangeStr.data(), rangeStr.data() + rangeStr.size(), range);
+    myMouseRange->setValue(range);
   }
   else
-  {
     myMouseRange->setValue(100);
-  }
 
   updateControllerStates();
 }
@@ -899,7 +899,7 @@ void GameInfoDialog::loadCartridgeProperties(const Properties& props)
 
 #ifdef IMAGE_SUPPORT
   bool autoSelected = false;
-  string bezelName = props.get(PropType::Bezel_Name);
+  string bezelName{props.get(PropType::Bezel_Name)};
   if(bezelName.empty())
   {
     bezelName = Bezel::getName(instance().bezelDir().getPath(), props);
@@ -930,8 +930,6 @@ void GameInfoDialog::loadHighScoresProperties(const Properties& props)
 
   myVariations->setText(to_string(numVariations));
 
-  std::ostringstream ss;
-
   myScoreDigits->setSelected(info.numDigits);
   myTrailingZeroes->setSelected(info.trailingZeroes);
   myScoreBCD->setState(info.scoreBCD);
@@ -944,26 +942,15 @@ void GameInfoDialog::loadHighScoresProperties(const Properties& props)
 
   myHighScoreNotes->setText(info.notes);
 
-  ss.str("");
-  ss << hex << right // << setw(HSM::MAX_ADDR_CHARS) << setfill(' ')
-    << uppercase << info.varsAddr;
-  myVarAddress->setText(ss.view());
-
-  ss.str("");
-  ss << hex << right // << setw(HSM::MAX_ADDR_CHARS) << setfill(' ')
-    << uppercase << info.specialAddr;
-  mySpecialAddress->setText(ss.view());
-
+  myVarAddress->setText(std::format("{:X}", info.varsAddr));
+  mySpecialAddress->setText(std::format("{:X}", info.specialAddr));
 
   for (uInt32 a = 0; a < HSM::MAX_SCORE_ADDR; ++a)
   {
-    ss.str("");
     if(a < HighScoresManager::numAddrBytes(info.numDigits, info.trailingZeroes))
-    {
-      ss << hex << right // << setw(HSM::MAX_ADDR_CHARS) << setfill(' ')
-        << uppercase << info.scoreAddr[a];
-    }
-    myScoreAddress[a]->setText(ss.view());
+      myScoreAddress[a]->setText(std::format("{:X}", info.scoreAddr[a]));
+    else
+      myScoreAddress[a]->setText("");
   }
   updateHighScoresWidgets();
 }
@@ -1083,16 +1070,9 @@ void GameInfoDialog::saveHighScoresProperties()
 
   if (myHighScores->getState())
   {
-    string strText;
-
     // limit variants and special size
-    strText = myVariations->getText();
-    strText = strText.substr(0, 3);
-    myVariations->setText(strText);
-
-    strText = mySpecialName->getText();
-    strText = strText.substr(0, HSM::MAX_SPECIAL_NAME);
-    mySpecialName->setText(strText);
+    myVariations->setText(myVariations->getText().substr(0, 3));
+    mySpecialName->setText(mySpecialName->getText().substr(0, HSM::MAX_SPECIAL_NAME));
 
     // fill format
     info.varsZeroBased = myVarsZeroBased->getState();
@@ -1139,7 +1119,7 @@ void GameInfoDialog::setDefaults()
 {
   // Load the default properties
   Properties defaultProperties;
-  const string& md5 = myGameProperties.get(PropType::Cart_MD5);
+  string_view md5 = myGameProperties.get(PropType::Cart_MD5);
 
   instance().propSet().getMD5(md5, defaultProperties, true);
 
@@ -1174,26 +1154,19 @@ void GameInfoDialog::setDefaults()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void GameInfoDialog::updateMultiCart()
 {
-  const std::array<string, static_cast<size_t>(Bankswitch::Type::NumMulti)> MultiCart
-    = { "2IN1", "4IN1", "8IN1", "16IN1", "32IN1", "64IN1", "128IN1" };
+  static constexpr std::array<string_view, Bankswitch::NumMulti> MultiCart = {
+    "2IN1", "4IN1", "8IN1", "16IN1", "32IN1", "64IN1", "128IN1"
+  };
   const string& selected = myBSType->getSelectedTag().toString();
   const string& detected = myTypeDetected->getLabel();
 
-  bool isMulti = false;
-  bool isInMulti = false;
-  for (const auto& entry: MultiCart)
-  {
-    if(entry == selected)
-    {
-      isMulti = true;
-      break;
-    }
-    if(detected.find(entry + " [") != string::npos)
-    {
-      isInMulti = true;
-      break;
-    }
-  }
+  const bool isMulti = std::ranges::any_of(MultiCart,
+      [&](string_view entry) { return entry == selected; });
+
+  const bool isInMulti = !isMulti && std::ranges::any_of(MultiCart,
+      [&](string_view entry) {
+          return detected.find(std::format("{} [", entry)) != string::npos;
+      });
 
   // en/disable Emulation tab widgets
   myBSTypeLabel->setEnabled(!isInMulti);
@@ -1222,14 +1195,18 @@ void GameInfoDialog::updateBSTypes()
 {
   VariantList items;
 
-  // Bankswitching type
-  for(uInt32 i = 0; i < static_cast<uInt32>(Bankswitch::Type::NumSchemes); ++i)
-    if(!myBSFilter->getState() ||
-      ((Bankswitch::Sizes[i].minSize == Bankswitch::any_KB || myGameFile.getSize() >= Bankswitch::Sizes[i].minSize) &&
-       (Bankswitch::Sizes[i].maxSize == Bankswitch::any_KB || myGameFile.getSize() <= Bankswitch::Sizes[i].maxSize)))
-    {
-      VarList::push_back(items, Bankswitch::BSList[i].desc, Bankswitch::BSList[i].name);
-    }
+  const size_t gameSize = myGameFile.getSize();
+  for(const auto i : std::views::iota(0U, Bankswitch::NumSchemes))
+  {
+      const auto& [minSize, maxSize] = Bankswitch::Sizes[i];
+      if(!myBSFilter->getState() ||
+        ((minSize == Bankswitch::any_KB || gameSize >= minSize) &&
+         (maxSize == Bankswitch::any_KB || gameSize <= maxSize)))
+      {
+          const auto& [name, desc] = Bankswitch::BSList[i];
+          VarList::push_back(items, desc, name);
+      }
+  }
   myBSType->addItems(items);
 }
 
@@ -1237,17 +1214,16 @@ void GameInfoDialog::updateBSTypes()
 void GameInfoDialog::updateControllerStates()
 {
   const bool swapPorts = mySwapPorts->getState();
-  bool autoDetect = false;
-  ByteBuffer image;
-  string md5 = myGameProperties.get(PropType::Cart_MD5);
-  size_t size = 0;
+  ByteArray image;
+  string md5{myGameProperties.get(PropType::Cart_MD5)};
 
   // try to load the image for auto detection
   if(!instance().hasConsole())
   {
     const FSNode& node = FSNode(instance().launcher().selectedRom());
 
-    autoDetect = node.exists() && !node.isDirectory() && (image = instance().openROM(node, md5, size)) != nullptr;
+    if(node.exists() && !node.isDirectory())
+      image = instance().openROM(node, md5);
   }
   string label;
   Controller::Type type = Controller::getType(myLeftPort->getSelectedTag().toString());
@@ -1261,10 +1237,10 @@ void GameInfoDialog::updateControllerStates()
       if(BSPF::startsWithIgnoreCase(label, "QT"))
         label = "QuadTari detected"; // remove plugged-in controller names
     }
-    else if(autoDetect)
-      label = ControllerDetector::detectName(image, size, type,
+    else if(!image.empty())
+      label = std::format("{} detected", ControllerDetector::detectName(image, type,
                                              !swapPorts ? Controller::Jack::Left : Controller::Jack::Right,
-                                             instance().settings()) + " detected";
+                                             instance().settings()));
   }
   myLeftPortDetected->setLabel(label);
 
@@ -1280,10 +1256,10 @@ void GameInfoDialog::updateControllerStates()
       if(BSPF::startsWithIgnoreCase(label, "QT"))
         label = "QuadTari detected"; // remove plugged-in controller names
     }
-    else if(autoDetect)
-      label = ControllerDetector::detectName(image, size, type,
+    else if(!image.empty())
+      label = std::format("{} detected", ControllerDetector::detectName(image, type,
                                              !swapPorts ? Controller::Jack::Right : Controller::Jack::Left,
-                                             instance().settings()) + " detected";
+                                             instance().settings()));
   }
   myRightPortDetected->setLabel(label);
 
@@ -1477,19 +1453,13 @@ void GameInfoDialog::setAddressVal(const EditTextWidget* addressWidget, EditText
 
   if (instance().hasConsole() && valWidget->isEnabled())
   {
-    std::ostringstream ss;
-
     // convert to number and read from memory
     const uInt16 addr = BSPF::stoi<16>(strAddr, HSM::DEFAULT_ADDRESS);
     uInt8 val = instance().highScores().peek(addr);
     val = HighScoresManager::convert(val, maxVal, isBCD, zeroBased);
 
     // format output and display in value widget
-    // if (isBCD)
-    //  ss << hex;
-    ss << right // << setw(2) << setfill(' ')
-      << uppercase << static_cast<uInt16>(val);
-    valWidget->setText(ss.view());
+    valWidget->setText(std::format("{}", static_cast<uInt16>(val)));
   }
   else
     valWidget->setText("");
@@ -1631,12 +1601,12 @@ void GameInfoDialog::handleCommand(CommandSender* sender, int cmd,
                           [this](bool OK, const FSNode& node) {
                             if(OK)
                             {
-                              myBezelName->setText(node.getNameWithExt(""));
+                              myBezelName->setText(node.getBaseName());
                               myBezelDetected->setLabel("");
                             }
                           },
                           [](const FSNode& node) {
-                            return BSPF::endsWithIgnoreCase(node.getName(), ".png");
+                            return node.hasExtension(".png");
                           });
       break;
 #endif

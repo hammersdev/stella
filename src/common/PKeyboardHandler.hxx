@@ -18,8 +18,6 @@
 #ifndef PHYSICAL_KEYBOARD_HANDLER_HXX
 #define PHYSICAL_KEYBOARD_HANDLER_HXX
 
-#include <map>
-
 class OSystem;
 class EventHandler;
 
@@ -29,6 +27,7 @@ class EventHandler;
 #include "EventHandlerConstants.hxx"
 #include "Props.hxx"
 #include "KeyMap.hxx"
+#include "StellaKeys.hxx"
 
 /**
   This class handles all physical keyboard-related operations in Stella.
@@ -82,11 +81,6 @@ class PhysicalKeyboardHandler
       return myKeyMap.check(mode, key, mod);
     }
 
-  #ifdef BSPF_UNIX
-    /** See comments on 'myAltKeyCounter' for more information. */
-    uInt8& altKeyCount() { return myAltKeyCounter; }
-  #endif
-
     /** See comments on KeyMap.myModEnabled for more information. */
     bool& useModKeys() { return myKeyMap.enableMod(); }
 
@@ -97,10 +91,10 @@ class PhysicalKeyboardHandler
     // Structure used for action menu items
     struct EventMapping {
       Event::Type event{Event::NoType};
-      StellaKey key{StellaKey(0)};
-      int mod{KBDM_NONE};
+      StellaKey key{StellaKey::UNKNOWN};
+      StellaMod mod{StellaMod::NONE};
     };
-    using EventMappingArray = std::vector<EventMapping>;
+    using EventMappingSpan = std::span<const EventMapping>;
 
     // Checks if the given mapping is used by any event mode
     bool isMappingUsed(EventMode mode, const EventMapping& map) const;
@@ -122,13 +116,16 @@ class PhysicalKeyboardHandler
     void enableMappings(const Event::EventSet& events, EventMode mode);
     void enableMapping(Event::Type event, EventMode mode);
 
+    void applyDefaultMappings(EventMappingSpan mappings,
+      Event::Type event, EventMode mode, bool updateDefaults);
+
     /** return event mode for given property */
     static EventMode getMode(const Properties& properties, PropType propType);
     /** return event mode for given controller type */
     static EventMode getMode(Controller::Type type);
 
 #ifdef DEBUG_BUILD
-    void verifyDefaultMapping(PhysicalKeyboardHandler::EventMappingArray mapping,
+    void verifyDefaultMapping(EventMappingSpan mapping,
       EventMode mode, string_view name);
 #endif
 
@@ -145,36 +142,21 @@ class PhysicalKeyboardHandler
     EventMode myLeft2ndMode{EventMode::kEmulationMode};
     EventMode myRight2ndMode{EventMode::kEmulationMode};
 
-  #ifdef BSPF_UNIX
-    // Sometimes key combos with the Alt key become 'stuck' after the
-    // window changes state, and we want to ignore that event
-    // For example, press Alt-Tab and then upon re-entering the window,
-    // the app receives 'tab'; obviously the 'tab' shouldn't be happening
-    // So we keep track of the cases that matter (for now, Alt-Tab)
-    // and swallow the event afterwards
-    // Basically, the initial event sets the variable to 1, and upon
-    // returning to the app (ie, receiving EVENT_WINDOW_FOCUS_GAINED),
-    // the count is updated to 2, but only if it was already updated to 1
-    // TODO - This may be a bug in SDL, and might be removed in the future
-    //        It only seems to be an issue in Linux
-    uInt8 myAltKeyCounter{0};
-  #endif
-
     // Controller menu and common emulation mappings
-    static EventMappingArray DefaultMenuMapping;
+    static const EventMappingSpan DefaultMenuMapping;
   #ifdef GUI_SUPPORT
-    static EventMappingArray FixedEditMapping;
+    static const EventMappingSpan FixedEditMapping;
   #endif
   #ifdef DEBUGGER_SUPPORT
-    static EventMappingArray FixedPromptMapping;
+    static const EventMappingSpan FixedPromptMapping;
   #endif
-    static EventMappingArray DefaultCommonMapping;
+    static const EventMappingSpan DefaultCommonMapping;
     // Controller specific mappings
-    static EventMappingArray DefaultJoystickMapping;
-    static EventMappingArray DefaultPaddleMapping;
-    static EventMappingArray DefaultKeyboardMapping;
-    static EventMappingArray DefaultDrivingMapping;
-    static EventMappingArray CompuMateMapping;
+    static const EventMappingSpan DefaultJoystickMapping;
+    static const EventMappingSpan DefaultPaddleMapping;
+    static const EventMappingSpan DefaultKeyboardMapping;
+    static const EventMappingSpan DefaultDrivingMapping;
+    static const EventMappingSpan CompuMateMapping;
 };
 
-#endif
+#endif  // PHYSICAL_KEYBOARD_HANDLER_HXX

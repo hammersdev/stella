@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGEFC_HXX
-#define CARTRIDGEFC_HXX
+#ifndef CARTRIDGE_FC_HXX
+#define CARTRIDGE_FC_HXX
 
 class System;
 
@@ -28,10 +28,13 @@ class System;
 #endif
 
 /**
-  Cartridge class used for Amiga's 32K Power Play Arcade Video Game Album.
-  There are eight 4K banks, writing to $1FF8 definies the two lowest bits
-  of the wanted bank, writeing to $1FF9 defines the high bits. Accessing
-  $1FFC triggers the bank switching
+  Cartridge class used for Amiga's Power Play Arcade Video Game Album.
+  The album is a multicart containing up to eight 4K games (32K total).
+  FC uses a two-step commit protocol to select the active game: the 6502
+  writes the low 2 bits of the target bank number to $1FF8 and the high
+  bits to $1FF9, then triggers the actual switch by accessing $1FFC.  This
+  staged approach lets code prepare the next bank while still executing from
+  the current one without risk of an accidental mid-sequence switch.
 
   @author  Thomas Jentzsch
 */
@@ -43,14 +46,13 @@ class CartridgeFC : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
                        (where 0 means variable-sized ROM)
     */
-    CartridgeFC(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeFC(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 0);
     ~CartridgeFC() override = default;
 
@@ -89,6 +91,7 @@ class CartridgeFC : public CartridgeEnhanced
     bool poke(uInt16 address, uInt8 value) override;
 
     uInt16 hotspot() const override { return 0x1FF8; }
+    bool supportsSaveDisassembly() const override { return true; }
 
   private:
     bool checkSwitchBank(uInt16 address, uInt8) override;
@@ -105,4 +108,4 @@ class CartridgeFC : public CartridgeEnhanced
     CartridgeFC& operator=(CartridgeFC&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_FC_HXX

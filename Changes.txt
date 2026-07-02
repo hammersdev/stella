@@ -14,24 +14,157 @@
 
 7.0 to 8.0 (mmm dd, 2026)
 
-  * Ported Stella to SDL3.
+  * Ported Stella to SDL3, with all the improvements that the latest
+    version of SDL provides (issue #978).
 
-  * Added support for 'EFF' bankswitching (Bruce-Robert Pocock), as well
-    as auto-detection of this format.
+  * Added support for 'EFF' bankswitching (Bruce-Robert Pocock) for
+    Grizzards, as well as auto-detection of this format.  This board
+    features a 2 KiB save-to-cartridge EEPROM (MicroChip 24LC family)
+    connected via I²C, identical in interface to the AtariVox/SaveKey
+    (issue #1107).
 
-  * Added option for switching Stella's theme in sync with OS.
+  * Added support for 'DEVC' bankswitching (DevCard), as well
+    as auto-detection of this format.  This is a new 16-bit cartridge
+    type with 24 KB of flat RAM across six non-contiguous 4 KB windows
+    (issue #1149).
 
-  * Enhanced PAL-60 detection, searches for signature (e.g. PAL60) in ROM.
+  * Further enhanced UA bankswitching to support more Brazilian carts,
+    including one discovered by bootsector and Eric Fraga of AtariAge.
+    (issue #1152).
 
-  * Enhanced VSYNC emulation, considers VBLANK now too.
+  * Added support for CompuMate cassette load/save for binary images.
+    Special thanks to Golden Child for their initial implementation
+    in MAME, and for sharing this with Stella (issue# 79).
 
-  * Added developer option for disabling PlusROM support.
+  * Paddle / Driving Controller; extra buttons added for both left and
+    right paddle.
+
+  * Added option for switching Stella's theme in sync with OS
+    (issue #959).
+
+  * ASCII folding; non-ASCII characters in filenames and directories
+    (including Greek, Cyrillic, Latin Extended) are folded to ASCII
+    equivalents in the UI (issue #1051, #1054, #1084, #1133).
+
+  * Selecting entries in various file selection dialogs now remembers
+    selections when moving forward and backward in the filesystem
+    (issue #1039).
+
+  * Improved text editing functionality in PromptWidget (issue #361):
+    - Enhanced selection and cut/copy/paste from keyboard
+    - Added undo and redo support
+    - Added mouse support (selection, cut/copy/paste)
+    - All actions have keyboard shortcuts
+
+  * Added 'sscrop' commandline argument and associated UI item that
+    crops saved PNG snapshots, removing black borders (issue #1106).
+
+  * Added 'statedir' and 'statewithrom' commandline arguments and
+    associated UI items that allow to change state file location,
+    including always putting it with the ROM (issue #1086).
+
+  * Converted Perl programs in src/tools to Python, and found/fixed
+    some bugs in the process.
+
+  * Emulation accuracy:
+    - Implemented more accurate RESMP0/RESMP1 behaviour (issue #213)
+    - Implemented proper PA7 behaviour in M6532 (issue #108)
+    - Implemented 'Late RESPx' behaviour exhibited on some consoles
+      (Light sixer, Jr.) (issue #699)
+    - Properly initialise HMxy shadow registers (issue #1081)
+    - Enhanced VSYNC emulation, considers VBLANK now too, and only
+      takes effect when at least 2 scanlines have passed (issue #1150)
+    - Polling SWCHA multiple times per frame now detects events and
+      works as expected; fixes California Games not passing BMX event,
+      and others (issue #858, #689)
+    - Enhanced PAL-60 detection, searches for signature (e.g. PAL60)
+      in ROM (issue #1061)
+    - PAL gray colors; aligned gray colors in the standard PAL palette
+    - 3E hotspot mirrors; added missing mirrors to 3E hotspot handling
+
+  * Debugger improvements:
+    - Fixed bug with 2K ROMs sometimes not being disassembled correctly
+      (issue #907)
+    - Several improvements to the disassembler, including ability to save
+      multi-bank ROM disassembly files; currently doesn't support all
+      bankswitch schemes, and needs further testing (issue #604)
+    - dbg.logexec; new option to log debugger script execution output
+      to a file, also adds dbg.script command-line parameter (issue #1121)
+    - Debugger timer serialization; timer state now saved/restored with
+      savestates (issue #1116)
+    - CPU register address tracking improved; better display of addresses
+      in CPU registers
+    - Duplicate label warning; debugger now warns when a label is defined
+      that already exists
+    - resMP1() display bug fixed in the debugger output
+    - Yacc/Bison (debugger parsing) code converted to modern C++
+    - Uppercase hex setting was not being saved; fixed
+    - Cheat code dialog; double-Escape bug fixed, also fixes long-standing
+      debugger "Search RAM" Escape lockup
+    - Added developer option for disabling PlusROM support
+    - Fixed location of debugger script not matching documentation
+      (issue #1120)
+
+  * Efficiency improvements:
+    - Serializer completely reworked; much faster state save/load,
+      buffered file writes
+    - ZIP handler reworked; zero-copy reads, no per-read allocations,
+      better caching, fixed a critical bug where data was read 8 bytes
+      at a time instead of in bulk
+    - TIA rendering; eliminated per-pixel multiplies and divides in hot path
+    - LinkedObjectPool switched from std::list to std::vector (cache-friendly)
+    - PNGLibrary; zero-copy loading implemented
+    - JPGLibrary; files now loaded once (previously loaded twice: once for
+      image, once for metadata)
+    - Bankswitch class reworked to use std::array + binary search
+    - Props/PropsSet modernized; binary search, faster copy/move
+    - Multiple internal maps converted from std::map to std::unordered_map
+      (Debugger, CheatManager, FavoritesManager, GlobalKeyHandler, PropsSet,
+      FBBackend. Settings)
+    - Keymap and JoyMap switched from unordered_map to sorted vector with
+      binary search (faster for sizes involved)
+    - Fixed state save files being very large when they didn't need to be
+
+  * For the Windows port:
+    - FSNodeWINDOWS now uses UTF-16 internally; fixes corruption and not
+      saving to correct directories with non-ASCII filenames
+      (issue #1051, #1054, #1084, #1133)
+    - Added a native Windows on ARM port
 
   * For the Mac port:
-    - Minimum OS version is macOS 26, and compilation requires Xcode 26.
+    - Minimum OS version is macOS 26, and compilation requires Xcode 26;
+      future releases will likely be ARM-only
+    - AboutBox removed; going forward, all UI's will be in Stella directly
+    - ROM drag-and-drop onto the Stella app icon now supported
 
   * For the Linux/UNIX port:
-    - Minimum supported compilers are g++ 12 and Clang 19.
+    - Minimum supported compilers are g++-13 and Clang 19
+    - XDGPaths class added; centralizes home/appdir resolution following
+      XDG spec
+    - Implemented -baseinappdir (previously Windows-only feature)
+    - Wayland/HiDPI improvements due to SDL3
+    - Restore printing from -help to not use paging; instead the user
+      can pipe through less, as expected by most UNIX apps (issue #962)
+
+  * For the libretro port:
+    - RetroAchievements; basic support added
+    - KidVid WAV playback; libretro port can now play WAV files for KidVid
+      carts (files go in saves/stella/)
+    - Keyboard/Keypad controller handling added; Star Raiders now playable
+    - SaveKey/AtariVox support added (NVRAM files go in saves/stella/nvram)
+    - Expanded controller list in RetroArch UI with documentation
+    - Core options v2 categories with legacy fallback
+    - FSNodeLIBRETRO rewritten as a proper FSNode implementation; fixes
+      file load/save issues
+    - Android 16 KB page support
+    - webOS added to CI
+    - Savestates fixed (was saving all zeroes, loading past end of data)
+    - OSD messaging from Stella routed to libretro core
+    - Fast-forward audio suppression
+
+  * Removed R77 port; SDL3 not supported on that platform.
+
+  * Updated included libraries (libpng, zlib, etc) to latest stable version.
 
 -Have fun!
 

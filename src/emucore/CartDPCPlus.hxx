@@ -28,16 +28,22 @@ class System;
 #include "CartARM.hxx"
 
 /**
-  Cartridge class used for DPC+, derived from Pitfall II.  There are six 4K
-  program banks, a 4K display bank, 1K frequency table and the DPC chip.
-  DPC chip access is mapped to $1000 - $1080 ($1000 - $103F is read port,
-  $1040 - $107F is write port).
-  Program banks are accessible by read/write to $1FF6 - $1FFB.
+  Cartridge class used for DPC+, an enhanced version of the DPC scheme from
+  Pitfall II.  DPC+ uses an ARM co-processor running on a Harmony-style
+  cartridge alongside the 6502.  The first 3K of the 32K ROM image holds the
+  ARM driver, which executes in-place via a Thumb emulator.  Six 4K program
+  banks hold the 6502 code, and bank switching is triggered by access to
+  $1FF6-$1FFB.
 
-  FIXME: THIS NEEDS TO BE UPDATED
+  The 8K Harmony RAM is arranged as: 3K reserved for the ARM driver, 4K
+  Display Data (initialised from ROM at startup), and 1K frequency table.
+  DPC register access is mapped to $1000-$107F ($1000-$103F read port,
+  $1040-$107F write port).  Eight data fetchers, three music channels, a
+  32-bit LFSR random number generator, and an optional Fast Fetch mode are
+  provided.
 
-  For complete details on the DPC chip see David P. Crane's United States
-  Patent Number 4,644,495.
+  For complete details on the original DPC chip see David P. Crane's United
+  States Patent Number 4,644,495.
 
   @authors  Darrell Spice Jr, Fred Quimby, Stephen Anthony, Bradford W. Mott
 */
@@ -50,13 +56,11 @@ class CartridgeDPCPlus : public CartridgeARM
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
     */
-    CartridgeDPCPlus(const ByteBuffer& image, size_t size, string_view md5,
-                     const Settings& settings);
+    CartridgeDPCPlus(ByteSpan image, string_view md5, const Settings& settings);
     ~CartridgeDPCPlus() override = default;
 
   public:
@@ -107,10 +111,9 @@ class CartridgeDPCPlus : public CartridgeARM
     /**
       Access the internal ROM image for this cartridge.
 
-      @param size  Set to the size of the internal ROM image data
-      @return  A reference to the internal ROM image data
+      @return  A const span to the internal ROM image data
     */
-    const ByteBuffer& getImage(size_t& size) const override;
+    ByteSpan getImage() const override;
 
     /**
       Save the current state of this cart to the given Serializer.
@@ -229,14 +232,14 @@ class CartridgeDPCPlus : public CartridgeARM
 
   private:
     // The ROM image and size
-    ByteBuffer myImage;
+    std::array<uInt8, 32_KB> myImage{};
     size_t mySize{0};
 
-    // Pointer to the 24K program ROM image of the cartridge
-    uInt8* myProgramImage{nullptr};
+    // Subspan into myImage for the 24K program ROM (starts at 3K offset)
+    ByteMSpan myProgramImage;
 
-    // Pointer to the 4K display ROM image of the cartridge
-    uInt8* myDisplayImage{nullptr};
+    // Subspan into the 4K display data in myDPCRAM
+    ByteMSpan myDisplayImage;
 
     // The DPC 8k RAM image, used as:
     //   3K DPC+ driver
@@ -244,8 +247,8 @@ class CartridgeDPCPlus : public CartridgeARM
     //   1K Frequency Data
     std::array<uInt8, 8_KB> myDPCRAM{};
 
-    // Pointer to the 1K frequency table
-    uInt8* myFrequencyImage{nullptr};
+    // Subspan into the 1K frequency table in myDPCRAM
+    ByteSpan myFrequencyImage;
 
     // The top registers for the data fetchers
     std::array<uInt8, 8> myTops{};
@@ -318,4 +321,4 @@ class CartridgeDPCPlus : public CartridgeARM
     CartridgeDPCPlus& operator=(CartridgeDPCPlus&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_DPC_PLUS_HXX

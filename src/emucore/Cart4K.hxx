@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGE4K_HXX
-#define CARTRIDGE4K_HXX
+#ifndef CARTRIDGE_4K_HXX
+#define CARTRIDGE_4K_HXX
 
 class System;
 
@@ -27,8 +27,10 @@ class System;
 #endif
 
 /**
-  This is the standard Atari 4K cartridge.  These cartridges are
-  not bankswitched.
+  This is the standard Atari 4K cartridge, the dominant ROM format for
+  mid-era 2600 titles.  The single 4K image maps directly and without
+  mirroring into the full cartridge address window ($1000-$1FFF).
+  There is no bankswitching.
 
   @author  Bradford W. Mott, Thomas Jentzsch
 */
@@ -40,13 +42,12 @@ class Cartridge4K : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    Cartridge4K(const ByteBuffer& image, size_t size, string_view md5,
+    Cartridge4K(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 4_KB);
     ~Cartridge4K() override = default;
 
@@ -82,4 +83,4 @@ class Cartridge4K : public CartridgeEnhanced
     Cartridge4K& operator=(Cartridge4K&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_4K_HXX

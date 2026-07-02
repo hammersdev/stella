@@ -40,7 +40,7 @@
 namespace GUI {
 
 // Font character bitmap data.
-static const uInt16 consoleB_font_bits[] = {  // NOLINT : too complicated to convert
+static const uInt16 consoleB_font_bits[] = {
 
   /* MODIFIED
   Character 28 (0x1c):
@@ -3433,4 +3433,4 @@ static const FontDesc consoleBDesc = {
 
 } // End of namespace GUI
 
-#endif
+#endif  // CONSOLEB_FONT_DATA_HXX

@@ -50,7 +50,8 @@ class TrakBall : public PointingDevice
         { 0b0100, 0b0000 }, { 0b1100, 0b1000 }
       }};
 
-      return ourTableH[countH & 0b1][left] | ourTableV[countV & 0b1][down];
+      return ourTableH[countH & 0b1][left & 0b1] |
+             ourTableV[countV & 0b1][down & 0b1];
     }
 
     // 50% of Atari and Amiga mouse
@@ -64,4 +65,4 @@ class TrakBall : public PointingDevice
     TrakBall& operator=(TrakBall&&) = delete;
 };
 
-#endif // TRAKBALL_HXX
+#endif  // TRAKBALL_HXX

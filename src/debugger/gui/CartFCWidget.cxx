@@ -18,6 +18,8 @@
 #include "CartFC.hxx"
 #include "CartFCWidget.hxx"
 
+using Common::Base;
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 CartridgeFCWidget::CartridgeFCWidget(
       GuiObject* boss, const GUI::Font& lfont, const GUI::Font& nfont,
@@ -30,29 +32,24 @@ CartridgeFCWidget::CartridgeFCWidget(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeFCWidget::description()
 {
-  std::ostringstream info;
   const uInt16 hotspot = myCart.hotspot() | ADDR_BASE;
-
-  info << "FC cartridge, up to eight 4K banks\n"
-       << "Bank selected by hotspots\n"
-       << "  $" << Common::Base::HEX4 << hotspot << " (defines low 2 bits)\n"
-       << "  $" << Common::Base::HEX4 << (hotspot + 1) << " (defines high bits)\n"
-       << "  $" << Common::Base::HEX4 << (hotspot + 4) << " (triggers bank switch)\n"
-       << CartridgeEnhancedWidget::description();
-
-  return info.str();
+  return std::format(
+    "FC cartridge, up to eight 4K banks\n"
+    "Bank selected by hotspots\n"
+    "  ${} (defines low 2 bits)\n"
+    "  ${} (defines high bits)\n"
+    "  ${} (triggers bank switch)\n"
+    "{}",
+    Base::hex4(hotspot), Base::hex4(hotspot + 1), Base::hex4(hotspot + 4),
+    CartridgeEnhancedWidget::description());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 string CartridgeFCWidget::hotspotStr(int bank, int, bool prefix)
 {
-  std::ostringstream info;
   const uInt16 hotspot = myCart.hotspot() | ADDR_BASE;
-
-  info << "(" << (prefix ? "hotspots " : "")
-       << "$" << Common::Base::HEX4 << hotspot << " = " << (bank & 0b11)
-       << ", $" << Common::Base::HEX4 << (hotspot + 1) << " = " << (bank >> 2)
-       << ")";
-
-  return info.str();
+  return std::format("({}${} = {}, ${} = {})",
+    prefix ? "hotspots " : "",
+    Base::hex4(hotspot), bank & 0b11,
+    Base::hex4(hotspot + 1), bank >> 2);
 }

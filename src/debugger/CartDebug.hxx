@@ -20,6 +20,7 @@
 
 class Settings;
 class CartDebugWidget;
+class CartDisassemblyWriter;
 
 // Function type for CartDebug instance methods
 class CartDebug;
@@ -44,10 +45,71 @@ class CartState : public DebuggerState
 
 class CartDebug : public DebuggerSystem
 {
-  // The disassembler needs special access to this class
+  // The disassembler and disassembly writer need special access to this class
   friend class DiStella;
+  friend class CartDisassemblyWriter;
 
   public:
+    // Semantic colour category for each part of a disassembly line.
+    // The renderer maps these to actual ColorIds so re-theming is automatic.
+    enum class DisasmSegColor : uInt8 {
+      Default,
+      // Label column
+      UserLabel,     // user-defined label
+      AutoLabel,     // auto-generated Lxxxx label
+      AddressLabel,  // raw address shown when no label exists
+      // Mnemonic column
+      Branch,        // Bxx conditional branches
+      Jump,          // JMP / JSR / RTS / RTI / BRK
+      LoadStore,     // LDA / LDX / LDY / STA / STX / STY
+      ALU,           // everything else (arithmetic, logic, stack, flags…)
+      // Operand column
+      TIAEquate,     // TIA register reference (built-in or user name)
+      RIOTEquate,    // RIOT / I-O register reference
+      UserEquate,    // user-defined equate or label as operand
+      AutoEquate,    // auto-generated Lxxxx label as operand
+      Immediate,     // immediate constant (#$xx)
+      ZeroPage,      // zero-page RAM with no named equate
+      ROM,           // bare ROM address with no label
+    };
+
+    // Number of configurable roles (all DisasmSegColor values except Default)
+    static constexpr int NUM_DISASM_ROLES = 14;
+
+    // Sentinel stored in DisasmColorMap meaning "use kTextColor" (no highlighting)
+    static constexpr uInt8 DISASM_COLOR_TEXT = 0xFF;
+
+    // Maps DisasmSegColor (index 0..14) → DisasmPaletteArray index (0..15),
+    // or DISASM_COLOR_TEXT to use the UI text colour with no special highlighting.
+    // Index 0 (Default role) is reserved and not used by themes.
+    using DisasmColorMap = std::array<uInt8, NUM_DISASM_ROLES + 1>;
+
+    // A named colour theme: description string plus a full DisasmColorMap.
+    struct DisasmTheme {
+      string_view name;
+      DisasmColorMap map;
+    };
+
+    // Built-in themes.  Values 0x00..0x0F are DisasmPaletteArray indices
+    // (0=Black…15=White); 0xFF (DISASM_COLOR_TEXT) means use the UI text colour.
+    // Entry 0 in each map is unused (reserved for the Default role).
+    static constexpr std::array<DisasmTheme, 4> ourDisasmThemes = {{
+      // clang-format off
+      // Default: no highlighting — reproduces pre-coloring behaviour.
+      // AddressLabel (role 3) uses gray to match the original kColor shade
+      // that raw address labels were drawn in before syntax colours were added.
+      {"Default",    {0, 0xFF, 0xFF,  14, 0xFF, 0xFF, 0xFF, 0xFF,
+                         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}},
+      // Colorful: full syntax highlighting
+      //              UL   AL   Ad   Br   Jm   LS   AL   TI   RI   UE   AE   Im   ZP  ROM
+      {"Colorful",  {0,  5,   6,  14,   3,   2,   8,   8,   1,  11,   5,   6,   7,  10,  9}},
+      // Reduced: labels and control flow coloured; operands mostly neutral
+      {"Reduced",   {0,  5,   6,  14,   3,   2,   8,  14,   1,   1,   5,   6,  14,  14, 14}},
+      // Monochrome: everything in gray
+      {"Monochrome",{0, 14,  14,  14,  14,  14,  14,  14,  14,  14,  14,  14,  14,  14, 14}},
+      // clang-format on
+    }};
+
     struct DisassemblyTag {
       Device::AccessType type{Device::NONE};
       uInt16 address{0};
@@ -56,7 +118,9 @@ class CartDebug : public DebuggerSystem
       string ccount;
       string ctotal;
       string bytes;
-      bool hllabel{false};
+      DisasmSegColor labelColor{DisasmSegColor::Default};
+      DisasmSegColor mnemonicColor{DisasmSegColor::Default};
+      DisasmSegColor operandColor{DisasmSegColor::Default};
     };
     using DisassemblyList = vector<DisassemblyTag>;
     struct Disassembly {
@@ -65,7 +129,7 @@ class CartDebug : public DebuggerSystem
     };
 
     // Determine 'type' of address (ie, what part of the system accessed)
-    enum class AddrType: uInt8 { TIA, IO, ZPRAM, ROM };
+    enum class AddrType: uInt8 { TIA, IO, ZPRAM, STACK, ROM };
     static AddrType addressType(uInt16 addr);
 
   public:
@@ -82,7 +146,6 @@ class CartDebug : public DebuggerSystem
     // functionality
     CartDebugWidget* getDebugWidget() const { return myDebugWidget; }
     void setDebugWidget(CartDebugWidget* w) { myDebugWidget = w; }
-
 
     // Return the address of the last CPU read
     int lastReadAddress();
@@ -220,7 +283,7 @@ class CartDebug : public DebuggerSystem
                   int places = -1, bool isRam = false) const;
     string getLabel(uInt16 addr, bool isRead,
                     int places = -1, bool isRam = false) const;
-    int getAddress(const string& label) const;
+    int getAddress(string_view label) const;
 
     /**
       Load constants from list file (as generated by DASM).
@@ -241,13 +304,13 @@ class CartDebug : public DebuggerSystem
     /**
       Save disassembly and ROM file
     */
-    string saveDisassembly(string path = EmptyString());
-    string saveRom(string path = EmptyString());
+    string saveDisassembly(string path = {});
+    string saveRom(string path = {});
 
     /**
       Save access counters file
     */
-    string saveAccessFile(string path = EmptyString());
+    string saveAccessFile(string path = {});
 
     /**
       Show Distella directives (both set by the user and determined by Distella)
@@ -268,16 +331,15 @@ class CartDebug : public DebuggerSystem
     void getCompletions(string_view in, StringList& completions) const;
 
     // Convert given address to corresponding access type and append to buf
-    void accessTypeAsString(std::ostream& buf, uInt16 addr) const;
+    string accessTypeAsString(uInt16 addr) const;
 
     // Convert access enum type to corresponding string and append to buf
-    static void AccessTypeAsString(std::ostream& buf, Device::AccessType type);
+    static string_view AccessTypeAsString(Device::AccessType type);
 
   private:
     using AddrToLineList = std::map<uInt16, int>;
     using AddrToLabel = std::map<uInt16, string>;
-    using LabelToAddr = std::map<string, uInt16,
-        std::function<bool(const string&, const string&)>>;
+    using LabelToAddr = std::map<string, uInt16, BSPF::CaseInsensitiveLess>;
 
     using AddrTypeArray = std::array<uInt16, 0x1000>;
 
@@ -307,7 +369,7 @@ class CartDebug : public DebuggerSystem
       std::array<bool, 64>  TIAWrite{};
       std::array<bool, 32>  IOReadWrite{};
       std::array<bool, 128> ZPRAM{};
-      AddrToLabel Label;
+      LabelToAddr Label;
       bool breakFound{false};
     };
     ReservedEquates myReserved;
@@ -332,14 +394,14 @@ class CartDebug : public DebuggerSystem
 
     // Analyze of bank of ROM, generating a list of Distella directives
     // based on its disassembly
-    void getBankDirectives(std::ostream& buf, const BankInfo& info) const;
+    string getBankDirectives(const BankInfo& info) const;
 
     // Get access enum type from 'flags', taking precendence into account
     static Device::AccessType accessTypeAbsolute(Device::AccessFlags flags);
 
     // Convert all access types in 'flags' to corresponding string and
     // append to buf
-    static void AccessTypeAsString(std::ostream& buf, Device::AccessFlags flags);
+    static string AccessTypeAsString(Device::AccessFlags flags);
 
   private:
     const OSystem& myOSystem;
@@ -381,10 +443,10 @@ class CartDebug : public DebuggerSystem
     uInt16 myLabelLength{8};  // longest pre-defined label
 
     /// Table of instruction mnemonics
-    static std::array<string_view, 16>  ourTIAMnemonicR; // read mode
-    static std::array<string_view, 64>  ourTIAMnemonicW; // write mode
-    static std::array<string_view, 32>  ourIOMnemonic;
-    static std::array<string_view, 128> ourZPMnemonic;
+    static const std::array<string_view, 16>  ourTIAMnemonicR; // read mode
+    static const std::array<string_view, 64>  ourTIAMnemonicW; // write mode
+    static const std::array<string_view, 32>  ourIOMnemonic;
+    static const std::array<string_view, 128> ourZPMnemonic;
 
   private:
     // Following constructors and assignment operators not supported
@@ -395,4 +457,4 @@ class CartDebug : public DebuggerSystem
     CartDebug& operator=(CartDebug&&) = delete;
 };
 
-#endif
+#endif  // CART_DEBUG_HXX

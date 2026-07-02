@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef VIDEOAUDIO_DIALOG_HXX
-#define VIDEOAUDIO_DIALOG_HXX
+#ifndef VIDEO_AUDIO_DIALOG_HXX
+#define VIDEO_AUDIO_DIALOG_HXX
 
 class CommandSender;
 class CheckboxWidget;
@@ -128,8 +128,8 @@ class VideoAudioDialog : public Dialog
     SliderWidget*     myTVBright{nullptr};
     SliderWidget*     myTVContrast{nullptr};
     SliderWidget*     myTVGamma{nullptr};
-    std::array<StaticTextWidget*, 16> myColorLbl{nullptr};
-    ColorWidget*      myColor[16][8]{{nullptr}};
+    std::array<StaticTextWidget*, 16> myColorLbl{};
+    BSPF::array2D<ColorWidget*, 16, 8> myColor{};
 
     // Bezels
     CheckboxWidget*   myBezelEnableCheckbox{nullptr};
@@ -200,4 +200,4 @@ class VideoAudioDialog : public Dialog
     VideoAudioDialog& operator=(VideoAudioDialog&&) = delete;
 };
 
-#endif
+#endif  // VIDEO_AUDIO_DIALOG_HXX

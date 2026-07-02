@@ -37,19 +37,19 @@ DelayQueueWidget::DelayQueueWidget(
 
   _w = 20 * font.getMaxCharWidth() + 6;
   _h = static_cast<int>(myLines.size() * font.getLineHeight() + 6);
-
-  for (auto&& line : myLines)
-    line = "";
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void DelayQueueWidget::loadConfig() {
+void DelayQueueWidget::loadConfig()
+{
   const shared_ptr<DelayQueueIterator> delayQueueIterator =
       instance().debugger().tiaDebug().delayQueueIterator();
 
   using Common::Base;
-  for (auto&& line : myLines) {
-    if (!delayQueueIterator->isValid()) {
+  for(auto&& line: myLines)
+  {
+    if(!delayQueueIterator->isValid())
+    {
       if(!line.empty())
       {
         setDirty();
@@ -58,38 +58,33 @@ void DelayQueueWidget::loadConfig() {
       continue;
     }
 
-    std::ostringstream ss;
+    string newLine;
     const auto address = delayQueueIterator->address();
     const int delay = delayQueueIterator->delay();
-
-    switch (address) {
+    switch(address) {
       using enum TIA::DummyRegisters;
       case shuffleP0:
-        ss << delay << " clk, shuffle GRP0";
+        newLine = std::format("{} clk, shuffle GRP0", delay);
         break;
-
       case shuffleP1:
-        ss << delay << " clk, shuffle GRP1";
+        newLine = std::format("{} clk, shuffle GRP1", delay);
         break;
-
       case shuffleBL:
-        ss << delay << " clk, shuffle ENABL";
+        newLine = std::format("{} clk, shuffle ENABL", delay);
         break;
-
       default:
-        if (address < 64) ss
-          << delay
-          << " clk, $"
-          << Base::toString(delayQueueIterator->value(), Base::Fmt::_16_2)
-          << " -> "
-          << instance().debugger().cartDebug().getLabel(address, false);
+        if(address < 64)
+          newLine = std::format("{} clk, ${} -> {}",
+            delay,
+            Base::toString(delayQueueIterator->value(), Base::Fmt::_16_2),
+            instance().debugger().cartDebug().getLabel(address, false));
         break;
     }
 
-    if(line != ss.view())
+    if(line != newLine)
     {
       setDirty();
-      line = ss.view();
+      line = std::move(newLine);
     }
     delayQueueIterator->next();
   }
@@ -116,7 +111,8 @@ void DelayQueueWidget::drawWidget(bool hilite)
   x += 2;
   w -= 3;
 
-  for (const auto& line : myLines) {
+  for(const auto& line: myLines)
+  {
     surface.drawString(_font, line, x, y, w, _textcolor);
     y += lineHeight;
   }

@@ -71,7 +71,7 @@ class DataGridWidget : public EditableWidget
     int getSelectedValue() const  { return _valueList[_selectedItem]; }
     bool getSelectedChanged() const { return _changedList[_selectedItem]; }
 
-    void setRange(int lower, int upper);
+    void setRange(Int64 lower, Int64 upper);
 
     bool wantsFocus() const override { return true; }
 
@@ -116,16 +116,16 @@ class DataGridWidget : public EditableWidget
     void handleCommand(CommandSender* sender, int cmd, int data, int id) override;
 
   protected:
-    int  _rows{0};
-    int  _cols{0};
-    int  _currentRow{0};
-    int  _currentCol{0};
-    int  _rowHeight{0};
-    int  _colWidth{0};
-    int  _bits{0};
-    int  _lowerBound{0};
-    int  _upperBound{0};
-    bool _crossGrid{false};
+    int   _rows{0};
+    int   _cols{0};
+    int   _currentRow{0};
+    int   _currentCol{0};
+    int   _rowHeight{0};
+    int   _colWidth{0};
+    int   _bits{0};
+    Int64 _lowerBound{0};
+    Int64 _upperBound{0};
+    bool  _crossGrid{false};
 
     Common::Base::Fmt _base;
 
@@ -137,7 +137,7 @@ class DataGridWidget : public EditableWidget
     BoolArray   _hiliteList;
 
     int       _selectedItem{0};
-    StellaKey _currentKeyDown{KBDK_UNKNOWN};
+    StellaKey _currentKeyDown{StellaKey::UNKNOWN};
     string    _backupString;
 
     DataGridOpsWidget* _opsWidget{nullptr};
@@ -155,7 +155,6 @@ class DataGridWidget : public EditableWidget
 
     void enableEditMode(bool state) { _editMode = state; }
 
-
   private:
     // Following constructors and assignment operators not supported
     DataGridWidget() = delete;
@@ -165,4 +164,4 @@ class DataGridWidget : public EditableWidget
     DataGridWidget& operator=(DataGridWidget&&) = delete;
 };
 
-#endif
+#endif  // DATA_GRID_WIDGET_HXX

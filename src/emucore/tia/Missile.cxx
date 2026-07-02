@@ -47,6 +47,7 @@ void Missile::reset()
   myInvertedPhaseClock = false;
   myUseInvertedPhaseClock = false;
   myUseShortLateHMove = false;
+  myUseLateRespx = false;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -57,6 +58,9 @@ void Missile::enam(uInt8 value)
   myEnam = (value & 0x02) > 0;
 
   if (oldEnam != myEnam) {
+    // ENAM toggling changes whether the missile contributes pixels — flush
+    // since cached pixels were rendered with the old enable state. Guarded
+    // optimization.
     myTIA->flushLineCache();
 
     updateEnabled();
@@ -70,8 +74,11 @@ void Missile::hmm(uInt8 value)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Missile::resm(uInt8 counter, bool hblank)
+void Missile::resm(uInt8 counter, bool hblank, bool lateRespxCondition)
 {
+  if (myUseLateRespx && lateRespxCondition)
+    counter = (counter + TIAConstants::H_PIXEL - 1) % TIAConstants::H_PIXEL;
+
   myCounter = counter;
 
   if (myIsRendering) {
@@ -107,18 +114,18 @@ void Missile::resm(uInt8 counter, bool hblank)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Missile::resmp(uInt8 value, const Player& player)
+void Missile::resmp(uInt8 value)
 {
   const uInt8 resmp = value & 0x02;
 
   if (resmp == myResmp) return;
 
+  // RESMP gates the missile's effective enabled state AND its position
+  // tracking (when set, the missile locks to its player). Either way the
+  // visible behaviour changes for the rest of the line.
   myTIA->flushLineCache();
 
   myResmp = resmp;
-
-  if (!myResmp)
-    myCounter = player.getRespClock();
 
   updateEnabled();
 }
@@ -165,6 +172,8 @@ void Missile::nextLine()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Missile::setColor(uInt8 color)
 {
+  // Same pattern as Player::setColor — the "&& myIsEnabled" guard is an
+  // optimization that skips flushes when the missile isn't emitting.
   if (color != myObjectColor && myIsEnabled)  myTIA->flushLineCache();
 
   myObjectColor = color;
@@ -174,6 +183,7 @@ void Missile::setColor(uInt8 color)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Missile::setDebugColor(uInt8 color)
 {
+  // Debug palette override changed.
   myTIA->flushLineCache();
   myDebugColor = color;
   applyColors();
@@ -182,6 +192,7 @@ void Missile::setDebugColor(uInt8 color)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Missile::enableDebugColors(bool enabled)
 {
+  // Debug color source toggled.
   myTIA->flushLineCache();
   myDebugEnabled = enabled;
   applyColors();
@@ -190,6 +201,7 @@ void Missile::enableDebugColors(bool enabled)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Missile::applyColorLoss()
 {
+  // PAL color-loss LSB flip on the rendered color.
   myTIA->flushLineCache();
   applyColors();
 }
@@ -207,12 +219,17 @@ void Missile::setShortLateHMove(bool enable)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Missile::setLateRespx(bool enable)
+{
+  myUseLateRespx = enable;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Missile::updateEnabled()
 {
   myIsEnabled = !myIsSuppressed && myEnam && !myResmp;
 
   collision = (myIsVisible && myIsEnabled) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
-  myTIA->scheduleCollisionUpdate();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -263,6 +280,7 @@ uInt8 Missile::getPosition() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Missile::setPosition(uInt8 newPosition)
 {
+  // Debugger-only direct counter move; same reasoning as Player::setPosition.
   myTIA->flushLineCache();
 
   // See getPosition for an explanation
@@ -300,6 +318,7 @@ bool Missile::save(Serializer& out) const
     out.putByte(myObjectColor);  out.putByte(myDebugColor);
     out.putBool(myDebugEnabled);
     out.putBool(myInvertedPhaseClock);
+    out.putBool(myUseLateRespx);
   }
   catch(...)
   {
@@ -342,6 +361,7 @@ bool Missile::load(Serializer& in)
     myObjectColor = in.getByte();  myDebugColor = in.getByte();
     myDebugEnabled = in.getBool();
     myInvertedPhaseClock = in.getBool();
+    myUseLateRespx = in.getBool();
 
     applyColors();
   }

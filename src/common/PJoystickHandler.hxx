@@ -25,10 +25,12 @@ class EventHandler;
 class Event;
 
 #include "bspf.hxx"
+#include "Control.hxx"
 #include "EventHandlerConstants.hxx"
 #include "PhysicalJoystick.hxx"
+#include "Props.hxx"
 #include "Variant.hxx"
-#include "json_lib.hxx"
+#include "json/json_lib.hxx"
 
 using PhysicalJoystickPtr = shared_ptr<PhysicalJoystick>;
 
@@ -47,16 +49,16 @@ using PhysicalJoystickPtr = shared_ptr<PhysicalJoystick>;
 class PhysicalJoystickHandler
 {
   public:
-    struct MinStrickInfo
+    struct MinStickInfo
     {
-      string                    name;
-      int                       ID;
-      PhysicalJoystick::Port    port;
+      string                 name;
+      int                    ID;
+      PhysicalJoystick::Port port;
 
-      explicit MinStrickInfo(string_view _name, int _id, PhysicalJoystick::Port _port)
+      explicit MinStickInfo(string_view _name, int _id, PhysicalJoystick::Port _port)
         : name{_name}, ID{_id}, port{_port} {}
     };
-    using MinStrickInfoList = std::vector<MinStrickInfo>;
+    using MinStickInfoList = std::vector<MinStickInfo>;
 
   private:
     struct StickInfo
@@ -66,7 +68,7 @@ class PhysicalJoystickHandler
       //       on the 'mapping' instance variable; there lay dragons ...
       // https://json.nlohmann.me/home/faq/#brace-initialization-yields-arrays
       explicit StickInfo(nlohmann::json map, PhysicalJoystickPtr stick = nullptr)
-        : mapping(map), joy{std::move(stick)} {}  // NOLINT
+        : mapping(map), joy{std::move(stick)} {} // NOLINT(performance-unnecessary-value-param)
 
       nlohmann::json mapping;
       PhysicalJoystickPtr joy;
@@ -112,7 +114,7 @@ class PhysicalJoystickHandler
     /** Handle a physical joystick event. */
     void handleAxisEvent(int stick, int axis, int value);
     void handleBtnEvent(int stick, int button, bool pressed);
-    void handleHatEvent(int stick, int hat, int value);
+    void handleHatEvent(int stick, int hat, JoyHatMask value);
 
     Event::Type eventForAxis(EventMode mode, int stick, JoyAxis axis, JoyDir adir, int button) const {
       const PhysicalJoystickPtr& j = joy(stick);
@@ -128,7 +130,7 @@ class PhysicalJoystickHandler
     }
 
     /** Returns a list containing minimal controller info (name, ID, port). */
-    MinStrickInfoList minStickList() const;
+    MinStickInfoList minStickList() const;
 
     void changeDigitalDeadZone(int direction = +1);
     void changeAnalogPaddleDeadZone(int direction = +1);
@@ -145,9 +147,9 @@ class PhysicalJoystickHandler
     using StickDatabase = std::map<string, StickInfo, std::less<>>;
     using StickList = std::map<int, PhysicalJoystickPtr>;
 
-    OSystem& myOSystem;      // NOLINT: we want a reference here
-    EventHandler& myHandler; // NOLINT: we want a reference here
-    Event& myEvent;          // NOLINT: we want a reference here
+    OSystem& myOSystem;
+    EventHandler& myHandler;
+    Event& myEvent;
 
     // Contains all joysticks that Stella knows about, indexed by name
     StickDatabase myDatabase;
@@ -191,11 +193,15 @@ class PhysicalJoystickHandler
       JoyHatDir hdir{JoyHatDir::CENTER};
     };
     using EventMappingArray = std::vector<EventMapping>;
+    using EventMappingSpan  = std::span<const EventMapping>;
 
     void setDefaultAction(int stick,
                           EventMapping map, Event::Type event = Event::NoType,
                           EventMode mode = EventMode::kEmulationMode,
                           bool updateDefaults = false);
+
+    void applyDefaultActions(int stick, EventMappingSpan mappings,
+      Event::Type event, EventMode mode, bool updateDefaults);
 
     /** return event mode for given property */
     static EventMode getMode(const Properties& properties, PropType propType);
@@ -240,12 +246,10 @@ class PhysicalJoystickHandler
     static EventMappingArray DefaultLeftDrivingMapping;
     static EventMappingArray DefaultRightDrivingMapping;
 
-    static constexpr int NUM_PORTS = 2;
-    static constexpr int NUM_SA_AXIS = 2;
-    static constexpr Event::Type SA_Axis[NUM_PORTS][NUM_SA_AXIS] = {
+    static constexpr BSPF::array2D<Event::Type, 2, 2> SA_Axis = {{
       { Event::SALeftAxis0Value,  Event::SALeftAxis1Value  },
       { Event::SARightAxis0Value, Event::SARightAxis1Value }
-    };
+    }};
 };
 
-#endif
+#endif  // PHYSICAL_JOYSTICK_HANDLER_HXX

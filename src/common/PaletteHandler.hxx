@@ -36,7 +36,7 @@ class PaletteHandler
     static constexpr float DEF_NTSC_SHIFT = 26.7F; // makes color $fx fall between $1x and $2x
     static constexpr float DEF_PAL_SHIFT = 31.3F; // ~= 360 / 11.5
     static constexpr float MAX_PHASE_SHIFT = 4.5F;
-    static constexpr float DEF_RGB_SHIFT = 0.0F;
+    static constexpr float DEF_RGB_SHIFT = 0.F;
     static constexpr float MAX_RGB_SHIFT = 22.5F;
 
     enum Adjustables : uInt8 {
@@ -153,7 +153,7 @@ class PaletteHandler
       Convert angles
     */
     static constexpr float scaleFromAngles(float x) { return x / 10.F; }
-    static constexpr Int32 scaleToAngles(float x) { return static_cast<uInt32>(10.F * x); }
+    static constexpr Int32 scaleToAngles(float x) { return static_cast<Int32>(10.F * x); }
 
     /**
       Convert adjustables from/to 100% scale
@@ -223,13 +223,13 @@ class PaletteHandler
     /**
       Adjust hue and saturation for given RGB values.
 
-      @param R  The red value to adjust
-      @param G  The green value to adjust
-      @param B  The blue value to adjust
-      @param H  The hue adjustment value
-      @param S  The saturation
+      @param R   The red value to adjust
+      @param G   The green value to adjust
+      @param B   The blue value to adjust
+      @param su  Hue/saturation matrix coefficient (saturation * cos(hue angle))
+      @param sw  Hue/saturation matrix coefficient (saturation * sin(hue angle))
     */
-    static void adjustHueSaturation(int& R, int& G, int& B, float H, float S);
+    static void adjustHueSaturation(int& R, int& G, int& B, float su, float sw);
 
     /**
       Rotate a 2D vector.
@@ -284,21 +284,21 @@ class PaletteHandler
     float myPhaseNTSC{DEF_NTSC_SHIFT};
     float myPhasePAL{DEF_PAL_SHIFT};
     // Color intensities
-    float myRedScale{1.0F};
-    float myGreenScale{1.0F};
-    float myBlueScale{1.0F};
+    float myRedScale{1.F};
+    float myGreenScale{1.F};
+    float myBlueScale{1.F};
     // Color shifts
-    float myRedShift{0.0F};
-    float myGreenShift{0.0F};
-    float myBlueShift{0.0F};
+    float myRedShift{0.F};
+    float myGreenShift{0.F};
+    float myBlueShift{0.F};
     // range -1.0 to +1.0 (as in AtariNTSC)
     // Basic parameters
-    float myHue{0.0F};        // -1 = -180 degrees     +1 = +180 degrees
-    float mySaturation{0.0F}; // -1 = grayscale (0.0)  +1 = oversaturated colors (2.0)
-    float myContrast{0.0F};   // -1 = dark (0.5)       +1 = light (1.5)
-    float myBrightness{0.0F}; // -1 = dark (0.5)       +1 = light (1.5)
+    float myHue{0.F};        // -1 = -180 degrees     +1 = +180 degrees
+    float mySaturation{0.F}; // -1 = grayscale (0.0)  +1 = oversaturated colors (2.0)
+    float myContrast{0.F};   // -1 = dark (0.5)       +1 = light (1.5)
+    float myBrightness{0.F}; // -1 = dark (0.5)       +1 = light (1.5)
     // Advanced parameters
-    float myGamma{0.0F};      // -1 = dark (1.5)       +1 = light (0.5)
+    float myGamma{0.F};      // -1 = dark (1.5)       +1 = light (0.5)
 
     // Indicates whether an external palette was found and
     // successfully loaded
@@ -331,4 +331,4 @@ class PaletteHandler
     PaletteHandler& operator=(const PaletteHandler&&) = delete;
 };
 
-#endif // PALETTE_HANDLER_HXX
+#endif  // PALETTE_HANDLER_HXX

@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGECV_HXX
-#define CARTRIDGECV_HXX
+#ifndef CARTRIDGE_CV_HXX
+#define CARTRIDGE_CV_HXX
 
 class System;
 
@@ -29,9 +29,16 @@ class System;
 /**
   Cartridge class used for Commavid's extra-RAM games.
 
-  $F000-$F3FF read from RAM
-  $F400-$F7FF write to RAM
-  $F800-$FFFF ROM
+  The Commavid scheme pairs a 2K ROM (mapped at $F800-$FFFF) with 1K of
+  static RAM (mapped at $F000-$F7FF).  The RAM occupies the lower half of
+  the cartridge address space and uses a split read/write window: reads come
+  from $F000-$F3FF while writes go to $F400-$F7FF (both access the same
+  physical RAM, offset by $400).  There is no bankswitching; the layout is
+  fixed.  Known titles using this scheme: Jawbreaker, Rescue Terra I.
+
+  $F000-$F3FF  read port (RAM)
+  $F400-$F7FF  write port (RAM)
+  $F800-$FFFF  ROM
 
   @author  Eckhard Stolberg, Thomas Jentzsch
 */
@@ -43,13 +50,12 @@ class CartridgeCV : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeCV(const ByteBuffer& image, size_t size, string_view md5,
+    CartridgeCV(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 4_KB);
     ~CartridgeCV() override = default;
 
@@ -83,7 +89,7 @@ class CartridgeCV : public CartridgeEnhanced
 
   protected:
     // Initial RAM data from the cart (doesn't always exist)
-    ByteBuffer myInitialRAM{nullptr};
+    ByteArray myInitialRAM;
 
   private:
     // RAM size
@@ -101,4 +107,4 @@ class CartridgeCV : public CartridgeEnhanced
     CartridgeCV& operator=(CartridgeCV&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_CV_HXX

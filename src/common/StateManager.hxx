@@ -35,11 +35,11 @@ class StateManager
   public:
     enum class Mode: uInt8 {
       Off,
-      TimeMachine,
-      MovieRecord,
-      MoviePlayback
+      TimeMachine
+//       MovieRecord,
+//       MoviePlayback
     };
-    static constexpr string_view STATE_HEADER = "07000001state";
+    static constexpr string_view STATE_HEADER = "07000003state";
 
     /**
       Create a new statemananger class.
@@ -190,4 +190,4 @@ class StateManager
     StateManager& operator=(StateManager&&) = delete;
 };
 
-#endif
+#endif  // STATE_MANAGER_HXX

@@ -38,15 +38,15 @@ ToggleWidget::ToggleWidget(GuiObject* boss, const GUI::Font& font,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void ToggleWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
-  if (!isEnabled())
+  if(!isEnabled())
     return;
 
   // First check whether the selection changed
   int newSelectedItem = findItem(x, y);
-  if (newSelectedItem > static_cast<int>(_stateList.size()) - 1)
+  if(newSelectedItem > static_cast<int>(_stateList.size()) - 1)
     newSelectedItem = -1;
 
-  if (_selectedItem != newSelectedItem)
+  if(_selectedItem != newSelectedItem)
   {
     _selectedItem = newSelectedItem;
     _currentRow = _selectedItem / _cols;
@@ -59,12 +59,12 @@ void ToggleWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void ToggleWidget::handleMouseUp(int x, int y, MouseButton b, int clickCount)
 {
-  if (!isEnabled() || !_editable)
+  if(!isEnabled() || !_editable)
     return;
 
   // If this was a double click and the mouse is still over the selected item,
   // send the double click command
-  if (clickCount == 1 && (_selectedItem == findItem(x, y)))
+  if(clickCount == 1 && (_selectedItem == findItem(x, y)))
   {
     _stateList[_selectedItem] = !_stateList[_selectedItem];
     _changedList[_selectedItem] = !_changedList[_selectedItem];
@@ -97,73 +97,73 @@ bool ToggleWidget::handleKeyDown(StellaKey key, StellaMod mod)
 
   switch(key)
   {
-    case KBDK_RETURN:
-    case KBDK_KP_ENTER:
-      if (_currentRow >= 0 && _currentCol >= 0)
+    case StellaKey::RETURN:
+    case StellaKey::KP_ENTER:
+      if(_currentRow >= 0 && _currentCol >= 0)
       {
         dirty = true;
         toggle = true;
       }
       break;
 
-    case KBDK_UP:
-      if (_currentRow > 0)
+    case StellaKey::UP:
+      if(_currentRow > 0)
       {
         _currentRow--;
         dirty = true;
       }
       break;
 
-    case KBDK_DOWN:
-      if (_currentRow < _rows - 1)
+    case StellaKey::DOWN:
+      if(_currentRow < _rows - 1)
       {
         _currentRow++;
         dirty = true;
       }
       break;
 
-    case KBDK_LEFT:
-      if (_currentCol > 0)
+    case StellaKey::LEFT:
+      if(_currentCol > 0)
       {
         _currentCol--;
         dirty = true;
       }
       break;
 
-    case KBDK_RIGHT:
-      if (_currentCol < _cols - 1)
+    case StellaKey::RIGHT:
+      if(_currentCol < _cols - 1)
       {
         _currentCol++;
         dirty = true;
       }
       break;
 
-    case KBDK_PAGEUP:
-      if (_currentRow > 0)
+    case StellaKey::PAGEUP:
+      if(_currentRow > 0)
       {
         _currentRow = 0;
         dirty = true;
       }
       break;
 
-    case KBDK_PAGEDOWN:
-      if (_currentRow < _rows - 1)
+    case StellaKey::PAGEDOWN:
+      if(_currentRow < _rows - 1)
       {
         _currentRow = _rows - 1;
         dirty = true;
       }
       break;
 
-    case KBDK_HOME:
-      if (_currentCol > 0)
+    case StellaKey::HOME:
+      if(_currentCol > 0)
       {
         _currentCol = 0;
         dirty = true;
       }
       break;
 
-    case KBDK_END:
-      if (_currentCol < _cols - 1)
+    case StellaKey::END:
+      if(_currentCol < _cols - 1)
       {
         _currentCol = _cols - 1;
         dirty = true;
@@ -174,7 +174,7 @@ bool ToggleWidget::handleKeyDown(StellaKey key, StellaMod mod)
       handled = false;
   }
 
-  if (dirty)
+  if(dirty)
   {
     _selectedItem = _currentRow*_cols + _currentCol;
 
@@ -196,9 +196,9 @@ bool ToggleWidget::handleKeyDown(StellaKey key, StellaMod mod)
 void ToggleWidget::handleCommand(CommandSender* sender, int cmd,
                                  int data, int id)
 {
-  if (cmd == GuiObject::kSetPositionCmd)
+  if(cmd == GuiObject::kSetPositionCmd)
   {
-    if (_selectedItem != data)
+    if(_selectedItem != data)
     {
       _selectedItem = data;
       setDirty();
@@ -224,10 +224,9 @@ string ToggleWidget::getToolTip(const Common::Point& pos) const
   const int idx = getToolTipIndex(pos).y * _cols;
 
   if(idx < 0)
-    return EmptyString();
+    return {};
 
   Int32 val = 0;
-  std::ostringstream buf;
 
   if(_swapBits)
     for(int col = _cols - 1; col >= 0; --col)
@@ -243,13 +242,15 @@ string ToggleWidget::getToolTip(const Common::Point& pos) const
     }
   val <<= _shiftBits;
 
-  buf << _toolTipText
-    << "$" << Common::Base::toString(val, Common::Base::Fmt::_16)
-    << " = #" << val;
+  string result = std::format("{}${} = #{}",
+    _toolTipText,
+    Common::Base::toString(val, Common::Base::Fmt::_16),
+    val);
   if(val < 0x100)
-    buf << " = %" << Common::Base::toString(val, Common::Base::Fmt::_2);
+    result += std::format(" = %{}",
+      Common::Base::toString(val, Common::Base::Fmt::_2));
 
-  return buf.str();
+  return result;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

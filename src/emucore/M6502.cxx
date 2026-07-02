@@ -21,6 +21,8 @@
   #include "Device.hxx"
   #include "Base.hxx"
 
+  using Common::Base;
+
   // Flags for access types
   #define DISASM_CODE  Device::CODE
   #define DISASM_DATA  Device::DATA
@@ -107,21 +109,20 @@ inline uInt8 M6502::peek(uInt16 address, Device::AccessFlags flags)
 {
   handleHalt();
 
-  ////////////////////////////////////////////////
-  // TODO - move this logic directly into CartAR
   if(address != myLastAddress)
   {
     ++myNumberOfDistinctAccesses;
     myLastAddress = address;
   }
-  ////////////////////////////////////////////////
-  mySystem->incrementCycles(SYSTEM_CYCLES_PER_CPU);
-  icycles += SYSTEM_CYCLES_PER_CPU;
+
+  mySystem->incrementCycles(1);  // 1 system cycle per CPU cycle on the 6507
+  ++icycles;
   myFlags = flags;
   const uInt8 result = mySystem->peek(address, flags);
-  myLastPeekAddress = address;
 
 #ifdef DEBUGGER_SUPPORT
+  myLastPeekAddress = address;
+
   if(myReadTraps.isInitialized() && myReadTraps.isSet(address)
      && (myGhostReadsTrap || flags != DISASM_NONE))
   {
@@ -130,10 +131,11 @@ inline uInt8 M6502::peek(uInt16 address, Device::AccessFlags flags)
     if(cond > -1)
     {
       myJustHitReadTrapFlag = true;
-      std::ostringstream msg;
-      msg << "RTrap" << (flags == DISASM_NONE ? "G[" : "[") << Common::Base::HEX2 << cond << "]"
-        << (myTrapCondNames[cond].empty() ? ": " : "If: {" + myTrapCondNames[cond] + "} ");
-      myHitTrapInfo.message = msg.view();
+
+      myHitTrapInfo.message = std::format("RTrap{}[{}]{}",
+        flags == DISASM_NONE ? "G" : "", Base::hex2(cond),
+        myCondTraps[cond].name.empty() ? ": " : "If: {" + myCondTraps[cond].name + "} ");
+
       myHitTrapInfo.address = address;
     }
   }
@@ -145,20 +147,19 @@ inline uInt8 M6502::peek(uInt16 address, Device::AccessFlags flags)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 inline void M6502::poke(uInt16 address, uInt8 value, Device::AccessFlags flags)
 {
-  ////////////////////////////////////////////////
-  // TODO - move this logic directly into CartAR
   if(address != myLastAddress)
   {
     ++myNumberOfDistinctAccesses;
     myLastAddress = address;
   }
-  ////////////////////////////////////////////////
-  mySystem->incrementCycles(SYSTEM_CYCLES_PER_CPU);
-  icycles += SYSTEM_CYCLES_PER_CPU;
+
+  mySystem->incrementCycles(1);  // 1 system cycle per CPU cycle on the 6507
+  ++icycles;
   mySystem->poke(address, value, flags);
-  myLastPokeAddress = address;
 
 #ifdef DEBUGGER_SUPPORT
+  myLastPokeAddress = address;
+
   if(myWriteTraps.isInitialized() && myWriteTraps.isSet(address))
   {
     myLastPokeBaseAddress = Debugger::getBaseAddress(myLastPokeAddress, false); // mirror handling
@@ -166,9 +167,11 @@ inline void M6502::poke(uInt16 address, uInt8 value, Device::AccessFlags flags)
     if(cond > -1)
     {
       myJustHitWriteTrapFlag = true;
-      std::ostringstream msg;
-      msg << "WTrap[" << Common::Base::HEX2 << cond << "]" << (myTrapCondNames[cond].empty() ? ":" : "If: {" + myTrapCondNames[cond] + "}");
-      myHitTrapInfo.message = msg.view();
+
+      myHitTrapInfo.message = std::format("WTrap[{}]{}",
+        Base::hex2(cond),
+        myCondTraps[cond].name.empty() ? ":" : "If: {" + myCondTraps[cond].name + "}");
+
       myHitTrapInfo.address = address;
     }
   }
@@ -178,14 +181,16 @@ inline void M6502::poke(uInt16 address, uInt8 value, Device::AccessFlags flags)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void M6502::requestHalt()
 {
-  if (!myOnHaltCallback) throw std::runtime_error("onHaltCallback not configured");
+  if(!myOnHaltCallback)
+    throw std::runtime_error("onHaltCallback not configured");
   myHaltRequested = true;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 inline void M6502::handleHalt()
 {
-  if (myHaltRequested) {
+  if(myHaltRequested) [[unlikely]]
+  {
     myOnHaltCallback();
     myHaltRequested = false;
   }
@@ -222,7 +227,7 @@ bool M6502::execute(uInt64 cycles)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-// NOLINTNEXTLINE (readability-function-size)
+// NOLINTNEXTLINE(google-readability-function-size,hicpp-function-size,readability-function-size)
 inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
 {
   myExecutionStatus = 0;
@@ -233,14 +238,14 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
 #endif
 
   const uInt64 previousCycles = mySystem->cycles();
+  const uInt64 targetCycles = previousCycles + cycles;
   uInt64 currentCycles = 0;
 
   // Loop until execution is stopped or a fatal error occurs
-  for(;;)
+  while (!myExecutionStatus && mySystem->cycles() < targetCycles)
   {
-    while (!myExecutionStatus && currentCycles < cycles * SYSTEM_CYCLES_PER_CPU)
-    {
   #ifdef DEBUGGER_SUPPORT
+      currentCycles = mySystem->cycles() - previousCycles;
       // Don't break if we haven't actually executed anything yet
       if (myLastBreakCycle != mySystem->cycles()) {
         if(myJustHitReadTrapFlag || myJustHitWriteTrapFlag)
@@ -287,36 +292,31 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
               }
               else
               {
-                std::ostringstream msg;
-
-                msg << "BP: $" << Common::Base::HEX4 << PC << ", bank #"
-                    << std::dec << static_cast<int>(bank);
-                result.setDebugger(currentCycles, msg.view(), "Breakpoint");
+                result.setDebugger(currentCycles,
+                  std::format("BP: ${}, bank #{}", Base::hex4(PC), static_cast<int>(bank)),
+                  "Breakpoint");
                 return;
               }
             }
           }
         }
 
-        if(myTimer.isInitialized())
+        if(myTimer.hasTimers())
           myTimer.update(PC, mySystem->cart().getBank(PC), mySystem->cycles());
 
         const int cond = evalCondBreaks();
         if(cond > -1)
         {
-          std::ostringstream msg;
-
           myLastBreakCycle = mySystem->cycles();
-
           if(myLogBreaks)
           {
-            msg << "CBP[" << Common::Base::HEX2 << cond << "]:";
-            myDebugger->log(msg.view());
+            myDebugger->log(std::format("CBP[{}]:", Base::hex2(cond)));
           }
           else
           {
-            msg << "CBP[" << Common::Base::HEX2 << cond << "]: " << myCondBreakNames[cond];
-            result.setDebugger(currentCycles, msg.view(), "Conditional breakpoint");
+            result.setDebugger(currentCycles,
+              std::format("CBP[{}]: {}", Base::hex2(cond), myCondBreakNames[cond]),
+              "Conditional breakpoint");
             return;
           }
         }
@@ -332,17 +332,13 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
 
       const int cond = evalCondSaveStates();
       if(cond > -1)
-      {
-        std::ostringstream msg;
-        msg << "conditional savestate [" << Common::Base::HEX2 << cond << "]";
-        myDebugger->addState(msg.view());
-      }
+        myDebugger->addState(std::format("conditional savestate [{}]", Base::hex2(cond)));
 
       mySystem->cart().clearAllRAMAccesses();
-  #endif  // DEBUGGER_SUPPORT
 
       // Reset the data poke address pointer
       myDataAddressForPoke = 0;
+  #endif  // DEBUGGER_SUPPORT
 
       try {
         uInt16 operandAddress = 0, intermediateAddress = 0;
@@ -376,21 +372,21 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
           const uInt16 rwpAddr = mySystem->cart().getIllegalRAMReadAccess();
           if(rwpAddr)
           {
-            std::ostringstream msg;
-            msg << "RWP[@ $" << Common::Base::HEX4 << rwpAddr << "]: ";
-            result.setDebugger(currentCycles, msg.view(), "Read from write port", oldPC);
+            result.setDebugger(currentCycles,
+              std::format("RWP[@ ${}]: ", Base::hex4(rwpAddr)),
+              "Read from write port", oldPC);
             return;
           }
         }
 
-        if (myWriteToReadPortBreak)
+        if(myWriteToReadPortBreak)
         {
           const uInt16 wrpAddr = mySystem->cart().getIllegalRAMWriteAccess();
-          if (wrpAddr)
+          if(wrpAddr)
           {
-            std::ostringstream msg;
-            msg << "WRP[@ $" << Common::Base::HEX4 << wrpAddr << "]: ";
-            result.setDebugger(currentCycles, msg.view(), "Write to read port", oldPC);
+            result.setDebugger(currentCycles,
+              std::format("WRP[@ ${}]: ", Base::hex4(wrpAddr)),
+              "Write to read port", oldPC);
             return;
           }
         }
@@ -399,11 +395,9 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
         myExecutionStatus |= FatalErrorBit;
         result.setMessage(e.what());
       } catch (const EmulationWarning& e) {
-        result.setDebugger(currentCycles, e.what(), "Emulation exception", PC);
+        result.setDebugger(mySystem->cycles() - previousCycles, e.what(), "Emulation exception", PC);
         return;
       }
-
-      currentCycles = (mySystem->cycles() - previousCycles);
 
   #ifdef DEBUGGER_SUPPORT
       if(myStepStateByInstruction)
@@ -415,30 +409,28 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
         riot.updateEmulation();
       }
   #endif
-    }
-
-    // See if a fatal error has occurred
-    if(myExecutionStatus & FatalErrorBit)
-    {
-      // Yes, so answer that something when wrong. The message has already been set when
-      // the exception was handled.
-      result.setFatal(currentCycles);
-      return;
-    }
-
-    // See if execution has been stopped
-    if(myExecutionStatus & StopExecutionBit)
-    {
-      // Yes, so answer that everything finished fine
-      result.setOk(currentCycles);
-      return;
-    }
-
-    if (currentCycles >= cycles * SYSTEM_CYCLES_PER_CPU) {
-      result.setOk(currentCycles);
-      return;
-    }
   }
+
+  currentCycles = mySystem->cycles() - previousCycles;
+
+  // See if a fatal error has occurred
+  if(myExecutionStatus & FatalErrorBit) [[unlikely]]
+  {
+    // Yes, so answer that something when wrong. The message has already been set when
+    // the exception was handled.
+    result.setFatal(currentCycles);
+    return;
+  }
+
+  // See if execution has been stopped
+  if(myExecutionStatus & StopExecutionBit)
+  {
+    // Yes, so answer that everything finished fine
+    result.setOk(currentCycles);
+    return;
+  }
+
+  result.setOk(currentCycles);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -478,6 +470,10 @@ bool M6502::save(Serializer& out) const
 
     out.putBool(myHaltRequested);
     out.putLong(myLastBreakCycle);
+
+  #ifdef DEBUGGER_SUPPORT
+    myTimer.save(out);
+  #endif
   }
   catch(...)
   {
@@ -527,6 +523,8 @@ bool M6502::load(Serializer& in)
     myLastBreakCycle = in.getLong();
 
   #ifdef DEBUGGER_SUPPORT
+    myTimer.load(in);
+
     updateStepStateByInstruction();
   #endif
   }
@@ -548,9 +546,9 @@ void M6502::attach(Debugger& debugger)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-uInt32 M6502::addCondBreak(Expression* e, string_view name, bool oneShot)
+uInt32 M6502::addCondBreak(unique_ptr<Expression> e, string_view name, bool oneShot)
 {
-  myCondBreaks.emplace_back(e);
+  myCondBreaks.emplace_back(std::move(e));
   myCondBreakNames.emplace_back(name);
 
   updateStepStateByInstruction();
@@ -589,9 +587,9 @@ const StringList& M6502::getCondBreakNames() const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-uInt32 M6502::addCondSaveState(Expression* e, string_view name)
+uInt32 M6502::addCondSaveState(unique_ptr<Expression> e, string_view name)
 {
-  myCondSaveStates.emplace_back(e);
+  myCondSaveStates.emplace_back(std::move(e));
   myCondSaveStateNames.emplace_back(name);
 
   updateStepStateByInstruction();
@@ -630,26 +628,23 @@ const StringList& M6502::getCondSaveStateNames() const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-uInt32 M6502::addCondTrap(Expression* e, string_view name)
+uInt32 M6502::addCondTrap(bool read, bool write, uInt32 begin, uInt32 end,
+                           string_view condition, string_view name,
+                           unique_ptr<Expression> expr)
 {
-  myTrapConds.emplace_back(e);
-  myTrapCondNames.emplace_back(name);
-
+  myCondTraps.emplace_back(read, write, begin, end, condition, name,
+                            std::move(expr));
   updateStepStateByInstruction();
-
-  return static_cast<uInt32>(myTrapConds.size() - 1);
+  return static_cast<uInt32>(myCondTraps.size() - 1);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool M6502::delCondTrap(uInt32 idx)
 {
-  if(idx < myTrapConds.size())
+  if(idx < myCondTraps.size())
   {
-    Vec::removeAt(myTrapConds, idx);
-    Vec::removeAt(myTrapCondNames, idx);
-
+    Vec::removeAt(myCondTraps, idx);
     updateStepStateByInstruction();
-
     return true;
   }
   return false;
@@ -658,23 +653,15 @@ bool M6502::delCondTrap(uInt32 idx)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void M6502::clearCondTraps()
 {
-  myTrapConds.clear();
-  myTrapCondNames.clear();
-
+  myCondTraps.clear();
   updateStepStateByInstruction();
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-const StringList& M6502::getCondTrapNames() const
-{
-  return myTrapCondNames;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void M6502::updateStepStateByInstruction()
 {
   myStepStateByInstruction =
-    !myCondBreaks.empty() || !myCondSaveStates.empty() || !myTrapConds.empty();
+    !myCondBreaks.empty() || !myCondSaveStates.empty() || !myCondTraps.empty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -686,8 +673,7 @@ uInt32 M6502::addTimer(uInt16 fromAddr, uInt16 toAddr,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-uInt32 M6502::addTimer(uInt16 addr, uInt8 bank,
-                       bool mirrors, bool anyBank)
+uInt32 M6502::addTimer(uInt16 addr, uInt8 bank, bool mirrors, bool anyBank)
 {
   return myTimer.add(addr, bank, mirrors, anyBank);
 }

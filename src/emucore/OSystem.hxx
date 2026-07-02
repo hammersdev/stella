@@ -37,12 +37,8 @@ class AudioSettings;
   class Debugger;
 #endif
 #ifdef GUI_SUPPORT
-  class CommandMenu;
-  class HighScoresMenu;
   class Launcher;
-  class OptionsMenu;
-  class MessageMenu;
-  class PlusRomsMenu;
+  class OverlayMenu;
   class TimeMachine;
   class VideoAudioDialog;
 #endif
@@ -202,39 +198,13 @@ class OSystem
 
   #ifdef GUI_SUPPORT
     /**
-      Get the option menu of the system.
+      Get the overlay menu of the system.  This single container hosts all
+      dialogs shown over TIA mode (options, command, high scores, message,
+      PlusROM, and any transient dialog opened via EventHandler::openDialog).
 
-      @return The option menu object
+      @return The overlay menu object
     */
-    OptionsMenu& optionsMenu() const { return *myOptionsMenu; }
-
-    /**
-      Get the command menu of the system.
-
-      @return The command menu object
-    */
-    CommandMenu& commandMenu() const { return *myCommandMenu; }
-
-      /**
-      Get the highscores menu of the system.
-
-      @return The highscores menu object
-      */
-    HighScoresMenu& highscoresMenu() const { return *myHighScoresMenu; }
-
-    /**
-      Get the message menu of the system.
-
-      @return The message menu object
-    */
-    MessageMenu& messageMenu() const { return *myMessageMenu; }
-
-    /**
-      Get the Plus ROM menu of the system.
-
-      @return The Plus ROM menu object
-    */
-    PlusRomsMenu& plusRomsMenu() const { return *myPlusRomMenu; }
+    OverlayMenu& overlayMenu() const { return *myOverlayMenu; }
 
     /**
       Get the ROM launcher of the system.
@@ -279,8 +249,25 @@ class OSystem
 
     /**
       Return the full/complete path name for storing state files.
+      The location depends on the 'statewithrom' and 'statedir' settings:
+      the current ROM's directory, a user-defined directory, or the default
+      'state' directory under the base directory.
     */
-    const FSNode& stateDir() const { return myStateDir; }
+    const FSNode& stateDir();
+
+    /**
+      Return the state directory selected by the 'statedir' setting, mapping
+      an unset (empty) value to defaultStateDir(). Ignores the 'statewithrom'
+      override, so the result is the user-configurable location (used by
+      'stateDir()' and the settings UI).
+    */
+    FSNode configuredStateDir() const;
+
+    /**
+      Return the default location for storing state files: the 'state'
+      directory under the base directory.
+    */
+    FSNode defaultStateDir() const;
 
     /**
       Return the full/complete path name for storing nvram
@@ -342,18 +329,17 @@ class OSystem
       @param rom    The file node of the ROM to open (contains path)
       @param md5    The md5 calculated from the ROM file
                     (will be recalculated if necessary)
-      @param size   The amount of data read into the image array
 
       @return  Unique pointer to the array
     */
-    ByteBuffer openROM(const FSNode& rom, string& md5, size_t& size);
+    ByteArray openROM(const FSNode& rom, string& md5);
 
     /**
       Open the given ROM and return the MD5sum of the data.
 
       @param rom  The file node of the ROM to open (contains path)
 
-      @return  MD5 of the ROM image (if valid), otherwise EmptyString()
+      @return  MD5 of the ROM image (if valid), otherwise ""
     */
     static string getROMMD5(const FSNode& rom);
 
@@ -365,7 +351,7 @@ class OSystem
       @param md5     The MD5sum of the ROM
       @param newrom  Whether this is a new ROM, or a reload of current one
 
-      @return  String indicating any error message (EmptyString() for no errors)
+      @return  String indicating any error message ("" for no errors)
     */
     string createConsole(const FSNode& rom, string_view md5 = "",
                          bool newrom = true);
@@ -441,6 +427,11 @@ class OSystem
     void quit() { myQuitLoop = true; }
 
     /**
+      Take a snapshot after the given number of emulation frames, then quit.
+    */
+    void setSnapshotAfterFrames(uInt32 frames) { mySnapshotFrames = frames; }
+
+    /**
       Reset FPS measurement.
     */
     void resetFps();
@@ -511,7 +502,7 @@ class OSystem
 
     virtual void initPersistence(FSNode& basedir) = 0;
 
-    virtual string describePresistence() = 0;
+    virtual string describePersistence() = 0;
 
   protected:
     // Pointer to the EventHandler object
@@ -549,23 +540,12 @@ class OSystem
   #endif
 
   #ifdef GUI_SUPPORT
-    // Pointer to the OptionMenu object
-    unique_ptr<OptionsMenu> myOptionsMenu;
-
-    // Pointer to the CommandMenu object
-    unique_ptr<CommandMenu> myCommandMenu;
-
-    // Pointer to the HighScoresMenu object
-    unique_ptr<HighScoresMenu> myHighScoresMenu;
-
     // Pointer to the Launcher object
     unique_ptr<Launcher> myLauncher;
 
-    // Pointer to the MessageMenu object
-    unique_ptr<MessageMenu> myMessageMenu;
-
-    // Pointer to the PlusRomsMenu object
-    unique_ptr<PlusRomsMenu> myPlusRomMenu;
+    // Pointer to the OverlayMenu object: the single container for all
+    // dialogs shown over TIA mode
+    unique_ptr<OverlayMenu> myOverlayMenu;
 
     // Pointer to the TimeMachine object
     unique_ptr<TimeMachine> myTimeMachine;
@@ -599,6 +579,9 @@ class OSystem
     // Indicates whether to stop the main loop
     bool myQuitLoop{false};
 
+    // When non-zero, take a snapshot after this many emulation frames then quit
+    uInt32 mySnapshotFrames{0};
+
   private:
     FSNode myBaseDir, myStateDir, mySnapshotSaveDir, mySnapshotLoadDir,
            myNVRamDir, myCfgDir, myHomeDir, myUserDir, myBezelDir;
@@ -614,8 +597,8 @@ class OSystem
     // If not empty, a hint for derived classes to use this as the
     // base directory (where all settings are stored)
     // Derived classes are free to ignore it and use their own defaults
-    static string ourOverrideBaseDir;
-    static bool ourOverrideBaseDirWithApp;
+    static inline string ourOverrideBaseDir;
+    static inline bool ourOverrideBaseDirWithApp{false};
 
   private:
     /**
@@ -635,14 +618,12 @@ class OSystem
       This method takes care of using only a valid size for the
 
       @param romfile  The file node of the ROM to open (contains path)
-      @param size     The amount of data read into the image array
       @param showErrorMessage  Whether to show (or ignore) any errors
                                when opening the ROM
 
       @return  Unique pointer to the array, otherwise nullptr
     */
-    static ByteBuffer openROM(const FSNode& romfile, size_t& size,
-                              bool showErrorMessage);
+    static ByteArray openROM(const FSNode& romfile, bool showErrorMessage);
 
     /**
       Creates an actual Console object based on the given info.
@@ -669,6 +650,7 @@ class OSystem
 
     double dispatchEmulation(EmulationWorker& emulationWorker);
 
+  private:
     // Following constructors and assignment operators not supported
     OSystem(const OSystem&) = delete;
     OSystem(OSystem&&) = delete;
@@ -676,4 +658,4 @@ class OSystem
     OSystem& operator=(OSystem&&) = delete;
 };
 
-#endif
+#endif  // OSYSTEM_HXX

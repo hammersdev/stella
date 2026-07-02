@@ -18,12 +18,30 @@
 #ifndef EVENT_HXX
 #define EVENT_HXX
 
+#include <atomic>
 #include <mutex>
-#include <set>
+#include <unordered_set>
+#include <vector>
 
 #include "bspf.hxx"
 
 /**
+  Holds the current value of every event type, plus a schedule of input
+  transitions recorded over the current input window.  This models controllers
+  as devices whose state can change at any point within a window, rather than
+  being latched once per window.  An input window spans the system (CPU) cycles
+  between two successive input polls.
+
+  Input is polled once per window, but a program may sample a controller
+  several times within one window (e.g. the fire button before and after its
+  display kernel) and expect to see a change that happened in between.  Each
+  change is recorded as a transition; finalizeInputWindow() spreads them across
+  the window and get(type, pos) replays the value at a position within it.
+
+  Transitions are ordered by arrival, not real time: SDL timestamps events at
+  drain time, so true sub-window timing is unrecoverable and a lone change is
+  placed mid-window.
+
   @author  Stephen Anthony, Christian Speckner, Thomas Jentzsch
 */
 class Event
@@ -197,15 +215,15 @@ class Event
     };
 
     // Event list version, update only if the id of existing(!) event types changed
-    static constexpr Int32 VERSION = 6;
+    static constexpr Int32 VERSION = 8;
 
-    using EventSet = std::set<Event::Type>;
+    using EventSet = std::unordered_set<Event::Type>;
 
   public:
     /**
       Create a new event object.
     */
-    Event() { clear(); }  // NOLINT: myValues is initialized in clear()
+    Event() { clear(); }  // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     ~Event() = default;
 
   public:
@@ -219,12 +237,128 @@ class Event
     }
 
     /**
-      Set the value associated with the event of the specified type.
+      Get the value of 'type' at sub-window position 'pos' (CPU cycles from the
+      start of the window), replaying the transitions recorded this window.
+    */
+    Int32 get(Type type, uInt64 pos) const {
+      const std::scoped_lock lock(myMutex);
+
+      Int32 result = myValues[type];
+      for(const auto& t: myTransitions)
+        if(t.type == type && t.pos <= pos)
+          result = t.value;
+
+      return result;
+    }
+
+    /**
+      Position within the current input window, in CPU cycles, of the point
+      being sampled: the offset of 'nowCycles' (the caller's System::cycles())
+      from the start of the window.
+    */
+    uInt64 windowPosition(uInt64 nowCycles) const {
+      return nowCycles - myWindowStartCycle;
+    }
+
+    /**
+      Whether any transition was recorded this input window.  When false, every
+      input is constant across the window and equals its latched value.
+    */
+    bool hasTransitions() const {
+      return myHasTransitions;
+    }
+
+    /**
+      Set the value of 'type'.  While the input window is open (see
+      beginInputWindow), a change of value is also recorded as a transition, in
+      arrival order, for sub-window replay by get(type, pos).
     */
     void set(Type type, Int32 value) {
       const std::scoped_lock lock(myMutex);
 
+      // Continuous inputs (analog axes, mouse motion) are read once per window
+      // as a whole value and never replayed, so they aren't recorded
+      if(myRecording && value != myValues[type] && !isContinuous(type))
+      {
+        // Seed a baseline so reads before the first transition see the prior value
+        if(std::ranges::none_of(myTransitions,
+            [type](const Transition& t){ return t.type == type; }))
+          myTransitions.push_back({type, 0, myValues[type], false});
+
+        // 'pending' marks the position for finalizeInputWindow() to assign
+        myTransitions.push_back({type, 0, value, true});
+      }
+
       myValues[type] = value;
+    }
+
+    /**
+      Open the input window for the coming poll and start recording transitions.
+      Transitions the previous window never reached (it turned out shorter than
+      the estimate they were spread over) are carried forward rather than
+      dropped, so an uneven run of window lengths can't swallow an input change.
+    */
+    void beginInputWindow(uInt64 nowCycles) {
+      const std::scoped_lock lock(myMutex);
+
+      // Length of the just-ended window, used as the estimate for this one
+      myCyclesLastWindow = nowCycles - myWindowStartCycle;
+      myWindowStartCycle = nowCycles;
+
+      // If the just-ended window came out shorter than that estimate, positions
+      // at or beyond its actual length were never sampled; carry those
+      // transitions forward instead of dropping them.
+      if(myCyclesLastWindow != 0 &&
+         std::ranges::any_of(myTransitions,
+           [this](const Transition& t){ return t.pos >= myCyclesLastWindow; }))
+      {
+        std::vector<Transition> carried;
+        for(const auto& t: myTransitions)
+          if(t.pos >= myCyclesLastWindow)
+          {
+            // Seed a baseline so reads before the carried transition see the
+            // held value rather than the new latch
+            if(std::ranges::none_of(carried,
+                [&t](const Transition& b){ return b.type == t.type; }))
+              carried.push_back(
+                {t.type, 0, heldValueBefore(t.type, myCyclesLastWindow), false});
+
+            carried.push_back({t.type, 0, t.value, true});
+          }
+        myTransitions = std::move(carried);
+      }
+      else
+        myTransitions.clear();
+
+      myRecording = true;
+      myHasTransitions = false;
+    }
+
+    /**
+      Close the input window and spread the recorded transitions evenly across
+      it, in arrival order: N transitions at 1/(N+1) .. N/(N+1) of the window
+      length, so a lone change lands mid-window.
+    */
+    void finalizeInputWindow() {
+      const std::scoped_lock lock(myMutex);
+
+      myRecording = false;
+
+      uInt32 pending = 0;
+      for(const auto& t: myTransitions)
+        if(t.pending) ++pending;
+
+      myHasTransitions = (pending != 0);
+      if(pending == 0)
+        return;
+
+      uInt32 k = 0;
+      for(auto& t: myTransitions)
+        if(t.pending)
+        {
+          t.pos = myCyclesLastWindow * (++k) / (pending + 1);
+          t.pending = false;
+        }
     }
 
     /**
@@ -235,6 +369,9 @@ class Event
       const std::scoped_lock lock(myMutex);
 
       myValues.fill(Event::NoType);
+      myTransitions.clear();
+      myRecording = false;
+      myHasTransitions = false;
     }
 
     /**
@@ -256,9 +393,60 @@ class Event
       }
     }
 
+    /**
+      Whether 'type' carries a continuous whole-window value — an analog axis or
+      mouse motion (the contiguous MouseAxis* range, NOT the mouse buttons that
+      follow it, which are bound to digital pins).  These are read once per
+      window via get(type) and never replayed, so set() leaves them out of the
+      transition schedule.
+    */
+    static bool isContinuous(Type type)
+    {
+      return isAnalog(type) ||
+          (type >= MouseAxisXMove && type <= MouseAxisYValue);
+    }
+
   private:
-    // Array of values associated with each event type
+    // A recorded input transition: 'type' took on 'value' at position 'pos'
+    // (CPU cycles) within the input window
+    struct Transition {
+      Type  type{NoType};
+      uInt64 pos{0};
+      Int32 value{0};
+      bool  pending{false};   // true until finalizeInputWindow() assigns pos
+    };
+
+    // Value of 'type' as last observed before position 'len' within the window
+    // (its latest transition before 'len').  Seeds the baseline of a
+    // carried-forward transition (see beginInputWindow).  Assumes myMutex held.
+    Int32 heldValueBefore(Type type, uInt64 len) const {
+      Int32 result = myValues[type];
+      for(const auto& t: myTransitions)
+        if(t.type == type && t.pos < len)
+          result = t.value;
+      return result;
+    }
+
+  private:
+    // Current value of each event type
     std::array<Int32, LastType> myValues;
+
+    // Input transitions recorded this window in arrival order, replayed by
+    // get(type, pos)
+    std::vector<Transition> myTransitions;
+
+    // True while the input window is open and set() should record transitions
+    bool myRecording{false};
+
+    // Start of the current input window, and the length of the previous one,
+    // on the system (CPU) clock (see windowPosition and finalizeInputWindow).
+    // Written under myMutex during the poll, which happens-before the worker
+    // thread reads them, so they need no atomic.
+    uInt64 myWindowStartCycle{0}, myCyclesLastWindow{0};
+
+    // Set when any transition was recorded this window; lets hasTransitions()
+    // callers skip the replay when nothing changed
+    std::atomic<bool> myHasTransitions{false};
 
     mutable std::mutex myMutex;
 
@@ -273,33 +461,33 @@ class Event
 // Hold controller related events
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet LeftJoystickEvents = {
+inline const Event::EventSet LeftJoystickEvents = {
   Event::LeftJoystickUp, Event::LeftJoystickDown, Event::LeftJoystickLeft, Event::LeftJoystickRight,
   Event::LeftJoystickFire, Event::LeftJoystickFire5, Event::LeftJoystickFire9,
 };
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet QTJoystick3Events = {
+inline const Event::EventSet QTJoystick3Events = {
   Event::QTJoystickThreeUp, Event::QTJoystickThreeDown, Event::QTJoystickThreeLeft, Event::QTJoystickThreeRight,
   Event::QTJoystickThreeFire
 };
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet RightJoystickEvents = {
+inline const Event::EventSet RightJoystickEvents = {
   Event::RightJoystickUp, Event::RightJoystickDown, Event::RightJoystickLeft, Event::RightJoystickRight,
   Event::RightJoystickFire, Event::RightJoystickFire5, Event::RightJoystickFire9,
 };
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet QTJoystick4Events = {
+inline const Event::EventSet QTJoystick4Events = {
   Event::QTJoystickFourUp, Event::QTJoystickFourDown, Event::QTJoystickFourLeft, Event::QTJoystickFourRight,
   Event::QTJoystickFourFire
 };
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet LeftPaddlesEvents = {
+inline const Event::EventSet LeftPaddlesEvents = {
   Event::LeftPaddleADecrease, Event::LeftPaddleAIncrease, Event::LeftPaddleAAnalog,
   Event::LeftPaddleAFire, Event::LeftPaddleAButton1, Event::LeftPaddleAButton2,
   Event::LeftPaddleBDecrease, Event::LeftPaddleBIncrease, Event::LeftPaddleBAnalog,
@@ -307,14 +495,14 @@ static const Event::EventSet LeftPaddlesEvents = {
 };
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet QTPaddles3Events = {
+inline const Event::EventSet QTPaddles3Events = {
   // Only fire buttons supported by QuadTari
   Event::QTPaddle3AFire, Event::QTPaddle3BFire
 };
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet RightPaddlesEvents = {
+inline const Event::EventSet RightPaddlesEvents = {
   Event::RightPaddleADecrease, Event::RightPaddleAIncrease, Event::RightPaddleAAnalog,
   Event::RightPaddleAFire, Event::RightPaddleAButton1, Event::RightPaddleAButton2,
   Event::RightPaddleBDecrease, Event::RightPaddleBIncrease, Event::RightPaddleBAnalog,
@@ -322,14 +510,14 @@ static const Event::EventSet RightPaddlesEvents = {
 };
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet QTPaddles4Events = {
+inline const Event::EventSet QTPaddles4Events = {
   // Only fire buttons supported by QuadTari
   Event::QTPaddle4AFire, Event::QTPaddle4BFire
 };
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet LeftKeyboardEvents = {
+inline const Event::EventSet LeftKeyboardEvents = {
   Event::LeftKeyboard1, Event::LeftKeyboard2, Event::LeftKeyboard3,
   Event::LeftKeyboard4, Event::LeftKeyboard5, Event::LeftKeyboard6,
   Event::LeftKeyboard7, Event::LeftKeyboard8, Event::LeftKeyboard9,
@@ -338,7 +526,7 @@ static const Event::EventSet LeftKeyboardEvents = {
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet RightKeyboardEvents = {
+inline const Event::EventSet RightKeyboardEvents = {
   Event::RightKeyboard1, Event::RightKeyboard2, Event::RightKeyboard3,
   Event::RightKeyboard4, Event::RightKeyboard5, Event::RightKeyboard6,
   Event::RightKeyboard7, Event::RightKeyboard8, Event::RightKeyboard9,
@@ -347,16 +535,16 @@ static const Event::EventSet RightKeyboardEvents = {
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet LeftDrivingEvents = {
+inline const Event::EventSet LeftDrivingEvents = {
   Event::LeftDrivingAnalog, Event::LeftDrivingCCW, Event::LeftDrivingCW,
   Event::LeftDrivingFire, Event::LeftDrivingButton1, Event::LeftDrivingButton2,
 };
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
-static const Event::EventSet RightDrivingEvents = {
+inline const Event::EventSet RightDrivingEvents = {
   Event::RightDrivingAnalog, Event::RightDrivingCCW, Event::RightDrivingCW,
   Event::RightDrivingFire, Event::RightDrivingButton1, Event::RightDrivingButton2,
 };
 
-#endif
+#endif  // EVENT_HXX

@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGETVBOY_HXX
-#define CARTRIDGETVBOY_HXX
+#ifndef CARTRIDGE_TVBOY_HXX
+#define CARTRIDGE_TVBOY_HXX
 
 #include "bspf.hxx"
 #include "CartEnhanced.hxx"
@@ -26,9 +26,12 @@
 #endif
 
 /**
-  Cartridge class used for TV Boy
-  There are 128 4K banks, accessing $F800..$F87F selects bank and locks any
-  further bankswitching.
+  Cartridge class used for the TV Boy, an Atari-compatible handheld multicart
+  containing 128 built-in games.  Accessing any address in $F800-$F87F
+  (i.e. $1800-$187F in cart space) selects the game whose number equals the
+  low 7 bits of the address, and simultaneously locks further bankswitching
+  until the next hardware reset.  The lock prevents a running game from
+  accidentally switching away from its own bank.
 
   @author  Thomas Jentzsch
 */
@@ -40,14 +43,13 @@ class CartridgeTVBoy : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
     */
-    CartridgeTVBoy(const ByteBuffer& image, size_t size, string_view md5,
-                 const Settings& settings, size_t bsSize = 512_KB);
+    CartridgeTVBoy(ByteSpan image, string_view md5,
+                   const Settings& settings, size_t bsSize = 512_KB);
     ~CartridgeTVBoy() override = default;
 
   public:
@@ -114,4 +116,4 @@ class CartridgeTVBoy : public CartridgeEnhanced
     CartridgeTVBoy& operator=(CartridgeTVBoy&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_TVBOY_HXX

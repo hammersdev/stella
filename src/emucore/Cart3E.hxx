@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef CARTRIDGE3E_HXX
-#define CARTRIDGE3E_HXX
+#ifndef CARTRIDGE_3E_HXX
+#define CARTRIDGE_3E_HXX
 
 class System;
 
@@ -45,10 +45,7 @@ class System;
 
   To map ROM, the desired bank number of the first 2K segment is selected
   by storing its value into $3F. To map RAM in the first 2K segment
-  instead, store the RAM bank number into $3E. (*)
-
-  (*) 1/2025: Updated to emulate the new 3E board. Now reads and writes and
-  all mirror addresses are considered. This breaks previous Boulder Dash ROMs!
+  instead, store the RAM bank number into $3E.
 
   This implementation of 3E bankswitching numbers the RAM banks (up to 32)
   after the ROM banks (up to 256).
@@ -70,14 +67,13 @@ class Cartridge3E : public CartridgeEnhanced
     /**
       Create a new cartridge using the specified image and size.
 
-      @param image     Pointer to the ROM image
-      @param size      The size of the ROM image
+      @param image     Span of the ROM image
       @param md5       The md5sum of the ROM image
       @param settings  A reference to the various settings (read-only)
       @param bsSize    The size specified by the bankswitching scheme
                        (where 0 means variable-sized ROM)
     */
-    Cartridge3E(const ByteBuffer& image, size_t size, string_view md5,
+    Cartridge3E(ByteSpan image, string_view md5,
                 const Settings& settings, size_t bsSize = 0);
     ~Cartridge3E() override = default;
 
@@ -137,4 +133,4 @@ class Cartridge3E : public CartridgeEnhanced
     Cartridge3E& operator=(Cartridge3E&&) = delete;
 };
 
-#endif
+#endif  // CARTRIDGE_3E_HXX

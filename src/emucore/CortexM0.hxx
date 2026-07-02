@@ -20,8 +20,8 @@
 // Code is public domain and used with the author's consent
 //============================================================================
 
-#ifndef CORTEX_M0
-#define CORTEX_M0
+#ifndef CORTEX_M0_HXX
+#define CORTEX_M0_HXX
 
 #include <variant>
 
@@ -84,7 +84,7 @@ class CortexM0: public Serializable
       return (err & 0xffffffff) >> 8;
     }
 
-    static constexpr uInt8 getErrInstrinsic(err_t err)  {
+    static constexpr uInt8 getErrIntrinsic(err_t err)  {
       return err;
     }
 
@@ -165,7 +165,7 @@ class CortexM0: public Serializable
 
     struct MemoryRegionAccessCode {
       uInt8* backingStore;
-      unique_ptr<uInt8[]> ops;
+      ByteArray ops;
     };
 
     struct MemoryRegion {
@@ -219,7 +219,7 @@ class CortexM0: public Serializable
     uInt32 vFlag{0};
 
     std::array<MemoryRegion, 0x100> myRegions{};
-    unique_ptr<uInt8[]> myPageMap;
+    ByteArray myPageMap;
     uInt8 myNextRegionIndex{0};
     BusTransactionDelegate* myDefaultDelegate{nullptr};
 
@@ -239,4 +239,4 @@ class CortexM0: public Serializable
     CortexM0& operator=(CortexM0&&) = delete;
 };
 
-#endif  // CORTEX_M0
+#endif  // CORTEX_M0_HXX
