@@ -154,6 +154,18 @@
     <Filter Include="Header Files\lib\dr_libs">
       <UniqueIdentifier>{3ae6ce19-97c3-4362-a3ae-176d35cad1f5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\gui\memview">
+      <UniqueIdentifier>{5a6fffa5-4665-4f29-ab74-01b19adf8203}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\gui\memview">
+      <UniqueIdentifier>{4227ecd1-ef37-4c55-a1d7-e74eb5391317}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\emucore\memview">
+      <UniqueIdentifier>{1e9fc271-eb1a-480d-8385-022cd44aad19}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\emucore\memview">
+      <UniqueIdentifier>{e82cedbb-6de5-45e9-af08-e246ae7dc334}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\emucore\AtariVox.cxx">
@@ -424,9 +436,6 @@
       <Filter>Source Files\gui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\gui\RomInfoWidget.cxx">
-      <Filter>Source Files\gui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\gui\ScrollBarWidget.cxx">
       <Filter>Source Files\gui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\gui\StringListWidget.cxx">
@@ -1260,6 +1269,42 @@
     <ClCompile Include="..\..\gui\OverlayMenu.cxx">
       <Filter>Source Files\gui</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\gui\ScrollBarHWidget.cxx">
+      <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\ScrollBarVWidget.cxx">
+      <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\memview\MemView.cxx">
+      <Filter>Source Files\gui\memview</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\memview\MemViewAccessLayer.cxx">
+      <Filter>Source Files\gui\memview</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\memview\MemViewDataLayer.cxx">
+      <Filter>Source Files\gui\memview</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\memview\MemViewDialog.cxx">
+      <Filter>Source Files\gui\memview</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\memview\MemViewLayer.cxx">
+      <Filter>Source Files\gui\memview</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\memview\MemViewParams.cxx">
+      <Filter>Source Files\gui\memview</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\memview\MemViewWidget.cxx">
+      <Filter>Source Files\gui\memview</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\emucore\memview\MemViewFrameBuffer.cxx">
+      <Filter>Source Files\emucore\memview</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\emucore\MainFrameBuffer.cxx">
+      <Filter>Source Files\emucore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gui\memview\MemViewMarkerLayer.cxx">
+      <Filter>Source Files\gui\memview</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\emucore\AtariVox.hxx">
@@ -1578,9 +1623,6 @@
       <Filter>Header Files\gui</Filter>
     </ClInclude>
     <ClInclude Include="..\..\gui\RomInfoWidget.hxx">
-      <Filter>Header Files\gui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\gui\ScrollBarWidget.hxx">
       <Filter>Header Files\gui</Filter>
     </ClInclude>
     <ClInclude Include="..\..\gui\StellaFont.hxx">
@@ -2602,6 +2644,45 @@
     </ClInclude>
     <ClInclude Include="..\..\gui\OverlayMenu.hxx">
       <Filter>Header Files\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\ScrollBarHWidget.hxx">
+      <Filter>Header Files\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\ScrollBarVWidget.hxx">
+      <Filter>Header Files\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\memview\MemView.hxx">
+      <Filter>Header Files\gui\memview</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\memview\MemViewAccessLayer.hxx">
+      <Filter>Header Files\gui\memview</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\memview\MemViewDataLayer.hxx">
+      <Filter>Header Files\gui\memview</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\memview\MemViewDialog.hxx">
+      <Filter>Header Files\gui\memview</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\memview\MemViewLayer.hxx">
+      <Filter>Header Files\gui\memview</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\memview\MemViewParams.hxx">
+      <Filter>Header Files\gui\memview</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\memview\MemViewWidget.hxx">
+      <Filter>Header Files\gui\memview</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\emucore\memview\MemViewFrameBuffer.hxx">
+      <Filter>Header Files\emucore\memview</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\emucore\memview\TimeChecker.hxx">
+      <Filter>Header Files\emucore\memview</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\emucore\MainFrameBuffer.hxx">
+      <Filter>Header Files\emucore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\gui\memview\MemViewMarkerLayer.hxx">
+      <Filter>Header Files\gui\memview</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

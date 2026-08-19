@@ -582,8 +582,8 @@ void PhysicalKeyboardHandler::handleEvent(StellaKey key, StellaMod mod,
 
     default:
     #ifdef GUI_SUPPORT
-      if (myHandler.hasOverlay())
-        myHandler.overlay().handleKeyEvent(key, mod, pressed, repeated);
+      if (myHandler.hasCurrentOverlay())
+        myHandler.currentOverlay().handleKeyEvent(key, mod, pressed, repeated);
     #endif
       myHandler.handleEvent(myKeyMap.get(EventMode::kMenuMode, key, mod), pressed, repeated);
       break;
@@ -635,6 +635,7 @@ PhysicalKeyboardHandler::DefaultCommonMapping = []() noexcept {
     { Event::ToggleBezel,              StellaKey::B, StellaMod::CTRL },
     { Event::TimeMachineMode,          StellaKey::T, StellaMod::SHIFT },
     { Event::DebuggerMode,             StellaKey::GRAVE },
+    { Event::OpenMemView,              StellaKey::M, MOD3 },
     { Event::PlusRomsSetupMode,        StellaKey::P, StellaMod::SHIFT | StellaMod::CTRL | MOD3 },
     { Event::ExitMode,                 StellaKey::ESCAPE },
   #ifdef BSPF_MACOS

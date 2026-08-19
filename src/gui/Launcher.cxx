@@ -20,14 +20,14 @@
 #include "OSystem.hxx"
 #include "Settings.hxx"
 #include "FSNode.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "bspf.hxx"
 
 #include "Launcher.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Launcher::Launcher(OSystem& osystem)
-  : DialogContainer(osystem),
+Launcher::Launcher(OSystem& osystem, FrameBuffer& framebuffer)
+  : DialogContainer(osystem, framebuffer),
     mySize{myOSystem.settings().getSize("launcherres")}
 {
   const Common::Size& d = myOSystem.frameBuffer().desktopSize(BufferType::Launcher);

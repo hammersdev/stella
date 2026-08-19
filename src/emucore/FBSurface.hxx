@@ -97,6 +97,18 @@ class FBSurface
     */
     virtual void hLine(uInt32 x, uInt32 y, uInt32 x2, ColorId color);
 
+  #ifdef MEMVIEW_SUPPORT
+    /**
+      This method should be called to draw a horizontal line.
+
+      @param x      The first x coordinate
+      @param y      The y coordinate
+      @param x2     The second x coordinate
+      @param color  The color of the line
+    */
+    virtual void hLineRgb(uInt32 x, uInt32 y, uInt32 x2, uInt32 color);
+  #endif
+
     /**
       This method should be called to draw a vertical line.
 
@@ -118,6 +130,20 @@ class FBSurface
     */
     virtual void fillRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h,
                           ColorId color);
+
+  #ifdef MEMVIEW_SUPPORT
+    /**
+      This method should be called to draw a filled rectangle.
+
+      @param x      The x coordinate
+      @param y      The y coordinate
+      @param w      The width of the area
+      @param h      The height of the area
+      @param color  The fill color of the rectangle
+    */
+    virtual void fillRectRgb(uInt32 x, uInt32 y, uInt32 w, uInt32 h,
+                          uInt32 color);
+  #endif
 
     /**
       This method should be called to draw the specified character.
@@ -326,6 +352,16 @@ class FBSurface
       This method should be called to draw the surface to the screen.
       It will return true if rendering actually occurred.
     */
+    virtual bool updateAndRender() = 0;
+
+    /**
+      Only updates data content to the renderer.
+    */
+    virtual bool update() = 0;
+
+    /**
+      (Re)renders the last updated content onto the screen.
+    */
     virtual bool render() = 0;
 
     /**
@@ -348,6 +384,11 @@ class FBSurface
       This method should be called to reload the surface data/state.
     */
     virtual void reload() = 0;
+
+    /**
+      This is used to update rarely changing contents to the Blitter (Surface->Texture)
+    */
+    virtual void updateStaticData() { }
 
     /**
       This method should be called to resize the surface to the
@@ -381,6 +422,12 @@ class FBSurface
     //////////////////////////////////////////////////////////////////////////
 
     static void setPalette(const FullPaletteArray& palette) { myPalette = palette; }
+
+  #ifdef MEMVIEW_SUPPORT
+    static uInt32 getColorRgb(ColorId color) { 
+      return (color < kNumColors) ? myPalette[color] : 0;
+    }
+  #endif
 
   protected:
     /**

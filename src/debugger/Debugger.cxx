@@ -55,8 +55,8 @@ using Common::Base;
 Debugger* Debugger::myStaticDebugger = nullptr;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Debugger::Debugger(OSystem& osystem, Console& console)
-  : DialogContainer(osystem),
+Debugger::Debugger(OSystem& osystem, FrameBuffer& framebuffer, Console& console)
+  : DialogContainer(osystem, framebuffer),
     myConsole{&console},
     mySystem{&console.system()}
 {
@@ -936,6 +936,7 @@ void Debugger::lockSystem()
 {
   mySystem->lockDataBus();
   myConsole->cartridge().lockHotspots();
+  mySystemIsLocked = true;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -943,6 +944,7 @@ void Debugger::unlockSystem()
 {
   mySystem->unlockDataBus();
   myConsole->cartridge().unlockHotspots();
+  mySystemIsLocked = false;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -30,7 +30,7 @@ class OSystem;
 class TimeMachine : public DialogContainer
 {
   public:
-    explicit TimeMachine(OSystem& osystem);
+    explicit TimeMachine(OSystem& osystem, FrameBuffer& framebuffer);
     ~TimeMachine() override;
 
     /**

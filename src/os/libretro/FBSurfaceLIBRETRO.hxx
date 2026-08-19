@@ -62,6 +62,8 @@ class FBSurfaceLIBRETRO : public FBSurface
     void setVisible(bool visible) override { }
 
     void translateCoords(Int32& x, Int32& y) const override { }
+    bool updateAndRender() override { return true; }
+    bool update() override { return true; }
     bool render() override { return true; }
     void invalidate() override { }
     void invalidateRect(uInt32, uInt32, uInt32, uInt32) override { }

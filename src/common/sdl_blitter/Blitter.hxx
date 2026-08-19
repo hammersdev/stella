@@ -33,7 +33,11 @@ class Blitter {
       uInt8 blendLevel, SDL_Surface* staticData = nullptr
     ) = 0;
 
-    virtual void blit(SDL_Surface& surface) = 0;
+    void blit(SDL_Surface& surface) { update(surface); render(); }
+
+    virtual void update(SDL_Surface& surface) = 0;
+    virtual void render() = 0;
+    virtual void updateStaticData() = 0;
 
   protected:
 

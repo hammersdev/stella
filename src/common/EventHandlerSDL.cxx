@@ -192,21 +192,19 @@ void EventHandlerSDL::pollEvent()
         break;
 
       case SDL_EVENT_WINDOW_SHOWN:
-        handleSystemEvent(SystemEvent::WINDOW_SHOWN);
+        handleSystemEvent(SystemEvent::WINDOW_SHOWN, myEvent.window.windowID);
         break;
       case SDL_EVENT_WINDOW_HIDDEN:
-        handleSystemEvent(SystemEvent::WINDOW_HIDDEN);
+        handleSystemEvent(SystemEvent::WINDOW_HIDDEN, myEvent.window.windowID);
         break;
       case SDL_EVENT_WINDOW_EXPOSED:
         handleSystemEvent(SystemEvent::WINDOW_EXPOSED);
         break;
       case SDL_EVENT_WINDOW_MOVED:
-        handleSystemEvent(SystemEvent::WINDOW_MOVED,
-                          myEvent.window.data1, myEvent.window.data2);
+        handleSystemEvent(SystemEvent::WINDOW_MOVED);
         break;
       case SDL_EVENT_WINDOW_RESIZED:
-        handleSystemEvent(SystemEvent::WINDOW_RESIZED,
-                          myEvent.window.data1, myEvent.window.data2);
+        handleSystemEvent(SystemEvent::WINDOW_RESIZED);
         break;
       case SDL_EVENT_WINDOW_MINIMIZED:
         handleSystemEvent(SystemEvent::WINDOW_MINIMIZED);
@@ -218,10 +216,10 @@ void EventHandlerSDL::pollEvent()
         handleSystemEvent(SystemEvent::WINDOW_RESTORED);
         break;
       case SDL_EVENT_WINDOW_MOUSE_ENTER:
-        handleSystemEvent(SystemEvent::WINDOW_ENTER);
+        handleSystemEvent(SystemEvent::WINDOW_ENTER, myEvent.window.windowID);
         break;
       case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-        handleSystemEvent(SystemEvent::WINDOW_LEAVE);
+        handleSystemEvent(SystemEvent::WINDOW_LEAVE, myEvent.window.windowID);
         break;
       case SDL_EVENT_WINDOW_FOCUS_GAINED:
         handleSystemEvent(SystemEvent::WINDOW_FOCUS_GAINED);
@@ -232,6 +230,11 @@ void EventHandlerSDL::pollEvent()
       case SDL_EVENT_SYSTEM_THEME_CHANGED:
         handleSystemEvent(SystemEvent::THEME_CHANGED);
         break;
+#ifdef MEMVIEW_SUPPORT
+      case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+        handleSystemEvent(SystemEvent::WINDOW_CLOSE, myEvent.window.windowID);
+        break;
+#endif
       default:
         break;
     }

@@ -28,6 +28,7 @@ _build_gui=yes
 _build_windowed=yes
 _build_sound=yes
 _build_debugger=yes
+_build_memview=yes
 _build_joystick=yes
 _build_cheats=yes
 _build_httplib=yes
@@ -174,6 +175,8 @@ Optional Features:
   --disable-sound
   --enable-debugger      enable/disable all debugger options [enabled]
   --disable-debugger
+  --enable-memview       enable/disable memory view support [enabled]
+  --disable-memview
   --enable-joystick      enable/disable joystick support [enabled]
   --disable-joystick
   --enable-cheats        enable/disable cheatcode support [enabled]
@@ -225,6 +228,8 @@ for ac_option in $@; do
       --disable-sound)          _build_sound=no      ;;
       --enable-debugger)        _build_debugger=yes  ;;
       --disable-debugger)       _build_debugger=no   ;;
+      --enable-memview)         _build_memview=yes   ;;
+      --disable-memview)        _build_memview=no    ;;
       --enable-joystick)        _build_joystick=yes  ;;
       --disable-joystick)       _build_joystick=no   ;;
       --enable-cheats)          _build_cheats=yes    ;;
@@ -687,6 +692,7 @@ else
   echo
   _build_debugger=no
   _build_cheats=no
+  _build_memview=no
 fi
 
 if test "$_build_sound" = "yes" ; then
@@ -702,6 +708,14 @@ if test "$_build_debugger" = "yes" ; then
   echo
 else
   echo_n "   Debugger support disabled"
+  echo
+fi
+
+if test "$_build_memview" = "yes" ; then
+  echo_n "   Memory view support enabled"
+  echo
+else
+  echo_n "   Memory view support disabled"
   echo
 fi
 
@@ -789,6 +803,8 @@ TV="$SRC/common/tv_filters"
 GUI="$SRC/gui"
 DBG="$SRC/debugger"
 DBGGUI="$SRC/debugger/gui"
+MEMVIEW="$SRC/emucore/memview"
+MEMVIEWGUI="$SRC/gui/memview"
 YACC="$SRC/debugger/yacc"
 CHEAT="$SRC/cheat"
 LIBPNG="$SRC_LIB/libpng"
@@ -849,6 +865,12 @@ if test "$_build_debugger" = yes ; then
   DEFINES="$DEFINES -DDEBUGGER_SUPPORT"
   MODULES="$MODULES $DBG $DBGGUI $YACC"
   INCLUDES="$INCLUDES -I$DBG -I$DBGGUI -I$YACC"
+fi
+
+if test "$_build_memview" = yes ; then
+  DEFINES="$DEFINES -DMEMVIEW_SUPPORT"
+  MODULES="$MODULES $MEMVIEW $MEMVIEWGUI"
+  INCLUDES="$INCLUDES -I$MEMVIEW -I$MEMVIEWGUI"
 fi
 
 if test "$_build_joystick" = yes ; then

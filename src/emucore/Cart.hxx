@@ -227,6 +227,45 @@ class Cartridge : public Device
     virtual uInt16 bankOrigin(uInt16 bank, uInt16 PC = 0) const;
   #endif
 
+  #ifdef MEMVIEW_SUPPORT
+    /**
+      Get back the full access counters for code reads (reads of the program counter).
+
+      @return Pointer to the buffer holding the counters for each address of the ROM.
+    */
+    Device::AccessCounter* getRomCodePeekCounter() {
+      return myRomCodePeekCounter.get();
+    }
+
+    /**
+      Get back the full access counters for data reads.
+
+      @return Pointer to the buffer holding the counters for each address of the ROM.
+    */
+    Device::AccessCounter* getRomDataPeekCounter() {
+      return myRomDataPeekCounter.get();
+    }
+
+    /**
+      Get back the full access counters for data writes on the ROM (shouldn't be too many).
+
+      @return Pointer to the buffer holding the counters for each address of the ROM.
+    */
+    Device::AccessCounter* getRomPokeCounter() {
+      return myRomPokeCounter.get();
+    }
+
+    /**
+      Get the size of each access counter buffers which will be retrieved by
+      getRomCodePeekCounter(), getRomDataPeekCounter() and getRomPokeCounter().
+
+      @return Size in Device::AccessCounter values
+    */
+    const uInt32& getRomCounterSize() const {
+      return myAccessSize;
+    }
+  #endif
+
   public:
     //////////////////////////////////////////////////////////////////////
     // The following methods are cart-specific and will usually be
@@ -462,9 +501,11 @@ class Cartridge : public Device
     // whether it is used as code, data, graphics etc.
     std::unique_ptr<Device::AccessFlags[]> myRomAccessBase;
 
-    // The array containing information about every byte of ROM indicating
+    // The arrays containing information about every byte of ROM indicating
     // how often it is accessed.
-    std::unique_ptr<Device::AccessCounter[]> myRomAccessCounter;
+    std::unique_ptr<Device::AccessCounter[]> myRomCodePeekCounter;
+    std::unique_ptr<Device::AccessCounter[]> myRomDataPeekCounter;
+    std::unique_ptr<Device::AccessCounter[]> myRomPokeCounter;
 
     // Contains address of illegal RAM write access or 0
     uInt16 myRamWriteAccess{0};

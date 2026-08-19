@@ -19,7 +19,7 @@
 #define DATA_GRID_WIDGET_HXX
 
 class DataGridOpsWidget;
-class ScrollBarWidget;
+class ScrollBarVWidget;
 class CommandSender;
 
 #include "Widget.hxx"
@@ -141,7 +141,7 @@ class DataGridWidget : public EditableWidget
     string    _backupString;
 
     DataGridOpsWidget* _opsWidget{nullptr};
-    ScrollBarWidget* _scrollBar{nullptr};
+    ScrollBarVWidget* _scrollBar{nullptr};
 
   private:
     /** Common operations on the currently selected cell */

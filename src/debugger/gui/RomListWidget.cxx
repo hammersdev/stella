@@ -25,7 +25,7 @@
 #include "StellaKeys.hxx"
 #include "FBSurface.hxx"
 #include "Font.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "Settings.hxx"
 #include "RomListSettings.hxx"
 #include "DisasmColorsDialog.hxx"
@@ -48,14 +48,14 @@ RomListWidget::RomListWidget(GuiObject* boss, const GUI::Font& lfont,
   _dyText = -1; // fixes the vertical position of selected text
 
   // Set real dimensions
-  _w = w - ScrollBarWidget::scrollBarWidth(_font);
+  _w = w - ScrollBarVWidget::scrollBarWidth(_font);
   _h = h + 2;
 
   // Create scrollbar and attach to the list
   // We want to initialize here, not in the member list
   // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
-  myScrollBar = new ScrollBarWidget(boss, lfont, _x + _w, _y,
-                                    ScrollBarWidget::scrollBarWidth(_font), _h);
+  myScrollBar = new ScrollBarVWidget(boss, lfont, _x + _w, _y,
+                                    ScrollBarVWidget::scrollBarWidth(_font), _h);
   myScrollBar->setTarget(this);
 
   // Add settings menu

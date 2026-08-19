@@ -35,12 +35,42 @@ ColorWidget::ColorWidget(GuiObject* boss, const GUI::Font& font,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void ColorWidget::setColor(ColorId color)
 {
-  if(_color != color)
+  if(
+    (_color != color)
+#ifdef MEMVIEW_SUPPORT
+    || _rgbMode
+#endif
+  )
   {
     _color = color;
+#ifdef MEMVIEW_SUPPORT
+    _rgbMode = false;
+#endif
     setDirty();
   }
 }
+
+#ifdef MEMVIEW_SUPPORT
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void ColorWidget::setColorRgb(uInt32 color)
+{
+  if((color != _colorRgb) || !_rgbMode)
+  {
+    _colorRgb = color;
+    _rgbMode = true;
+    setDirty();
+  }
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+uInt32 ColorWidget::getColorRgb() const
+{
+  if (_rgbMode)
+    return _colorRgb;
+  else
+    return FBSurface::getColorRgb(_color);
+}
+#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void ColorWidget::setCrossed(bool enable)
@@ -63,7 +93,21 @@ void ColorWidget::drawWidget(bool hilite)
     s.frameRect(_x, _y, _w, _h + 1, kColor);
 
     // Show the currently selected color
-    s.fillRect(_x + 1, _y + 1, _w - 2, _h - 1, isEnabled() ? _color : kWidColor);
+    if (isEnabled())
+    {
+#ifdef MEMVIEW_SUPPORT
+      if (!_rgbMode)
+#endif
+        s.fillRect(_x + 1, _y + 1, _w - 2, _h - 1, _color);
+#ifdef MEMVIEW_SUPPORT
+      else
+        s.fillRectRgb(_x + 1, _y + 1, _w - 2, _h - 1, _colorRgb);
+#endif
+    }
+    else
+    {
+      s.fillRect(_x + 1, _y + 1, _w - 2, _h - 1, kWidColor);
+    }
   }
   else
   {

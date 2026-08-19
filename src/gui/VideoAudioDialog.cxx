@@ -137,7 +137,7 @@ void VideoAudioDialog::addDisplayTab()
   // TIA zoom levels (will be dynamically filled later)
   myTIAZoom = new SliderWidget(myTab, _font, xpos, ypos - 1, swidth, lineHeight,
                                "Zoom ", lwidth, 0, fontWidth * 4, "%");
-  myTIAZoom->setMinValue(200); myTIAZoom->setStepValue(FrameBuffer::ZOOM_STEPS * 100);
+  myTIAZoom->setMinValue(200); myTIAZoom->setStepValue(MainFrameBuffer::ZOOM_STEPS * 100);
   myTIAZoom->setToolTip(Event::VidmodeDecrease, Event::VidmodeIncrease);
   wid.push_back(myTIAZoom);
   ypos += lineHeight + VGAP;

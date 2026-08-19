@@ -25,7 +25,6 @@ class OSystem;
 class Console;
 class Settings;
 class FBSurface;
-class TIASurface;
 class Bezel;
 
 #ifdef GUI_SUPPORT
@@ -34,7 +33,6 @@ class Bezel;
 
 #include "Rect.hxx"
 #include "Variant.hxx"
-#include "TIAConstants.hxx"
 #include "FBBackend.hxx"
 #include "FBMessageHandler.hxx"
 #include "FrameBufferConstants.hxx"
@@ -58,6 +56,7 @@ class FrameBuffer
     // Zoom level step interval
     static constexpr double ZOOM_STEPS = 0.25;
 
+  public:
     enum class UpdateMode: uInt8 {
       NONE = 0,
       REDRAW = 1,
@@ -66,13 +65,13 @@ class FrameBuffer
 
   public:
     explicit FrameBuffer(OSystem& osystem);
-    ~FrameBuffer();
+    virtual ~FrameBuffer();
 
     /**
       Initialize the framebuffer object (set up the underlying hardware).
       Throws an exception upon encountering any errors.
     */
-    void initialize();
+    virtual void initialize();
 
     /**
       (Re)creates the framebuffer display.  This must be called before any
@@ -86,19 +85,14 @@ class FrameBuffer
 
       @return  Status of initialization (see FBInitStatus 'enum')
     */
-    FBInitStatus createDisplay(string_view title, BufferType type,
-                               Common::Size size, bool honourHiDPI = true);
+    virtual FBInitStatus createDisplay(string_view title, BufferType type,
+                               Common::Size size, bool honourHiDPI = true) = 0;
 
     /**
       Updates the display, which depending on the current mode could mean
       drawing the TIA, any pending menus, etc.
     */
-    void update(UpdateMode mode = UpdateMode::NONE);
-
-    /**
-      There is a dedicated update method for emulation mode.
-    */
-    void updateInEmulationMode(float framesPerSecond);
+    virtual void update(UpdateMode mode = UpdateMode::NONE) = 0;
 
     /**
       Set pending rendering flag.
@@ -143,7 +137,7 @@ class FrameBuffer
       Enable/disable any pending messages.  Disabled messages aren't removed
       from the message queue; they're just not redrawn into the framebuffer.
     */
-    void enableMessages(bool enable);
+    virtual void enableMessages(bool enable);
 
     /**
       Reset 'Paused' display delay counter
@@ -177,26 +171,9 @@ class FrameBuffer
     void deallocateSurface(const shared_ptr<FBSurface>& surface);
 
     /**
-      Set up the TIA/emulation palette.  Due to the way the palette is stored,
-      a call to this method implicitly calls setUIPalette() too.
-
-      @param rgb_palette  The array of colors in R/G/B format
-    */
-    void setTIAPalette(const PaletteArray& rgb_palette);
-
-    /**
       Set palette for user interface.
     */
-    void setUIPalette();
-
-    /**
-      Set disassembly syntax colors.  The active UI theme determines which
-      disasm palette is used: light themes (standard, light) use the standard
-      disasm palette; dark themes (classic, dark) use the dark one.
-      Called automatically by setUIPalette(); can also be called standalone
-      when only the disassembly palette needs refreshing.
-    */
-    void setDisasmPalette();
+    virtual void setUIPalette();
 
     /**
       Returns the current dimensions of the framebuffer image.
@@ -229,20 +206,6 @@ class FrameBuffer
     const VariantList& supportedRenderers() const { return myRenderers; }
 
     /**
-      Get the minimum/maximum supported TIA zoom level (windowed mode)
-      for the framebuffer.
-    */
-    double supportedTIAMinZoom() const { return myTIAMinZoom * hidpiScaleFactor(); }
-    double supportedTIAMaxZoom() const { return maxWindowZoom(); }
-
-    /**
-      Get the TIA surface associated with the framebuffer.
-      Note that this is the 'raw' TIA surface, without any post-processing
-      effects included.
-    */
-    TIASurface& tiaSurface() const { return *myTIASurface; }
-
-    /**
       This method is called to get the specified ARGB data from the viewable
       FrameBuffer area.  Note that this isn't the same as any internal
       surfaces that may be in use; it should return the actual data as it
@@ -259,35 +222,6 @@ class FrameBuffer
       Toggles between fullscreen and window mode.
     */
     void toggleFullscreen(bool toggle = true);
-
-  #ifdef ADAPTABLE_REFRESH_SUPPORT
-    /**
-      Toggles between adapt fullscreen refresh rate on and off.
-    */
-    void toggleAdaptRefresh(bool toggle = true);
-  #endif
-
-    /**
-      Changes the fullscreen overscan.
-
-      @param direction  +1 indicates increase, -1 indicates decrease
-    */
-    void changeOverscan(int direction = +1);
-
-    /**
-      This method is called when the user wants to switch to the previous/next
-      available TIA video mode.  In windowed mode, this typically means going
-      to the next/previous zoom level.  In fullscreen mode, this typically
-      means switching between normal aspect and fully filling the screen.
-
-      @param direction  +1 indicates next mode, -1 indicates previous mode
-    */
-    void switchVideoMode(int direction = +1);
-
-    /**
-      Toggles the bezel display.
-    */
-    void toggleBezel(bool toggle = true);
 
     /**
       Sets the state of the cursor (hidden or grabbed) based on the
@@ -363,6 +297,14 @@ class FrameBuffer
       @return  The description of the font
     */
     static FontDesc getFontDesc(string_view name);
+
+    /**
+      Determine minimal zoom level for a given font - this default impl does nothing
+
+      @param fd Font description
+    */
+    virtual void setMinZoom(const FontDesc &fd) { }
+
   #endif  // GUI_SUPPORT
 
     /**
@@ -402,7 +344,14 @@ class FrameBuffer
     int scaleX(int x) const { return myBackend->scaleX(x); }
     int scaleY(int y) const { return myBackend->scaleY(y); }
 
-  private:
+    /**
+      Get the window ID used for the current mode.
+    */
+    uInt32 windowId(BufferType bufferType = BufferType::None) const;
+
+    bool isWindowId(uInt32 id) const { return id == windowId(); }
+
+  protected:
     /**
       These methods are used to load/save position and display of the
       current window.
@@ -417,15 +366,6 @@ class FrameBuffer
     void resetSurfaces();
 
     /**
-      Renders TIA and overlaying, optional bezel surface
-
-      @param doClear  Clear the framebuffer before rendering
-      @param shade    Shade the TIA surface after rendering
-    */
-    //void renderTIA(bool shade = false, bool doClear = true);
-    void renderTIA(bool doClear = true, bool shade = false);
-
-    /**
       Get the display used for the current mode.
     */
     uInt32 displayId(BufferType bufferType = BufferType::None) const;
@@ -437,13 +377,13 @@ class FrameBuffer
 
       @return  Whether the operation succeeded or failed
     */
-    FBInitStatus applyVideoMode();
+    virtual FBInitStatus applyVideoMode() = 0;
 
     /**
       Calculate the maximum level by which the base window can be zoomed and
       still fit in the desktop screen.
     */
-    double maxWindowZoom() const;
+    virtual double maxWindowZoom() const = 0;
 
     /**
       Enables/disables fullscreen mode.
@@ -457,7 +397,7 @@ class FrameBuffer
     void setupFonts();
   #endif  // GUI_SUPPORT
 
-  private:
+  protected:
     // The parent system for the framebuffer
     OSystem& myOSystem;
 
@@ -514,20 +454,11 @@ class FrameBuffer
     unique_ptr<GUI::Font> myLauncherFont;
   #endif  // GUI_SUPPORT
 
-    // The TIASurface class takes responsibility for TIA rendering
-    shared_ptr<TIASurface> myTIASurface;
-
-    // The BezelSurface which blends over the TIA surface
-    unique_ptr<Bezel> myBezel;
-
     // The FBMessageHandler class takes responsibility for all onscreen
     // message and frame-statistics overlay functionality
     FBMessageHandler myMsgHandler;
 
     bool myGrabMouse{false};
-
-    // Minimum TIA zoom level that can be used for this framebuffer
-    double myTIAMinZoom{2.};
 
     // Holds a reference to all the surfaces that have been created
     std::list<shared_ptr<FBSurface>> mySurfaceList;
@@ -536,8 +467,6 @@ class FrameBuffer
     // Holds UI palette data (for each variation)
     static UIPaletteArray ourStandardUIPalette, ourClassicUIPalette,
                           ourLightUIPalette, ourDarkUIPalette;
-    // Holds disassembly palette data (independent of UI theme)
-    static DisasmPaletteArray ourStandardDisasmPalette, ourDarkDisasmPalette;
 
   private:
     // Following constructors and assignment operators not supported

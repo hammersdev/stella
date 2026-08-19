@@ -17,7 +17,7 @@
 
 #include "bspf.hxx"
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "EventHandler.hxx"
 #include "TimerManager.hxx"
 #include "Widget.hxx"

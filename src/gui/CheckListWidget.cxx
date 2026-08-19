@@ -17,7 +17,7 @@
 
 #include "Dialog.hxx"
 #include "FBSurface.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "CheckListWidget.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

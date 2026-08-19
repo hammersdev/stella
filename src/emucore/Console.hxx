@@ -36,7 +36,7 @@ class DevSettingsHandler;
 #include "Control.hxx"
 #include "Props.hxx"
 #include "TIAConstants.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "FrameBufferConstants.hxx"
 #include "Serializable.hxx"
 #include "EventHandlerConstants.hxx"

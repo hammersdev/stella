@@ -108,6 +108,20 @@ void FBSurface::hLine(uInt32 x, uInt32 y, uInt32 x2, ColorId color)
     *buffer++ = myPalette[color];
 }
 
+#ifdef MEMVIEW_SUPPORT
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void FBSurface::hLineRgb(uInt32 x, uInt32 y, uInt32 x2, uInt32 color)
+{
+  if(!checkBounds(x, y) || !checkBounds(x2, 2))
+    return;
+
+  // NOLINTNEXTLINE(misc-const-correctness)
+  uInt32* buffer = myPixels + (y * static_cast<size_t>(myPitch)) + x;
+  while(x++ <= x2)
+    *buffer++ = color;
+}
+#endif
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FBSurface::vLine(uInt32 x, uInt32 y, uInt32 y2, ColorId color)
 {
@@ -128,6 +142,15 @@ void FBSurface::fillRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h, ColorId color)
   while(h--)
     hLine(x, y+h, x+w-1, color);
 }
+
+#ifdef MEMVIEW_SUPPORT
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void FBSurface::fillRectRgb(uInt32 x, uInt32 y, uInt32 w, uInt32 h, uInt32 color)
+{
+  while(h--)
+    hLineRgb(x, y+h, x+w-1, color);
+}
+#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FBSurface::drawChar(const GUI::Font& font, uInt8 chr,

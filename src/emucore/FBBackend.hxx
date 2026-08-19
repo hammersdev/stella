@@ -39,6 +39,10 @@ class FBSurface;
 class FBBackend
 {
   friend class FrameBuffer;
+  friend class MainFrameBuffer;
+#ifdef MEMVIEW_SUPPORT
+  friend class MemViewFrameBuffer;
+#endif
 
   public:
     FBBackend() = default;
@@ -184,6 +188,14 @@ class FBBackend
       @return  The current display id or a 0 if no window is displayed
     */
     virtual uInt32 getCurrentDisplayID() const = 0;
+
+    /**
+      This method is called to query the video hardware for the index
+      of the current window
+
+      @return  the current window index or a 0 if no window is displayed
+    */
+    virtual uInt32 getCurrentWindowID() const = 0;
 
     /**
       This method is called to create a surface with the given attributes.

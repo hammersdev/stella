@@ -35,8 +35,9 @@
 #endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-FBBackendSDL::FBBackendSDL(OSystem& osystem)
+FBBackendSDL::FBBackendSDL(OSystem& osystem, FrameBuffer& framebuffer)
   : myOSystem{osystem}
+  , myFrameBuffer{framebuffer}
 {
   ASSERT_MAIN_THREAD;
 
@@ -201,6 +202,14 @@ uInt32 FBBackendSDL::getCurrentDisplayID() const
   ASSERT_MAIN_THREAD;
 
   return SDL_GetDisplayForWindow(myWindow);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+uInt32 FBBackendSDL::getCurrentWindowID() const
+{
+  ASSERT_MAIN_THREAD;
+
+  return SDL_GetWindowID(myWindow);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -437,8 +446,22 @@ bool FBBackendSDL::createRenderer()
   // - no renderer existing
   // - different renderer name
   // - different renderer vsync
-  const bool enableVSync = myOSystem.settings().getBool("vsync") &&
-                          !myOSystem.settings().getBool("turbo");
+  const bool enableVSync =
+#ifdef MEMVIEW_SUPPORT
+    // MemView needs to have vsync disabled on it's renderer to prevent
+    // slowing down the whole emulation because SDL_RenderPresent() would
+    // wait for the next VSYNC in the MemView window.
+    (
+      !myOSystem.hasFrameBuffer()
+      ||
+      &myOSystem.frameBuffer() == &myFrameBuffer
+    )
+    &&
+#endif
+    myOSystem.settings().getBool("vsync")
+    &&
+    !myOSystem.settings().getBool("turbo");
+
   const string& video = myOSystem.settings().getString("video");
   // An empty or "auto" preference lets SDL pick the renderer
   const bool autoVideo = video.empty() || video == "auto";
@@ -638,11 +661,12 @@ const FBSurface& FBBackendSDL::compositedSurface()
 {
   ASSERT_MAIN_THREAD;
 
-  const FrameBuffer& fb = myOSystem.frameBuffer();
-  const Common::Rect& rectUnscaled = fb.imageRect();
+  const Common::Rect& rectUnscaled = myFrameBuffer.imageRect();
   const Common::Rect rect(
-    Common::Point(fb.scaleX(rectUnscaled.x()), fb.scaleY(rectUnscaled.y())),
-    fb.scaleX(rectUnscaled.w()), fb.scaleY(rectUnscaled.h())
+    Common::Point(
+      myFrameBuffer.scaleX(rectUnscaled.x()), myFrameBuffer.scaleY(rectUnscaled.y())
+    ),
+    myFrameBuffer.scaleX(rectUnscaled.w()), myFrameBuffer.scaleY(rectUnscaled.h())
   );
 
   const SDL_Rect surfaceRect = ToSDLRect(rect);
@@ -661,7 +685,9 @@ const FBSurface& FBBackendSDL::compositedSurface()
   // the averaged pixel values go through this conversion and come back darker.
   // Apply sRGB gamma correction to restore correct brightness.
   // NOTE: this correction may need revisiting for other renderers (e.g. Metal).
-  if(fb.tiaSurface().phosphorEnabled())
+  // NOTE: only the MainFrameBuffer knows about TIA stuff and phosphor
+  MainFrameBuffer *mfb = dynamic_cast<MainFrameBuffer*>(&myFrameBuffer);
+  if(mfb && mfb->tiaSurface().phosphorEnabled())
   {
     static const std::array<uInt8, 256> gammaLUT = [] {
       std::array<uInt8, 256> lut{};

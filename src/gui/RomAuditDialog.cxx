@@ -26,7 +26,7 @@
 #include "Font.hxx"
 #include "MessageBox.hxx"
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "Props.hxx"
 #include "PropsSet.hxx"
 #include "Settings.hxx"

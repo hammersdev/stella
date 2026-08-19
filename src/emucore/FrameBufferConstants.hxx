@@ -39,7 +39,8 @@ enum class BufferType: uInt8 {
   None,
   Launcher,
   Emulator,
-  Debugger
+  Debugger,
+  MemView
 };
 
 enum class ScalingInterpolation: uInt8 {

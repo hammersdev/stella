@@ -136,8 +136,12 @@ void Cartridge::createRomAccessArrays(size_t size)
   // since other parts of the code depend on it existing
   myRomAccessBase = std::make_unique<Device::AccessFlags[]>(size);
   std::fill_n(myRomAccessBase.get(), size, Device::ROW);
-  myRomAccessCounter = std::make_unique<Device::AccessCounter[]>(size * 2);
-  std::fill_n(myRomAccessCounter.get(), size * 2, 0);
+  myRomCodePeekCounter = std::make_unique<Device::AccessCounter[]>(size);
+  std::fill_n(myRomCodePeekCounter.get(), size, 0);
+  myRomDataPeekCounter = std::make_unique<Device::AccessCounter[]>(size);
+  std::fill_n(myRomDataPeekCounter.get(), size, 0);
+  myRomPokeCounter = std::make_unique<Device::AccessCounter[]>(size);
+  std::fill_n(myRomPokeCounter.get(), size, 0);
 }
 
 #ifdef DEBUGGER_SUPPORT
@@ -161,7 +165,8 @@ string Cartridge::getAccessCounters() const
     for(uInt16 addr = 0; addr < bankSz; ++addr)
       out += std::format("{},{}, ",
         Common::Base::toString(addr | origin, Common::Base::Fmt::_16_4),
-        Common::Base::toString(myRomAccessCounter[offset + addr],
+        Common::Base::toString(myRomCodePeekCounter[offset + addr] +
+                              myRomDataPeekCounter[offset + addr],
                               Common::Base::Fmt::_10_8));
     out += "\n";
 
@@ -169,7 +174,7 @@ string Cartridge::getAccessCounters() const
     for(uInt16 addr = 0; addr < bankSz; ++addr)
       out += std::format("{},{}, ",
         Common::Base::toString(addr | origin, Common::Base::Fmt::_16_4),
-        Common::Base::toString(myRomAccessCounter[offset + addr + myAccessSize],
+        Common::Base::toString(myRomPokeCounter[offset + addr],
                               Common::Base::Fmt::_10_8));
     out += "\n";
 

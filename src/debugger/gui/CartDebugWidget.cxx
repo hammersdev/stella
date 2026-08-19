@@ -19,7 +19,7 @@
 #include "RomWidget.hxx"
 #include "EditTextWidget.hxx"
 #include "StringListWidget.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "StringParser.hxx"
 #include "CartDebugWidget.hxx"
 
@@ -64,7 +64,7 @@ int CartDebugWidget::addBaseInformation(size_t bytes, string_view manufacturer,
   w->setEditable(false);
   y += myLineHeight + 4;
 
-  const StringParser bs(desc, (fwidth - ScrollBarWidget::scrollBarWidth(_font)) /
+  const StringParser bs(desc, (fwidth - ScrollBarVWidget::scrollBarWidth(_font)) /
     myFontWidth);
   const StringList& sl = bs.stringList();
   const bool useScrollbar = sl.size() > maxlines;

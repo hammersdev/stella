@@ -20,7 +20,7 @@
 #include "FSNode.hxx"
 #include "GuiObject.hxx"
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "Settings.hxx"
 #include "PopUpWidget.hxx"
 #include "StringListWidget.hxx"

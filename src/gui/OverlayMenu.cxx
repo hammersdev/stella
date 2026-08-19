@@ -17,7 +17,7 @@
 
 #include "OSystem.hxx"
 #include "Settings.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "FrameBufferConstants.hxx"
 #include "EventHandler.hxx"
 #include "Dialog.hxx"
@@ -31,8 +31,8 @@
 #include "OverlayMenu.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-OverlayMenu::OverlayMenu(OSystem& osystem)
-  : DialogContainer(osystem)
+OverlayMenu::OverlayMenu(OSystem& osystem, FrameBuffer& framebuffer)
+  : DialogContainer(osystem, framebuffer)
 {
 }
 

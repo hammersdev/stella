@@ -21,8 +21,8 @@
 #include "TimeMachine.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-TimeMachine::TimeMachine(OSystem& osystem)
-  : DialogContainer(osystem),
+TimeMachine::TimeMachine(OSystem& osystem, FrameBuffer& framebuffer)
+  : DialogContainer(osystem, framebuffer),
     myWidth{FBMinimum::Width}
 {
   myBaseDialog = new TimeMachineDialog(myOSystem, *this, static_cast<int>(myWidth));

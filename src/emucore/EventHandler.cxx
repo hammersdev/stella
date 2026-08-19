@@ -21,7 +21,10 @@
 #include "Console.hxx"
 #include "System.hxx"
 #include "PaletteHandler.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
+#ifdef MEMVIEW_SUPPORT
+#include "MemViewFrameBuffer.hxx"
+#endif
 #include "OSystem.hxx"
 #include "Paddles.hxx"
 #include "Lightgun.hxx"
@@ -61,7 +64,7 @@
   #include "Launcher.hxx"
   #include "TimeMachine.hxx"
   #include "FileListWidget.hxx"
-  #include "ScrollBarWidget.hxx"
+  #include "ScrollBarVWidget.hxx"
 #endif
 
 using namespace std::placeholders;
@@ -111,7 +114,7 @@ void EventHandler::initialize()
   FileListWidget::setQuickSelectDelay(myOSystem.settings().getInt("listdelay"));
 
   // Set number of lines a mousewheel will scroll
-  ScrollBarWidget::setWheelLines(myOSystem.settings().getInt("mwheel"));
+  ScrollBarVWidget::setWheelLines(myOSystem.settings().getInt("mwheel"));
 
   // Mouse double click
   DialogContainer::setDoubleClickDelay(myOSystem.settings().getInt("mdouble"));
@@ -156,8 +159,8 @@ void EventHandler::addPhysicalJoystick(const PhysicalJoystickPtr& joy)
   setActionMappings(EventMode::kEmulationMode);
   setActionMappings(EventMode::kMenuMode);
 
-  if(myOverlay)
-    myOverlay->handleEvent(Event::UIReload);
+  if(hasMainOverlay())
+    mainOverlay().handleEvent(Event::UIReload);
 #endif
 }
 
@@ -167,8 +170,8 @@ void EventHandler::removePhysicalJoystick(int id)
 #ifdef JOYSTICK_SUPPORT
   myPJoyHandler->remove(id);
 
-  if(myOverlay)
-    myOverlay->handleEvent(Event::UIReload);
+  if(hasMainOverlay())
+    mainOverlay().handleEvent(Event::UIReload);
 #endif
 }
 
@@ -285,11 +288,12 @@ void EventHandler::poll(uInt64 time)
   #endif
   }
 #ifdef GUI_SUPPORT
-  else if(myOverlay)
+  // TODO: or all known overlays?
+  else if(hasCurrentOverlay())
   {
     // Update the current dialog container at regular intervals
     // Used to implement continuous events
-    myOverlay->updateTime(time);
+    currentOverlay().updateTime(time);
   }
 #endif
 
@@ -311,8 +315,8 @@ void EventHandler::handleTextEvent(char text)
 {
 #ifdef GUI_SUPPORT
   // Text events are only used in GUI mode
-  if(myOverlay && myTextEventsEnabled)
-    myOverlay->handleTextEvent(text);
+  if(hasCurrentOverlay() && myTextEventsEnabled)
+    currentOverlay().handleTextEvent(text);
 #endif
 }
 
@@ -320,20 +324,29 @@ void EventHandler::handleTextEvent(char text)
 void EventHandler::handleMouseMotionEvent(int x, int y, int xrel, int yrel)
 {
   // Determine which mode we're in, then send the event to the appropriate place
-  if(myState == EventHandlerState::EMULATION)
+  if (myCurrentWindowId == myMainWindowId)
   {
-    if(!mySkipMouseMotion)
+    if(myState == EventHandlerState::EMULATION)
     {
-      myEvent.set(Event::MouseAxisXValue, x); // required for Lightgun controller
-      myEvent.set(Event::MouseAxisYValue, y); // required for Lightgun controller
-      myEvent.set(Event::MouseAxisXMove, xrel);
-      myEvent.set(Event::MouseAxisYMove, yrel);
+      if(!mySkipMouseMotion)
+      {
+        myEvent.set(Event::MouseAxisXValue, x); // required for Lightgun controller
+        myEvent.set(Event::MouseAxisYValue, y); // required for Lightgun controller
+        myEvent.set(Event::MouseAxisXMove, xrel);
+        myEvent.set(Event::MouseAxisYMove, yrel);
+      }
+      mySkipMouseMotion = false;
     }
-    mySkipMouseMotion = false;
+#ifdef GUI_SUPPORT
+    else if(hasMainOverlay()) {
+      mainOverlay().handleMouseMotionEvent(x, y);
+    }
+#endif
   }
 #ifdef GUI_SUPPORT
-  else if(myOverlay)
-    myOverlay->handleMouseMotionEvent(x, y);
+  else if(hasCurrentOverlay()) {
+    currentOverlay().handleMouseMotionEvent(x, y);
+  }
 #endif
 }
 
@@ -342,28 +355,35 @@ void EventHandler::handleMouseButtonEvent(MouseButton b, bool pressed,
                                           int x, int y)
 {
   // Determine which mode we're in, then send the event to the appropriate place
-  if(myState == EventHandlerState::EMULATION)
+  if (myCurrentWindowId == myMainWindowId)
   {
-    switch(b)
+    if(myState == EventHandlerState::EMULATION)
     {
-      case MouseButton::LEFT:
-        myEvent.set(Event::MouseButtonLeftValue, static_cast<int>(pressed));
-        break;
-      case MouseButton::RIGHT:
-        myEvent.set(Event::MouseButtonRightValue, static_cast<int>(pressed));
-        break;
-      default:
-        return;
+      switch(b)
+      {
+        case MouseButton::LEFT:
+          myEvent.set(Event::MouseButtonLeftValue, static_cast<int>(pressed));
+          break;
+        case MouseButton::RIGHT:
+          myEvent.set(Event::MouseButtonRightValue, static_cast<int>(pressed));
+          break;
+        default:
+          return;
+      }
     }
+#ifdef GUI_SUPPORT
+    else if(hasMainOverlay())
+      mainOverlay().handleMouseButtonEvent(b, pressed, x, y);
+#endif
   }
 #ifdef GUI_SUPPORT
-  else if(myOverlay)
-    myOverlay->handleMouseButtonEvent(b, pressed, x, y);
+  else if(hasCurrentOverlay())
+    currentOverlay().handleMouseButtonEvent(b, pressed, x, y);
 #endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::handleSystemEvent(SystemEvent e, int, int)
+void EventHandler::handleSystemEvent(SystemEvent e, int data1, int)
 {
   switch(e)
   {
@@ -371,6 +391,12 @@ void EventHandler::handleSystemEvent(SystemEvent e, int, int)
     case SystemEvent::WINDOW_RESIZED:
       // Force full render update
       myOSystem.frameBuffer().update(FrameBuffer::UpdateMode::RERENDER);
+#ifdef MEMVIEW_SUPPORT
+      if (myOSystem.hasMemViewFrameBuffer())
+      {
+        myOSystem.memViewFrameBuffer().update(FrameBuffer::UpdateMode::RERENDER);
+      }
+#endif
       break;
 
     case SystemEvent::WINDOW_FOCUS_GAINED:
@@ -391,6 +417,45 @@ void EventHandler::handleSystemEvent(SystemEvent e, int, int)
         myOSystem.frameBuffer().update(FrameBuffer::UpdateMode::REDRAW);
       }
       break;
+
+    case SystemEvent::WINDOW_ENTER:
+      myCurrentWindowId = data1;
+#ifdef MEMVIEW_SUPPORT
+      // We need to switch on the cursor (if disabled) when entering other windows than the main one
+      if (!myOSystem.frameBuffer().isWindowId(data1))
+      {
+        myOSystem.frameBuffer().showCursor(true);
+      }
+#endif
+      break;
+
+    case SystemEvent::WINDOW_LEAVE:
+      myCurrentWindowId = WINDOW_ID_NONE;
+#ifdef MEMVIEW_SUPPORT
+      // We need to switch the cursor to the default state when leaving the window
+      if (!myOSystem.frameBuffer().isWindowId(data1))
+      {
+        myOSystem.frameBuffer().setCursorState();
+      }
+#endif
+      break;
+
+#ifdef MEMVIEW_SUPPORT
+    case SystemEvent::WINDOW_CLOSE:
+      // data1 holds the window ID to be closed
+      if (myOSystem.hasMemViewFrameBuffer())
+      {
+        // In case of a second open window open (MemView), trying to close the main window
+        // will not shut down the application (SDL_EVENT_QUIT). We need to handle this here.
+        if (myOSystem.memViewFrameBuffer().isWindowId(data1))
+          // MemView window want's to be closed
+          myOSystem.closeMemView();
+        else if (myOSystem.frameBuffer().isWindowId(data1))
+          // Main window (aka whole application) want's to be closed
+          handleEvent(Event::Quit);
+      }
+      break;
+#endif
 
     default:
       break;
@@ -1544,6 +1609,15 @@ void EventHandler::handleEvent(Event::Type event, Int32 value, bool repeated)
       }
       return;
 
+    case Event::OpenMemView:
+      if(pressed && !repeated)
+      {
+#ifdef MEMVIEW_SUPPORT
+          myOSystem.openMemView();
+#endif
+      }
+      return;
+
   #ifdef IMAGE_SUPPORT
     case Event::ToggleContSnapshots:
       if(pressed && !repeated) myOSystem.png().toggleContinuousSnapshots(false);
@@ -1946,6 +2020,51 @@ bool EventHandler::changeStateByEvent(Event::Type type)
   }
 
   return handled;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+DialogContainer& EventHandler::overlay(const uInt32 windowId) const
+{
+#ifndef MEMVIEW_SUPPORT
+  assert(myOverlay);
+  return *myOverlay;
+#else
+  auto it = myOverlayMap.find(windowId);
+  assert(it != myOverlayMap.end());
+  return *(it->second);
+#endif
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void EventHandler::updateOverlay(const uInt32 windowId, DialogContainer *overlay)
+{
+#ifndef MEMVIEW_SUPPORT
+  // Indicates current overlay object
+  myOverlay = overlay;
+#else
+  // Maps the window IDs to currently active DialogContainers
+  if (overlay != nullptr)
+    myOverlayMap[windowId] = overlay;
+  else
+    myOverlayMap.erase(windowId);
+#endif
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void EventHandler::setMainWindowId(const uInt32 windowId)
+{
+#ifdef MEMVIEW_SUPPORT
+  auto it = myOverlayMap.find(myMainWindowId);
+  if (it != myOverlayMap.end())
+  {
+    // Replace the old entry with the new one
+    DialogContainer *overlay = it->second;
+    myOverlayMap.erase(it);
+    myOverlayMap[windowId] = overlay;
+  }
+#endif
+
+  myMainWindowId = windowId;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -2550,7 +2669,7 @@ void EventHandler::enterMenuMode(EventHandlerState state)
 {
 #ifdef GUI_SUPPORT
   setState(state);
-  myOverlay->reStack();
+  mainOverlay().reStack();
   myOSystem.sound().pause(true);
 #endif
 }
@@ -2583,7 +2702,7 @@ void EventHandler::openBrowserDialog(string_view title, string_view startpath,
 void EventHandler::leaveMenuMode()
 {
 #ifdef GUI_SUPPORT
-  myOverlay->removeDialog(); // remove the base dialog from dialog stack
+  mainOverlay().removeDialog(); // remove the base dialog from dialog stack
   setState(EventHandlerState::EMULATION);
   myOSystem.sound().pause(false);
 #endif
@@ -2613,7 +2732,7 @@ bool EventHandler::enterDebugMode()
                                               MessagePosition::BottomCenter, true);
     return false;
   }
-  myOverlay->reStack();
+  mainOverlay().reStack();
   myOSystem.sound().mute(true);
 
 #else
@@ -2675,7 +2794,7 @@ void EventHandler::setState(EventHandlerState state)
 
   // Only enable text input in GUI modes, since in emulation mode the
   // keyboard acts as one large joystick with many (single) buttons
-  myOverlay = nullptr;
+  updateOverlay(myMainWindowId, nullptr);
   switch(myState)
   {
     case EventHandlerState::EMULATION:
@@ -2698,25 +2817,25 @@ void EventHandler::setState(EventHandlerState state)
     case EventHandlerState::MESSAGEMENU:
     case EventHandlerState::PLUSROMSMENU:
     case EventHandlerState::OVERLAYMENU:
-      myOverlay = &myOSystem.overlayMenu();
+      updateOverlay(myMainWindowId, &myOSystem.overlayMenu());
       enableTextEvents(true);
       break;
 
     case EventHandlerState::TIMEMACHINE:
       myOSystem.timeMachine().requestResize();
-      myOverlay = &myOSystem.timeMachine();
+      updateOverlay(myMainWindowId, &myOSystem.timeMachine());
       enableTextEvents(true);
       break;
 
     case EventHandlerState::LAUNCHER:
-      myOverlay = &myOSystem.launcher();
+      updateOverlay(myMainWindowId, &myOSystem.launcher());
       enableTextEvents(true);
       break;
   #endif
 
   #ifdef DEBUGGER_SUPPORT
     case EventHandlerState::DEBUGGER:
-      myOverlay = &myOSystem.debugger();
+      updateOverlay(myMainWindowId, &myOSystem.debugger());
       enableTextEvents(true);
       break;
   #endif
@@ -2730,6 +2849,10 @@ void EventHandler::setState(EventHandlerState state)
   myOSystem.stateChanged(myState); // does nothing
   myOSystem.frameBuffer().stateChanged(myState); // ignores state
   myOSystem.frameBuffer().setCursorState(); // en/disables cursor for UI and emulation states
+#if MEMVIEW_SUPPORT
+  if (myOSystem.hasMemViewFrameBuffer())
+    myOSystem.stateChanged(myState);
+#endif
   if(myOSystem.hasConsole())
     myOSystem.console().stateChanged(myState); // does nothing
 
@@ -2803,6 +2926,9 @@ EventHandler::EmulActionList EventHandler::ourEmulActionList = { {
   { Event::IncreaseSpeed,           "Increase emulation speed"              },
   { Event::ToggleTurbo,             "Toggle 'Turbo' mode"                   },
   { Event::DebuggerMode,            "Toggle Debugger mode"                  },
+#ifdef MEMVIEW_SUPPORT
+  { Event::OpenMemView,             "Open Memory View"                      },
+#endif
 
   { Event::ConsoleSelect,           "Select"                                },
   { Event::ConsoleReset,            "Reset"                                 },

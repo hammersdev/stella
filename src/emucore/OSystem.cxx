@@ -35,6 +35,13 @@
   #include "Launcher.hxx"
   #include "TimeMachine.hxx"
 #endif
+#ifdef MEMVIEW_SUPPORT
+  #include "RomWidget.hxx"
+  #include "MemView.hxx"
+  #include "MemViewFrameBuffer.hxx"
+  // TODO: remove:
+  #include "TimeChecker.hxx"
+#endif
 
 #include "AsciiFold.hxx"
 #include "FSNode.hxx"
@@ -42,7 +49,7 @@
 #include "Cart.hxx"
 #include "CartCreator.hxx"
 #include "CartDetector.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "TIASurface.hxx"
 #include "TIAConstants.hxx"
 #include "Settings.hxx"
@@ -80,6 +87,9 @@ OSystem::OSystem()
   #endif
   #ifdef DEBUGGER_SUPPORT
     myFeatures += "Debugger ";
+  #endif
+  #ifdef MEMVIEW_SUPPORT
+    myFeatures += "MemView ";
   #endif
   #ifdef CHEATCODE_SUPPORT
     myFeatures += "Cheats ";
@@ -151,7 +161,7 @@ bool OSystem::initialize(const Settings::Options& options)
   // it may be needed to initialize the size of graphical objects
   try
   {
-    myFrameBuffer = std::make_unique<FrameBuffer>(*this);
+    myFrameBuffer = std::make_unique<MainFrameBuffer>(*this);
     myFrameBuffer->initialize();
   }
   catch(const std::runtime_error& e)
@@ -186,9 +196,9 @@ bool OSystem::initialize(const Settings::Options& options)
 #ifdef GUI_SUPPORT
   // Create various subsystems (menu and launcher GUI objects, etc)
   myHighScoresManager = std::make_unique<HighScoresManager>(*this);
-  myOverlayMenu = std::make_unique<OverlayMenu>(*this);
-  myTimeMachine = std::make_unique<TimeMachine>(*this);
-  myLauncher = std::make_unique<Launcher>(*this);
+  myOverlayMenu = std::make_unique<OverlayMenu>(*this, *myFrameBuffer);
+  myTimeMachine = std::make_unique<TimeMachine>(*this, *myFrameBuffer);
+  myLauncher = std::make_unique<Launcher>(*this, *myFrameBuffer);
 
   myHighScoresManager->setRepository(getHighscoreRepository());
 #endif
@@ -432,6 +442,10 @@ FBInitStatus OSystem::createFrameBuffer()
         Logger::error("ERROR: No console in createFrameBuffer()");
       break;
   }
+
+  if (myEventHandler)
+    myEventHandler->setMainWindowId(frameBuffer().windowId());
+
   return fbstatus;
 }
 
@@ -499,7 +513,7 @@ string OSystem::createConsole(const FSNode& rom, string_view md5sum, bool newrom
   if(myConsole)
   {
   #ifdef DEBUGGER_SUPPORT
-    myDebugger = std::make_unique<Debugger>(*this, *myConsole);
+    myDebugger = std::make_unique<Debugger>(*this, *myFrameBuffer, *myConsole);
     myDebugger->initialize();
     myConsole->attachDebugger(*myDebugger);
   #endif
@@ -626,6 +640,9 @@ bool OSystem::hasConsole() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool OSystem::createLauncher(string_view startdir)
 {
+#ifdef MEMVIEW_SUPPORT
+  closeMemView();
+#endif
   closeConsole();
 
   if(mySound)
@@ -685,6 +702,72 @@ void OSystem::toggleTimeMachine()
   myStateManager->toggleTimeMachine();
   myConsole->tia().setAudioRewindMode(myStateManager->mode() != StateManager::Mode::Off);
 }
+
+#ifdef MEMVIEW_SUPPORT
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void OSystem::openMemView()
+{
+  if (hasMemViewFrameBuffer())
+    // Already open
+    return;
+
+  Logger::debug("Open memory view");
+
+  try
+  {
+    myMemViewFrameBuffer = std::make_unique<MemViewFrameBuffer>(*this);
+    myMemViewFrameBuffer->initialize();
+  }
+  catch(const std::runtime_error& e)
+  {
+    Logger::error(e.what());
+    myMemViewFrameBuffer.reset();
+    return;
+  }
+
+  // Create MemView object for memory visualization
+  myMemView = std::make_unique<MemView>(*this, *myMemViewFrameBuffer);
+
+  FBInitStatus fbstatus = myMemView->initializeVideo();
+  if (fbstatus != FBInitStatus::Success)
+  {
+    cerr << "MemView video init failed\n";
+    closeMemView();
+    return;
+  }
+
+  myMemView->reStack();
+//  myMemViewFrameBuffer->setCursorState();
+
+  if (myEventHandler)
+    myEventHandler->updateOverlay(memViewFrameBuffer().windowId(), myMemView.get());
+
+  // Disable button in debugger
+  myDebugger->rom().updateMemViewButton();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void OSystem::closeMemView()
+{
+  if (!hasMemViewFrameBuffer())
+  {
+    // None!
+    return;
+  }
+
+  // Remove window Id from the EventHandler's list
+  if (myEventHandler)
+    myEventHandler->updateOverlay(memViewFrameBuffer().windowId(), nullptr);
+
+  myMemView.reset();
+
+  // Remove
+  myMemViewFrameBuffer.reset();
+
+  // Enable button in debugger instance again
+  myDebugger->rom().updateMemViewButton();
+}
+#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void OSystem::resetFps()
@@ -1000,6 +1083,13 @@ double OSystem::dispatchEmulation(EmulationWorker& emulationWorker)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void OSystem::mainLoop()
 {
+
+#if MEMVIEW_SUPPORT
+  TimeChecker timeFrame("Frame", false);
+  TimeChecker timeMain("Main", false);
+  TimeChecker timeMemView("MemView", false);
+#endif
+
   // 6507 time
   time_point<high_resolution_clock> virtualTime = high_resolution_clock::now();
   // The emulation worker
@@ -1009,6 +1099,22 @@ void OSystem::mainLoop()
 
   for(;;)
   {
+
+  #if MEMVIEW_SUPPORT
+    timeFrame.start();
+
+    if (hasMemViewFrameBuffer())
+    {
+      timeMemView.start();
+      myMemViewFrameBuffer->update();
+      timeMemView.stop();
+    } else {
+      timeMemView.reset();
+    }
+
+    timeMain.start();
+  #endif
+
     const bool wasEmulation = myEventHandler->state() == EventHandlerState::EMULATION;
 
     myEventHandler->poll(TimerManager::getTicks());
@@ -1051,6 +1157,10 @@ void OSystem::mainLoop()
       myFrameBuffer->update();
     }
 
+  #if MEMVIEW_SUPPORT
+    timeMain.stop(nullptr, true);
+  #endif
+
     const duration<double> timeslice(timesliceSeconds);
     virtualTime += duration_cast<high_resolution_clock::duration>(timeslice);
     const time_point<high_resolution_clock> now = high_resolution_clock::now();
@@ -1070,6 +1180,11 @@ void OSystem::mainLoop()
       // Wait until we have caught up with 6507 time
       std::this_thread::sleep_until(virtualTime);
     }
+
+  #if MEMVIEW_SUPPORT
+    timeFrame.stop();
+  #endif
+
   }
 
   // Cleanup time

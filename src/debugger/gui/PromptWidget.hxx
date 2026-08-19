@@ -20,7 +20,7 @@
 
 class ContextMenu;
 class UndoHandler;
-class ScrollBarWidget;
+class ScrollBarVWidget;
 class FSNode;
 
 #include "Widget.hxx"
@@ -123,7 +123,7 @@ class PromptWidget : public Widget, public CommandSender
     int  _promptStartPos{0};
     int  _promptEndPos{0};
 
-    ScrollBarWidget* _scrollBar{nullptr};
+    ScrollBarVWidget* _scrollBar{nullptr};
     unique_ptr<ContextMenu>  myMouseMenu;
     unique_ptr<UndoHandler>  myUndoHandler;
 

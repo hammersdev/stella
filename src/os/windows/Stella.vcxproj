@@ -254,6 +254,8 @@
     <IncludePath>$(IncludePath)</IncludePath>
     <EnableMicrosoftCodeAnalysis>true</EnableMicrosoftCodeAnalysis>
     <ExternalIncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(ProjectDir)SDL3\include</ExternalIncludePath>
+    <PublicIncludeDirectories>
+    </PublicIncludeDirectories>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <LibraryPath>$(ProjectDir)SDL3\lib\x64;$(LibraryPath)</LibraryPath>
@@ -317,8 +319,8 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\debugger\yacc;..\..\emucore;..\..\emucore\tia;..\..\emucore\tia\frame-manager;..\..\emucore\elf;..\..\common;..\..\common\tv_filters;..\..\gui;..\..\debugger\gui;..\..\debugger;..\..\os\windows;..\..\cheat;..\..\lib\zlib;..\..\lib\libpng;..\..\lib;..\..\common\repository\sqlite;..\..\lib\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>BSPF_WINDOWS;WIN32;NOMINMAX;DEBUG_BUILD;SDL_SUPPORT;GUI_SUPPORT;IMAGE_SUPPORT;ZIP_SUPPORT;JOYSTICK_SUPPORT;DEBUGGER_SUPPORT;WINDOWED_SUPPORT;SOUND_SUPPORT;CHEATCODE_SUPPORT;HTTP_LIB_SUPPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\gui\memview;..\..\emucore\memview;..\..\debugger\yacc;..\..\emucore;..\..\emucore\tia;..\..\emucore\tia\frame-manager;..\..\emucore\elf;..\..\common;..\..\common\tv_filters;..\..\gui;..\..\debugger\gui;..\..\debugger;..\..\os\windows;..\..\cheat;..\..\lib\zlib;..\..\lib\libpng;..\..\lib;..\..\common\repository\sqlite;..\..\lib\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>BSPF_WINDOWS;WIN32;NOMINMAX;DEBUG_BUILD;SDL_SUPPORT;GUI_SUPPORT;IMAGE_SUPPORT;ZIP_SUPPORT;JOYSTICK_SUPPORT;DEBUGGER_SUPPORT;WINDOWED_SUPPORT;SOUND_SUPPORT;CHEATCODE_SUPPORT;HTTP_LIB_SUPPORT;MEMVIEW_SUPPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -465,10 +467,10 @@
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <OmitFramePointers>true</OmitFramePointers>
-      <AdditionalIncludeDirectories>..\..\debugger\yacc;..\..\emucore;..\..\emucore\tia;..\..\emucore\tia\frame-manager;..\..\emucore\elf;..\..\common;..\..\common\tv_filters;..\..\gui;..\..\debugger\gui;..\..\debugger;..\..\os\windows;..\..\cheat;..\..\lib\zlib;..\..\lib\libpng;..\..\lib;..\..\common\repository\sqlite;..\..\lib\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>BSPF_WINDOWS;WIN32;NOMINMAX;NDEBUG;SDL_SUPPORT;GUI_SUPPORT;IMAGE_SUPPORT;ZIP_SUPPORT;JOYSTICK_SUPPORT;DEBUGGER_SUPPORT;WINDOWED_SUPPORT;SOUND_SUPPORT;CHEATCODE_SUPPORT;HTTP_LIB_SUPPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\gui\memview;..\..\emucore\memview;..\..\debugger\yacc;..\..\emucore;..\..\emucore\tia;..\..\emucore\tia\frame-manager;..\..\emucore\elf;..\..\common;..\..\common\tv_filters;..\..\gui;..\..\debugger\gui;..\..\debugger;..\..\os\windows;..\..\cheat;..\..\lib\zlib;..\..\lib\libpng;..\..\lib;..\..\common\repository\sqlite;..\..\lib\sqlite;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>BSPF_WINDOWS;WIN32;NOMINMAX;NDEBUG;SDL_SUPPORT;GUI_SUPPORT;IMAGE_SUPPORT;ZIP_SUPPORT;JOYSTICK_SUPPORT;DEBUGGER_SUPPORT;WINDOWED_SUPPORT;SOUND_SUPPORT;CHEATCODE_SUPPORT;HTTP_LIB_SUPPORT;MEMVIEW_SUPPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
       <WarningLevel>Level4</WarningLevel>
@@ -1148,6 +1150,8 @@
     <ClCompile Include="..\..\emucore\GlobalKeyHandler.cxx" />
     <ClCompile Include="..\..\emucore\Joy2BPlus.cxx" />
     <ClCompile Include="..\..\emucore\Lightgun.cxx" />
+    <ClCompile Include="..\..\emucore\MainFrameBuffer.cxx" />
+    <ClCompile Include="..\..\emucore\memview\MemViewFrameBuffer.cxx" />
     <ClCompile Include="..\..\emucore\MindLink.cxx" />
     <ClCompile Include="..\..\emucore\OSystemStandalone.cxx" />
     <ClCompile Include="..\..\emucore\PlusROM.cxx" />
@@ -1177,6 +1181,14 @@
     <ClCompile Include="..\..\gui\FileListWidget.cxx" />
     <ClCompile Include="..\..\gui\HighScoresDialog.cxx" />
     <ClCompile Include="..\..\gui\LauncherFileListWidget.cxx" />
+    <ClCompile Include="..\..\gui\memview\MemView.cxx" />
+    <ClCompile Include="..\..\gui\memview\MemViewAccessLayer.cxx" />
+    <ClCompile Include="..\..\gui\memview\MemViewDataLayer.cxx" />
+    <ClCompile Include="..\..\gui\memview\MemViewDialog.cxx" />
+    <ClCompile Include="..\..\gui\memview\MemViewLayer.cxx" />
+    <ClCompile Include="..\..\gui\memview\MemViewMarkerLayer.cxx" />
+    <ClCompile Include="..\..\gui\memview\MemViewParams.cxx" />
+    <ClCompile Include="..\..\gui\memview\MemViewWidget.cxx" />
     <ClCompile Include="..\..\gui\NavigationWidget.cxx" />
     <ClCompile Include="..\..\gui\JoystickDialog.cxx" />
     <ClCompile Include="..\..\gui\LoggerDialog.cxx" />
@@ -1187,6 +1199,8 @@
     <ClCompile Include="..\..\gui\QuadTariDialog.cxx" />
     <ClCompile Include="..\..\gui\RadioButtonWidget.cxx" />
     <ClCompile Include="..\..\gui\RomImageWidget.cxx" />
+    <ClCompile Include="..\..\gui\ScrollBarHWidget.cxx" />
+    <ClCompile Include="..\..\gui\ScrollBarVWidget.cxx" />
     <ClCompile Include="..\..\gui\SnapshotDialog.cxx" />
     <ClCompile Include="..\..\gui\StellaSettingsDialog.cxx" />
     <ClCompile Include="..\..\gui\TimeLineWidget.cxx" />
@@ -1394,7 +1408,6 @@
     <ClCompile Include="..\..\gui\ProgressDialog.cxx" />
     <ClCompile Include="..\..\gui\RomAuditDialog.cxx" />
     <ClCompile Include="..\..\gui\RomInfoWidget.cxx" />
-    <ClCompile Include="..\..\gui\ScrollBarWidget.cxx" />
     <ClCompile Include="..\..\gui\StringListWidget.cxx" />
     <ClCompile Include="..\..\gui\TabWidget.cxx" />
     <ClCompile Include="..\..\gui\UIDialog.cxx" />
@@ -2596,6 +2609,9 @@
     <ClInclude Include="..\..\emucore\GlobalKeyHandler.hxx" />
     <ClInclude Include="..\..\emucore\Joy2BPlus.hxx" />
     <ClInclude Include="..\..\emucore\Lightgun.hxx" />
+    <ClInclude Include="..\..\emucore\MainFrameBuffer.hxx" />
+    <ClInclude Include="..\..\emucore\memview\MemViewFrameBuffer.hxx" />
+    <ClInclude Include="..\..\emucore\memview\TimeChecker.hxx" />
     <ClInclude Include="..\..\emucore\MicroChip24LC.hxx" />
     <ClInclude Include="..\..\emucore\MindLink.hxx" />
     <ClInclude Include="..\..\emucore\MT24LC16B.hxx" />
@@ -2639,6 +2655,14 @@
     <ClInclude Include="..\..\gui\HighScoresDialog.hxx" />
     <ClInclude Include="..\..\gui\Icon.hxx" />
     <ClInclude Include="..\..\gui\LauncherFileListWidget.hxx" />
+    <ClInclude Include="..\..\gui\memview\MemView.hxx" />
+    <ClInclude Include="..\..\gui\memview\MemViewAccessLayer.hxx" />
+    <ClInclude Include="..\..\gui\memview\MemViewDataLayer.hxx" />
+    <ClInclude Include="..\..\gui\memview\MemViewDialog.hxx" />
+    <ClInclude Include="..\..\gui\memview\MemViewLayer.hxx" />
+    <ClInclude Include="..\..\gui\memview\MemViewMarkerLayer.hxx" />
+    <ClInclude Include="..\..\gui\memview\MemViewParams.hxx" />
+    <ClInclude Include="..\..\gui\memview\MemViewWidget.hxx" />
     <ClInclude Include="..\..\gui\NavigationWidget.hxx" />
     <ClInclude Include="..\..\gui\JoystickDialog.hxx" />
     <ClInclude Include="..\..\gui\LoggerDialog.hxx" />
@@ -2650,6 +2674,8 @@
     <ClInclude Include="..\..\gui\RadioButtonWidget.hxx" />
     <ClInclude Include="..\..\gui\Icons.hxx" />
     <ClInclude Include="..\..\gui\RomImageWidget.hxx" />
+    <ClInclude Include="..\..\gui\ScrollBarHWidget.hxx" />
+    <ClInclude Include="..\..\gui\ScrollBarVWidget.hxx" />
     <ClInclude Include="..\..\gui\SnapshotDialog.hxx" />
     <ClInclude Include="..\..\gui\Stella12x24tFont.hxx" />
     <ClInclude Include="..\..\gui\Stella14x28tFont.hxx" />
@@ -2889,7 +2915,6 @@
     <ClInclude Include="..\..\gui\ProgressDialog.hxx" />
     <ClInclude Include="..\..\gui\RomAuditDialog.hxx" />
     <ClInclude Include="..\..\gui\RomInfoWidget.hxx" />
-    <ClInclude Include="..\..\gui\ScrollBarWidget.hxx" />
     <ClInclude Include="..\..\gui\StellaFont.hxx" />
     <ClInclude Include="..\..\gui\StringListWidget.hxx" />
     <ClInclude Include="..\..\gui\TabWidget.hxx" />

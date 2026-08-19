@@ -36,7 +36,9 @@ class BilinearBlitter : public Blitter {
       uInt8 blendLevel, SDL_Surface* staticData = nullptr
     ) override;
 
-    void blit(SDL_Surface& surface) override;
+    void update(SDL_Surface& surface) override;
+    void render() override;
+    void updateStaticData() override;
 
   private:
     FBBackendSDL& myFB;
@@ -47,6 +49,8 @@ class BilinearBlitter : public Blitter {
     SDL_Rect myDstRect{};
     SDL_FRect mySrcFRect{};
     SDL_FRect myDstFRect{};
+    int myTextureW{0};
+    int myTextureH{0};
 
     bool myEnableBlend{false};
     uInt8 myBlendLevel{100};

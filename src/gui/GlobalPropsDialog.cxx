@@ -19,7 +19,7 @@
 #include "Bankswitch.hxx"
 #include "Dialog.hxx"
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "PopUpWidget.hxx"
 #include "Settings.hxx"
 #include "Widget.hxx"

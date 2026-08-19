@@ -38,9 +38,25 @@ RomWidget::RomWidget(GuiObject* boss, const GUI::Font& lfont, const GUI::Font& n
   int xpos = x, ypos = y + 7;
   const auto* t = new StaticTextWidget(boss, lfont, xpos, ypos, "Info ");
 
+#if MEMVIEW_SUPPORT
+  // Add an extra button to the Disassembly tab to open Memory View
+  static constexpr string TEXT_MEMORY_VIEW = "Memory View";
+  const int hGap = _fontWidth;
+  const int mvButtonWidth = lfont.getStringWidth(TEXT_MEMORY_VIEW) + 3 * hGap;
+
+  myMvButton = new ButtonWidget(boss, lfont, _w - 2 - mvButtonWidth, ypos - 2,
+    mvButtonWidth, nfont.getLineHeight() + 2, TEXT_MEMORY_VIEW, kMemViewButton
+  );
+  updateMemViewButton();
+
+  xpos += t->getRight();
+  myBank = new EditTextWidget(boss, nfont, xpos, ypos-2,
+    _w - 2 - xpos - mvButtonWidth - 2 * hGap, nfont.getLineHeight());
+#else
   xpos += t->getRight();
   myBank = new EditTextWidget(boss, nfont, xpos, ypos-2,
                               _w - 2 - xpos, nfont.getLineHeight());
+#endif
   myBank->setEditable(false);
 
   // Create rom listing
@@ -258,3 +274,11 @@ void RomWidget::scrollTo(int line)
 {
   myRomList->setSelected(line);
 }
+
+#if MEMVIEW_SUPPORT
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void RomWidget::updateMemViewButton()
+{
+  myMvButton->setEnabled(!instance().hasMemViewFrameBuffer());
+}
+#endif

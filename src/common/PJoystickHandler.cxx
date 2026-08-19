@@ -962,7 +962,7 @@ void PhysicalJoystickHandler::handleRegularAxisEvent(const PhysicalJoystickPtr& 
     j->axisLastValue[axis] = value;
   }
 #ifdef GUI_SUPPORT
-  else if(myHandler.hasOverlay())
+  else if(myHandler.hasMainOverlay())
   {
     // Fixed floor, not digitalDeadZone(), so incremental encoders (spinners) aren't silently blocked.
     constexpr int OVERLAY_AXIS_THRESHOLD = 200;
@@ -978,11 +978,11 @@ void PhysicalJoystickHandler::handleRegularAxisEvent(const PhysicalJoystickPtr& 
 
       // Only pass on the event if the state has changed
       if(value != j->axisLastValue[axis])
-        myHandler.overlay().handleJoyAxisEvent(stick, static_cast<JoyAxis>(axis),
+        myHandler.mainOverlay().handleJoyAxisEvent(stick, static_cast<JoyAxis>(axis),
                                                convertAxisValue(value), button);
     }
     else
-      myHandler.overlay().handleJoyAxisEvent(stick, static_cast<JoyAxis>(axis), JoyDir::NONE, button);
+      myHandler.mainOverlay().handleJoyAxisEvent(stick, static_cast<JoyAxis>(axis), JoyDir::NONE, button);
     j->axisLastValue[axis] = value;
   }
 #endif
@@ -1005,8 +1005,8 @@ void PhysicalJoystickHandler::handleBtnEvent(int stick, int button, bool pressed
     if(myHandler.state() == EventHandlerState::EMULATION)
       myHandler.handleEvent(j->joyMap.get(EventMode::kEmulationMode, button), pressed);
 #ifdef GUI_SUPPORT
-    else if(myHandler.hasOverlay())
-      myHandler.overlay().handleJoyBtnEvent(stick, button, pressed);
+    else if(myHandler.hasMainOverlay())
+      myHandler.mainOverlay().handleJoyBtnEvent(stick, button, pressed);
 #endif
   }
 }
@@ -1041,20 +1041,20 @@ void PhysicalJoystickHandler::handleHatEvent(int stick, int hat, JoyHatMask valu
                                           hat_value.any_of(JoyHatMask::LEFT));
     }
 #ifdef GUI_SUPPORT
-    else if(myHandler.hasOverlay())
+    else if(myHandler.hasMainOverlay())
     {
       if(value == JoyHatMask::CENTER)
-        myHandler.overlay().handleJoyHatEvent(stick, hat, JoyHatDir::CENTER, button);
+        myHandler.mainOverlay().handleJoyHatEvent(stick, hat, JoyHatDir::CENTER, button);
       else
       {
         if(hat_value.any_of(JoyHatMask::UP))
-          myHandler.overlay().handleJoyHatEvent(stick, hat, JoyHatDir::UP, button);
+          myHandler.mainOverlay().handleJoyHatEvent(stick, hat, JoyHatDir::UP, button);
         if(hat_value.any_of(JoyHatMask::RIGHT))
-          myHandler.overlay().handleJoyHatEvent(stick, hat, JoyHatDir::RIGHT, button);
+          myHandler.mainOverlay().handleJoyHatEvent(stick, hat, JoyHatDir::RIGHT, button);
         if(hat_value.any_of(JoyHatMask::DOWN))
-          myHandler.overlay().handleJoyHatEvent(stick, hat, JoyHatDir::DOWN, button);
+          myHandler.mainOverlay().handleJoyHatEvent(stick, hat, JoyHatDir::DOWN, button);
         if(hat_value.any_of(JoyHatMask::LEFT))
-          myHandler.overlay().handleJoyHatEvent(stick, hat, JoyHatDir::LEFT, button);
+          myHandler.mainOverlay().handleJoyHatEvent(stick, hat, JoyHatDir::LEFT, button);
       }
     }
 #endif

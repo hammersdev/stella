@@ -55,8 +55,9 @@ void CartridgeDevCard::install(System& system)
       access.directPeekBase = myRAM.data() + offset;
       access.directPokeBase = myRAM.data() + offset;
       access.romAccessBase  = myRomAccessBase.get() + offset;
-      access.romPeekCounter = myRomAccessCounter.get() + offset;
-      access.romPokeCounter = myRomAccessCounter.get() + offset + RAM_SIZE;
+      access.romCodePeekCounter = myRomCodePeekCounter.get() + offset;
+      access.romDataPeekCounter = myRomDataPeekCounter.get() + offset;
+      access.romPokeCounter = myRomPokeCounter.get() + offset;
       mySystem->setPageAccess(static_cast<uInt16>(addr), access);
     }
   }

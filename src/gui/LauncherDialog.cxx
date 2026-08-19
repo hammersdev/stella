@@ -38,7 +38,7 @@
 #include "ToolTip.hxx"
 #include "TimerManager.hxx"
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "FBSurface.hxx"
 #include "EventHandler.hxx"
 #include "StellaKeys.hxx"

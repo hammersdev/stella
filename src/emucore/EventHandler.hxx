@@ -42,6 +42,9 @@ namespace GUI {
 #include "PJoystickHandler.hxx"
 #include "bspf.hxx"
 
+// Used when no window is used or unknown
+constexpr uInt32 WINDOW_ID_NONE = 0;
+
 /**
   This class takes care of event remapping and dispatching for the
   Stella core, as well as keeping track of the current 'mode'.
@@ -359,13 +362,63 @@ class EventHandler
     bool changeStateByEvent(Event::Type type);
 
     /**
-      Get the current overlay in use.  The overlay won't always exist,
-      so we should test if it's available.
+      Returns the pointer to the DialogContainer (overlay) currently associated
+      with a specific window ID.
 
-      @return The overlay object
+      @param windowId  The ID of the window of which the currently active overlay
+                       is to be returned
+      @return          The overlay object
     */
-    DialogContainer& overlay() const  { return *myOverlay; }
-    bool hasOverlay() const { return myOverlay != nullptr; }
+    DialogContainer& overlay(const uInt32 windowId) const;
+
+    /**
+      Variant that returns the currently active overlay
+      (within the window where the mouse is).
+
+      @return          The overlay object
+    */
+    inline DialogContainer& currentOverlay() const;
+
+    /**
+      Variant that returns the active main window overlay.
+
+      @return          The overlay object
+    */
+    inline DialogContainer& mainOverlay() const;
+
+    /**
+      Checks if there is a known active DialogContainer overlay for a specific window ID.
+
+      @param windowId  The ID of the window of which the currently active overlay
+                       is to be checked
+      @return          true or false
+    */
+    inline bool hasOverlay(const uInt32 windowId) const;
+
+    /**
+      Variant that returns the availability of the currently active overlay
+      (within the window where the mouse is).
+
+      @return          true or false
+    */
+    inline bool hasCurrentOverlay() const;
+
+    /**
+      Variant that returns the availability of the active main window overlay.
+
+      @return          true or false
+    */
+    inline bool hasMainOverlay() const;
+
+    /**
+      Sets a new DialogContainer (overlay) for a specific window.
+    */
+    void updateOverlay(const uInt32 windowId, DialogContainer *overlay);
+
+    /**
+      Sets the window ID of the main application window
+    */
+    void setMainWindowId(const uInt32 windowId);
 
     /**
       Return a simple list of all physical joysticks currently in the internal database
@@ -470,6 +523,9 @@ class EventHandler
       WINDOW_LEAVE,
       WINDOW_FOCUS_GAINED,
       WINDOW_FOCUS_LOST,
+  #ifdef MEMVIEW_SUPPORT
+      WINDOW_CLOSE,
+  #endif
       THEME_CHANGED,
       DROP_FILE
     };
@@ -534,8 +590,13 @@ class EventHandler
     // Global Event object
     Event myEvent;
 
+  #ifndef MEMVIEW_SUPPORT
     // Indicates current overlay object
     DialogContainer* myOverlay{nullptr};
+  #else
+    // Maps the window IDs to currently active DialogContainers (aka overlays)
+    std::map<uInt32, DialogContainer *> myOverlayMap;
+  #endif
 
     // Handler for all global key events
     unique_ptr<GlobalKeyHandler> myGlobalKeyHandler;
@@ -552,6 +613,12 @@ class EventHandler
 
     // Indicates the current state of the system (ie, which mode is current)
     EventHandlerState myState{EventHandlerState::NONE};
+
+    // The window ID of the main application window
+    uInt32 myMainWindowId{WINDOW_ID_NONE};
+
+    // Current window ID the mouse is in
+    uInt32 myCurrentWindowId{WINDOW_ID_NONE};
 
     // Indicates whether the virtual joystick emulates 'impossible' directions
     bool myAllowAllDirectionsFlag{false};
@@ -586,7 +653,7 @@ class EventHandler
     #else
       REFRESH_SIZE         = 0,
     #endif
-      EMUL_ACTIONLIST_SIZE = 242 + PNG_SIZE + COMBO_SIZE + REFRESH_SIZE,
+      EMUL_ACTIONLIST_SIZE = 243 + PNG_SIZE + COMBO_SIZE + REFRESH_SIZE,
       MENU_ACTIONLIST_SIZE = 20
     ;
 
@@ -607,5 +674,43 @@ class EventHandler
     EventHandler& operator=(const EventHandler&) = delete;
     EventHandler& operator=(EventHandler&&) = delete;
 };
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+DialogContainer& EventHandler::currentOverlay() const
+{
+  return overlay(myCurrentWindowId);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+DialogContainer& EventHandler::mainOverlay() const
+{
+  return overlay(myMainWindowId);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool EventHandler::hasOverlay(const uInt32 windowId) const
+{
+#ifndef MEMVIEW_SUPPORT
+  return myOverlay != nullptr;
+#else
+  if (windowId == WINDOW_ID_NONE)
+  {
+    return false;
+  }
+  return myOverlayMap.contains(windowId);
+#endif
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool EventHandler::hasCurrentOverlay() const
+{
+  return hasOverlay(myCurrentWindowId);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool EventHandler::hasMainOverlay() const
+{
+  return hasOverlay(myMainWindowId);
+}
 
 #endif  // EVENT_HANDLER_HXX

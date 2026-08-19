@@ -328,6 +328,9 @@ class CheckboxWidget : public ButtonWidget
     enum { kCheckActionCmd  = 'CBAC' };
     enum class FillType: uInt8 { Normal, Inactive, Circle };
 
+    static int neededWidth(const GUI::Font& font, const string_view label, const int& boxSize);
+    static int neededHeight(const GUI::Font& font, const int& boxSize);
+
   public:
     CheckboxWidget(GuiObject* boss, const GUI::Font& font, int x, int y,
                    string_view label, int cmd = 0);

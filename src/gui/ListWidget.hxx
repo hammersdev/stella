@@ -19,7 +19,7 @@
 #define LIST_WIDGET_HXX
 
 class GuiObject;
-class ScrollBarWidget;
+class ScrollBarVWidget;
 
 #include "Rect.hxx"
 #include "Command.hxx"
@@ -103,7 +103,7 @@ class ListWidget : public EditableWidget
     int  _highlightedItem{-1};
     bool _useScrollbar{true};
 
-    ScrollBarWidget* _scrollBar{nullptr};
+    ScrollBarVWidget* _scrollBar{nullptr};
 
     StringList _list;
 

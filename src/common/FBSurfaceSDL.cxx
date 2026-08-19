@@ -179,12 +179,34 @@ void FBSurfaceSDL::translateCoords(Int32& x, Int32& y) const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool FBSurfaceSDL::render()
+bool FBSurfaceSDL::updateAndRender()
 {
   assert(myBlitter);
 
   if(myIsVisible)
     myBlitter->blit(*mySurface);
+
+  return myIsVisible;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool FBSurfaceSDL::update()
+{
+  assert(myBlitter);
+
+  if(myIsVisible)
+    myBlitter->update(*mySurface);
+
+  return myIsVisible;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool FBSurfaceSDL::render()
+{
+  assert(myBlitter);
+
+  if(myIsVisible)
+    myBlitter->render();
 
   return myIsVisible;
 }
@@ -212,6 +234,17 @@ void FBSurfaceSDL::invalidateRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h)
 void FBSurfaceSDL::reload()
 {
   reinitializeBlitter(true);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void FBSurfaceSDL::updateStaticData()
+{
+  if (!myIsStatic)
+    return;
+
+  assert(myBlitter);
+
+  myBlitter->updateStaticData();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

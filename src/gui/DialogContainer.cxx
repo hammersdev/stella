@@ -20,14 +20,15 @@
 #include "ToolTip.hxx"
 #include "Stack.hxx"
 #include "EventHandler.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "FBSurface.hxx"
 #include "bspf.hxx"
 #include "DialogContainer.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-DialogContainer::DialogContainer(OSystem& osystem)
-  : myOSystem{osystem}
+DialogContainer::DialogContainer(OSystem& osystem, FrameBuffer& framebuffer)
+  : myOSystem{osystem},
+    myFrameBuffer{framebuffer}
 {
   S_DOUBLE_CLICK_DELAY = osystem.settings().getInt("mdouble");
   S_REPEAT_INITIAL_DELAY = osystem.settings().getInt("ctrldelay");
@@ -104,7 +105,7 @@ void DialogContainer::draw(bool full)
   // Draw and render all dirty dialogs
   myDialogStack.applyAll([&](Dialog*& d) {
     if(full || d->needsRedraw())
-      d->redraw(full);
+     d->redraw(full);
   });
   // Always render all surfaces, bottom to top
   render();
@@ -127,9 +128,11 @@ void DialogContainer::render()
 #endif
 
   // Make sure we start in a clean state (with zero'ed buffers)
-  if(!myOSystem.eventHandler().inTIAMode()) {
-    myOSystem.frameBuffer().flush();
-    myOSystem.frameBuffer().clear();
+  MainFrameBuffer* mfb = dynamic_cast<MainFrameBuffer*>(&myFrameBuffer);
+  if(!mfb || !myOSystem.eventHandler().inTIAMode())
+  {
+    myFrameBuffer.flush();
+    myFrameBuffer.clear();
   }
 
   // Render all dialogs
@@ -155,12 +158,12 @@ bool DialogContainer::baseDialogIsActive() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 int DialogContainer::addDialog(Dialog* d)
 {
-  const Common::Rect& r = myOSystem.frameBuffer().imageRect();
-  const uInt32 scale = myOSystem.frameBuffer().hidpiScaleFactor();
+  const Common::Rect& r = myFrameBuffer.imageRect();
+  const uInt32 scale = myFrameBuffer.hidpiScaleFactor();
 
   if(static_cast<uInt32>(d->getWidth()  * scale) > r.w() ||
      static_cast<uInt32>(d->getHeight() * scale) > r.h())
-    myOSystem.frameBuffer().showTextMessage(
+    myFrameBuffer.showTextMessage(
       "Unable to show dialog box; FIX THE CODE", MessagePosition::BottomCenter, true);
   else
   {
@@ -185,7 +188,7 @@ void DialogContainer::removeDialog()
     myDialogStack.pop();
 
     // Inform the frame buffer that it has to render all surfaces
-    myOSystem.frameBuffer().setPendingRender();
+    myFrameBuffer.setPendingRender();
   }
 }
 
@@ -197,8 +200,7 @@ void DialogContainer::reStack()
     myDialogStack.top()->close();
 
   // Make sure that all surfaces are cleared
-  myOSystem.frameBuffer().clear();
-
+  myFrameBuffer.clear();
   baseDialog()->open();
 
   // Reset all continuous events

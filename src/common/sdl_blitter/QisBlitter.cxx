@@ -99,25 +99,41 @@ void QisBlitter::free()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void QisBlitter::blit(SDL_Surface& surface)
+void QisBlitter::update(SDL_Surface& surface)
 {
   ASSERT_MAIN_THREAD;
 
   recreateTexturesIfNecessary();
 
-  SDL_Texture* intermediateTexture = myIntermediateTexture;
-
   if (myStaticData == nullptr) {
+    std::swap(myIntermediateTexture, mySecondaryIntermediateTexture);
+    std::swap(mySrcTexture, mySecondarySrcTexture);
+
     SDL_UpdateTexture(mySrcTexture, &mySrcRect, surface.pixels, surface.pitch);
 
     blitToIntermediate();
-
-    std::swap(myIntermediateTexture, mySecondaryIntermediateTexture);
-    std::swap(mySrcTexture, mySecondarySrcTexture);
   }
+}
 
-  SDL_RenderTexture(myFB.renderer(), intermediateTexture,
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void QisBlitter::render()
+{
+  ASSERT_MAIN_THREAD;
+
+  SDL_RenderTexture(myFB.renderer(), myIntermediateTexture,
                     &myIntermediateFRect, &myDstFRect);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void QisBlitter::updateStaticData()
+{
+  ASSERT_MAIN_THREAD;
+
+  recreateTexturesIfNecessary();
+
+  SDL_UpdateTexture(mySrcTexture, nullptr, myStaticData->pixels, myStaticData->pitch);
+
+  blitToIntermediate();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -131,7 +131,7 @@ class M6532 : public Device
      */
     void updateEmulation();
 
-  #ifdef __LIB_RETRO__
+  #if (defined __LIB_RETRO__) || (defined MEMVIEW_SUPPORT)
     /**
       Get mutable RAM contents for direct external access (libretro cheat/memory interface).
 
@@ -159,8 +159,9 @@ class M6532 : public Device
       Increase the given address's access counter
 
       @param address The address to modify
+      @param flag    One flag indicating the kind of access (e.g. CODE, DATA, WRITE)
     */
-    void increaseAccessCounter(uInt16 address, bool isWrite) override;
+    void increaseAccessCounter(uInt16 address, Device::AccessFlags flag) override;
 
     /**
       Query the access counters
@@ -183,6 +184,45 @@ class M6532 : public Device
       Reset the timer read CPU cycle counter
     */
     void resetTimReadCycles() { myTimReadCycles = 0; }
+  #endif
+
+  #ifdef MEMVIEW_SUPPORT
+    /**
+      Get back the full access counters for code reads (reads of the program counter).
+
+      @return Pointer to the buffer holding the counters for each address of the RAM.
+    */
+    Device::AccessCounter* getRamCodePeekCounter() {
+      return myRAMCodePeekCounter.data();
+    }
+
+    /**
+      Get back the full access counters for data reads.
+
+      @return Pointer to the buffer holding the counters for each address of the RAM.
+    */
+    Device::AccessCounter* getRamDataPeekCounter() {
+      return myRAMDataPeekCounter.data();
+    }
+
+    /**
+      Get back the full access counters for data writes to the RAM.
+
+      @return Pointer to the buffer holding the counters for each address of the RAM.
+    */
+    Device::AccessCounter* getRamPokeCounter() {
+      return myRAMPokeCounter.data();
+    }
+
+    /**
+      Get the size of each access counter buffers which will be retrieved by
+      getRamCodePeekCounter(), getRamDataPeekCounter() and getRamPokeCounter().
+
+      @return Size in Device::AccessCounter values
+    */
+    constexpr uInt32 getRamCounterSize() const {
+      return RAM_SIZE;
+    }
   #endif
 
   private:
@@ -282,14 +322,26 @@ class M6532 : public Device
     std::array<Device::AccessFlags, RAM_SIZE>   myRAMAccessBase{};
     std::array<Device::AccessFlags, STACK_SIZE> myStackAccessBase{};
     std::array<Device::AccessFlags, IO_SIZE>    myIOAccessBase{};
+
     // The arrays containing information about every byte of RIOT
     // indicating how often it is accessed.
     std::array<Device::AccessCounter,
-      static_cast<size_t>(RAM_SIZE * 2)>   myRAMAccessCounter{};
+      static_cast<size_t>(RAM_SIZE)>       myRAMCodePeekCounter{};
     std::array<Device::AccessCounter,
-      static_cast<size_t>(STACK_SIZE * 2)> myStackAccessCounter{};
+      static_cast<size_t>(RAM_SIZE)>       myRAMDataPeekCounter{};
     std::array<Device::AccessCounter,
-      static_cast<size_t>(IO_SIZE * 2)>    myIOAccessCounter{};
+      static_cast<size_t>(RAM_SIZE)>       myRAMPokeCounter{};
+
+    std::array<Device::AccessCounter,
+      static_cast<size_t>(STACK_SIZE)>     myStackPeekCounter{};
+    std::array<Device::AccessCounter,
+      static_cast<size_t>(STACK_SIZE)>     myStackPokeCounter{};
+
+    std::array<Device::AccessCounter,
+      static_cast<size_t>(IO_SIZE)>        myIOPeekCounter{};
+    std::array<Device::AccessCounter,
+      static_cast<size_t>(IO_SIZE)>        myIOPokeCounter{};
+
     // The array used to skip the first ZP access tracking
     std::array<uInt8, RAM_SIZE>            myZPAccessDelay{};
 

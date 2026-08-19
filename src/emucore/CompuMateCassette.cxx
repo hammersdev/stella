@@ -16,7 +16,7 @@
 //============================================================================
 
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "System.hxx"
 #include "CompuMateCassette.hxx"
 

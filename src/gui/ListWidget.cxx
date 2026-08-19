@@ -17,7 +17,7 @@
 
 #include "OSystem.hxx"
 #include "Widget.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "Dialog.hxx"
 #include "FrameBuffer.hxx"
 #include "StellaKeys.hxx"
@@ -46,9 +46,9 @@ ListWidget::ListWidget(GuiObject* boss, const GUI::Font& font,
   // Create scrollbar and attach to the list
   if(_useScrollbar)
   {
-    _w = w - ScrollBarWidget::scrollBarWidth(_font);
-    _scrollBar = new ScrollBarWidget(boss, font, _x + _w, _y,
-                                     ScrollBarWidget::scrollBarWidth(_font), _h);
+    _w = w - ScrollBarVWidget::scrollBarWidth(_font);
+    _scrollBar = new ScrollBarVWidget(boss, font, _x + _w, _y,
+                                     ScrollBarVWidget::scrollBarWidth(_font), _h);
     _scrollBar->setTarget(this);
   }
   else
@@ -160,7 +160,7 @@ void ListWidget::scrollTo(int item)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 int ListWidget::getWidth() const
 {
-  return _w + ScrollBarWidget::scrollBarWidth(_font);
+  return _w + ScrollBarVWidget::scrollBarWidth(_font);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

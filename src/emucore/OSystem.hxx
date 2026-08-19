@@ -19,7 +19,7 @@
 #define OSYSTEM_HXX
 
 class Console;
-class FrameBuffer;
+class MainFrameBuffer;
 class EventHandler;
 class Properties;
 class PropertiesSet;
@@ -41,6 +41,10 @@ class AudioSettings;
   class OverlayMenu;
   class TimeMachine;
   class VideoAudioDialog;
+#endif
+#ifdef MEMVIEW_SUPPORT
+  class MemViewFrameBuffer;
+  class MemView;
 #endif
 #ifdef IMAGE_SUPPORT
   class PNGLibrary;
@@ -101,8 +105,20 @@ class OSystem
 
       @return The frame buffer
     */
-    FrameBuffer& frameBuffer() const { return *myFrameBuffer; }
+    MainFrameBuffer& frameBuffer() const { return *myFrameBuffer; }
     bool hasFrameBuffer() const { return myFrameBuffer != nullptr; }
+
+  #ifdef MEMVIEW_SUPPORT
+
+    /**
+      Get the frame buffer of 2nd window for the MemView.
+
+      @return The frame buffer
+    */
+    MemViewFrameBuffer& memViewFrameBuffer() const { return *myMemViewFrameBuffer; }
+    bool hasMemViewFrameBuffer() const { return myMemViewFrameBuffer != nullptr; }
+
+  #endif
 
     /**
       Get the sound object of the system.
@@ -219,6 +235,17 @@ class OSystem
       @return The time machine object
     */
     TimeMachine& timeMachine() const { return *myTimeMachine; }
+  #endif
+
+  #ifdef MEMVIEW_SUPPORT
+
+    /**
+      Get the frame buffer of 2nd window for the MemView.
+
+      @return The frame buffer
+    */
+    MemView& memView() const { return *myMemView; }
+
   #endif
 
   #ifdef IMAGE_SUPPORT
@@ -407,6 +434,18 @@ class OSystem
     */
     void toggleTimeMachine();
 
+  #ifdef MEMVIEW_SUPPORT
+    /**
+      Open the memory view if not already active.
+    */
+    void openMemView();
+
+    /**
+      Close the memory view if any
+    */
+    void closeMemView();
+  #endif
+
     /**
       The features which are conditionally compiled into Stella.
 
@@ -509,7 +548,7 @@ class OSystem
     unique_ptr<EventHandler> myEventHandler;
 
     // Pointer to the FrameBuffer object
-    unique_ptr<FrameBuffer> myFrameBuffer;
+    unique_ptr<MainFrameBuffer> myFrameBuffer;
 
     // Pointer to the Sound object
     unique_ptr<Sound> mySound;
@@ -549,6 +588,14 @@ class OSystem
 
     // Pointer to the TimeMachine object
     unique_ptr<TimeMachine> myTimeMachine;
+  #endif
+
+  #ifdef MEMVIEW_SUPPORT
+    // Pointer to the MemViewFrameBuffer object for MemView
+    unique_ptr<MemViewFrameBuffer> myMemViewFrameBuffer;
+
+    // Pointer to the MemView object
+    unique_ptr<MemView> myMemView;
   #endif
 
   #ifdef IMAGE_SUPPORT

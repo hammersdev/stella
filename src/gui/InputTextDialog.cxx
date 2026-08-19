@@ -21,7 +21,7 @@
 #include "EditTextWidget.hxx"
 #include "GuiObject.hxx"
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "FBSurface.hxx"
 #include "Font.hxx"
 #include "Widget.hxx"

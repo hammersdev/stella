@@ -190,6 +190,21 @@ Settings::Settings()
   setPermanent("dbg.pos", Common::Point(50, 50));
   setPermanent("dbg.display", 0);
 #endif
+#ifdef MEMVIEW_SUPPORT
+  setPermanent("mv.pos", Common::Size(50, 50));
+  setPermanent("mv.display", 0);
+  setPermanent("mv.res", Common::Size(1800, 1100));
+  setPermanent("mv.bankheight", 2);
+  setPermanent("mv.singlerow", false);
+  setPermanent("mv.inverted", false);
+  setPermanent("mv.bytefade", true);
+  setPermanent("mv.separators", true);
+  setPermanent("mv.showdata", true);
+  setPermanent("mv.showpc", true);
+  setPermanent("mv.showreads", true);
+  setPermanent("mv.showwrites", true);
+  setPermanent("mv.decayrate", 40);
+#endif
   setPermanent("uipalette", "standard");
   setPermanent("uipalette2", "dark");
   setPermanent("altuipalette", "false");
@@ -685,52 +700,69 @@ void Settings::usage()
   #ifdef DEBUGGER_SUPPORT
     << "\n The following options are meant for developers\n"
     << " Arguments are more fully explained in the User's Guide\n\n"
-    << "   -dis.resolve   <1|0>          Attempt to resolve code sections in disassembler\n"
-    << "   -dis.gfxformat <2|16>         Set base to use for displaying (P)GFX sections\n"
-    << "                                  in disassembler\n"
-    << "   -dis.showaddr  <1|0>          Show opcode addresses in disassembler\n"
-    << "   -dis.relocate  <1|0>          Relocate calls out of address range in\n"
-    << "                                  disassembler\n"
-    << "   -dis.color     <list>         Comma-separated list of 14 palette indices\n"
+    << "  -dis.resolve   <1|0>           Attempt to resolve code sections in disassembler\n"
+    << "  -dis.gfxformat <2|16>          Set base to use for displaying (P)GFX sections\n"
+    << "                                   in disassembler\n"
+    << "  -dis.showaddr  <1|0>            Show opcode addresses in disassembler\n"
+    << "  -dis.relocate  <1|0>            Relocate calls out of address range in\n"
+    << "                                   disassembler\n"
+    << "  -dis.color     <list>          Comma-separated list of 14 palette indices\n"
     << "                                  (0-15) or 255 (text colour) for disassembly\n"
-    << "                                  syntax highlighting (roles 1-14)\n\n"
-    << "   -dbg.pos       <XxY>          Sets the window position in windowed debugger mode\n"
-    << "   -dbg.display   <number>       Sets the display for the debugger\n"
-    << "   -dbg.res       <WxH>          The resolution to use in debugger mode\n"
-    << "   -dbg.fontsize  <small|medium| Font size to use in debugger window\n"
-    << "                  large>\n"
-    << "   -dbg.fontstyle <0-3>          Font style to use in debugger window (bold vs.\n"
+    << "                                   syntax highlighting (roles 1-14)\n\n"
+    << "  -dbg.pos       <XxY>           Sets the window position in windowed debugger mode\n"
+    << "  -dbg.display   <number>        Sets the display for the debugger\n"
+    << "  -dbg.res       <WxH>           The resolution to use in debugger mode\n"
+    << "  -dbg.fontsize  <small|medium|  Font size to use in debugger window\n"
+    << "                 large>\n"
+    << "  -dbg.fontstyle <0-3>           Font style to use in debugger window (bold vs.\n"
     << "                                  normal)\n"
-    << "   -dbg.ghostreadstrap <1|0>     Debugger traps on 'ghost' reads\n"
-    << "   -dbg.uhex      <0|1>          Lower-/uppercase HEX display\n"
-    << "   -dbg.logbreaks <0|1>          Log breaks and traps and continue emulation\n"
-    << "   -dbg.logexec   <0|1>          Log script execution output to file\n"
-    << "   -dbg.logtrace  <0|1>          Log emulation\n"
-    << "   -dbg.autosave  <0|1>          Automatically save breaks, traps etc.\n"
-    << "   -dbg.script    <file>         Execute script file on debugger startup\n"
-    << "   -break         <address>      Set a breakpoint at 'address'\n"
-    << "   -debug                        Start in debugger mode\n"
-    << "   -seed          <number>       Define the initial seed for Stella's RNG (1..)\n\n"
+    << "  -dbg.ghostreadstrap <1|0>      Debugger traps on 'ghost' reads\n"
+    << "  -dbg.uhex      <0|1>           Lower-/uppercase HEX display\n"
+    << "  -dbg.logbreaks <0|1>           Log breaks and traps and continue emulation\n"
+    << "  -dbg.logexec   <0|1>           Log script execution output to file\n"
+    << "  -dbg.logtrace  <0|1>           Log emulation\n"
+    << "  -dbg.autosave  <0|1>           Automatically save breaks, traps etc.\n"
+    << "  -dbg.script    <file>          Execute script file on debugger startup\n"
+    << "  -break         <address>       Set a breakpoint at 'address'\n"
+    << "  -debug                         Start in debugger mode\n"
+    << "  -seed          <number>        Define the initial seed for Stella's RNG (1..)\n\n"
 
-    << "   -bs          <arg>            Sets the 'Cartridge.Type' (bankswitch) property\n"
-    << "   -type        <arg>            Same as using -bs\n"
-    << "   -startbank   <bank>           Sets the ROM's startup bank\n"
-    << "   -channels    <arg>            Sets the 'Cartridge.Sound' property\n"
-    << "   -ld          <arg>            Sets the 'Console.LeftDifficulty' property\n"
-    << "   -rd          <arg>            Sets the 'Console.RightDifficulty' property\n"
-    << "   -tv          <arg>            Sets the 'Console.TelevisionType' property\n"
-    << "   -sp          <arg>            Sets the 'Console.SwapPorts' property\n"
-    << "   -lc          <arg>            Sets the 'Controller.Left' property\n"
-    << "   -rc          <arg>            Sets the 'Controller.Right' property\n"
-    << "   -bc          <arg>            Same as using both -lc and -rc\n"
-    << "   -cp          <arg>            Sets the 'Controller.SwapPaddles' property\n"
-    << "   -pxcenter    <arg>            Sets the 'Controller.PaddlesXCenter' property\n"
-    << "   -pycenter    <arg>            Sets the 'Controller.PaddlesYCenter' property\n"
-    << "   -format      <arg>            Sets the 'Display.Format' property\n"
-    << "   -vcenter     <arg>            Sets the 'Display.vcenter' property\n"
-    << "   -pp          <arg>            Sets the 'Display.Phosphor' property\n"
-    << "   -ppblend     <arg>            Sets the 'Display.PPBlend' property\n"
-    << "   -bezelname   <arg>            Sets the 'Bezel.Name' property\n\n"
+    << "  -bs          <arg>             Sets the 'Cartridge.Type' (bankswitch) property\n"
+    << "  -type        <arg>             Same as using -bs\n"
+    << "  -startbank   <bank>            Sets the ROM's startup bank\n"
+    << "  -channels    <arg>             Sets the 'Cartridge.Sound' property\n"
+    << "  -ld          <arg>             Sets the 'Console.LeftDifficulty' property\n"
+    << "  -rd          <arg>             Sets the 'Console.RightDifficulty' property\n"
+    << "  -tv          <arg>             Sets the 'Console.TelevisionType' property\n"
+    << "  -sp          <arg>             Sets the 'Console.SwapPorts' property\n"
+    << "  -lc          <arg>             Sets the 'Controller.Left' property\n"
+    << "  -rc          <arg>             Sets the 'Controller.Right' property\n"
+    << "  -bc          <arg>             Same as using both -lc and -rc\n"
+    << "  -cp          <arg>             Sets the 'Controller.SwapPaddles' property\n"
+    << "  -pxcenter    <arg>             Sets the 'Controller.PaddlesXCenter' property\n"
+    << "  -pycenter    <arg>             Sets the 'Controller.PaddlesYCenter' property\n"
+    << "  -format      <arg>             Sets the 'Display.Format' property\n"
+    << "  -vcenter     <arg>             Sets the 'Display.vcenter' property\n"
+    << "  -pp          <arg>             Sets the 'Display.Phosphor' property\n"
+    << "  -ppblend     <arg>             Sets the 'Display.PPBlend' property\n"
+    << "  -bezelname   <arg>             Sets the 'Bezel.Name' property\n\n"
+  #endif
+  #ifdef MEMVIEW_SUPPORT
+    << " Commands for memory view\n\n"
+    << "  -mv.res        <WxH>           The resolution to use in memory view window\n"
+    << "  -mv.pos        <XxY>           The default position of the memory view window\n"
+    << "  -mv.display    <number>        The default display ID to show the memory window\n"
+    << "  -mv.bankheight <number>        Preferred bank height in bytes\n"
+    << "                                  (0 = 64, 1 = 128, 2 = 256, 3 = 512)\n"
+    << "  -mv.singlerow  <0|1>           Show all banks of a ROM in one single row\n"
+    << "  -mv.separators <0|1>           Have separator lines between the banks\n"
+    << "  -mv.inverted   <0|1>           Invert the byte data for display\n"
+    << "  -mv.bytefade   <0|1>           Fade the bits of a byte out to the right\n"
+    << "  -mv.showdata   <0|1>           Show the data by default\n"
+    << "  -mv.showpc     <0|1>           Show the program counter reads by default\n"
+    << "  -mv.showreads  <0|1>           Show data reads by default\n"
+    << "  -mv.showwrites <0|1>           Show data writes by default\n"
+    << "  -mv.decayrate  <0..100>        Controls the speed of the headmap dissolving\n\n"
   #endif
 
     << " Various development related parameters for player settings mode\n\n"

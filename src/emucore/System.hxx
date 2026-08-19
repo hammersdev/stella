@@ -197,12 +197,12 @@ class System : public Serializable
       implements it.
 
       @param address  The address to read
-      @param flags    Access type hint for the debugger (CODE, DATA, GFX, etc.)
+      @param flag     Access type hint for the debugger (CODE, DATA, GFX, etc.)
       @return The byte at the address
     */
-    uInt8 peek(uInt16 address, Device::AccessFlags flags = Device::NONE)
+    uInt8 peek(uInt16 address, Device::AccessFlags flag = Device::NONE)
     {
-      return peekImpl<false>(address, flags);
+      return peekImpl<false>(address, flag);
     }
 
     /**
@@ -211,12 +211,12 @@ class System : public Serializable
       calls the device's peekOob() so it can suppress emulation side-effects.
 
       @param address  The address to read
-      @param flags    Access type hint for the debugger (CODE, DATA, GFX, etc.)
+      @param flag     Access type hint for the debugger (CODE, DATA, GFX, etc.)
       @return The byte at the address
     */
-    uInt8 peekOob(uInt16 address, Device::AccessFlags flags = Device::NONE)
+    uInt8 peekOob(uInt16 address, Device::AccessFlags flag = Device::NONE)
     {
-      return peekImpl<true>(address, flags);
+      return peekImpl<true>(address, flag);
     }
 
     /**
@@ -226,11 +226,11 @@ class System : public Serializable
 
       @param address  The address to write
       @param value    The byte to write
-      @param flags    Access type hint for the debugger
+      @param flag     Access type hint for the debugger
     */
-    void poke(uInt16 address, uInt8 value, Device::AccessFlags flags = Device::NONE)
+    void poke(uInt16 address, uInt8 value, Device::AccessFlags flag = Device::NONE)
     {
-      pokeImpl<false>(address, value, flags);
+      pokeImpl<false>(address, value, flag);
     }
 
     /**
@@ -240,11 +240,11 @@ class System : public Serializable
 
       @param address  The address to write
       @param value    The byte to write
-      @param flags    Access type hint for the debugger
+      @param flag     Access type hint for the debugger
     */
-    void pokeOob(uInt16 address, uInt8 value, Device::AccessFlags flags = Device::NONE)
+    void pokeOob(uInt16 address, uInt8 value, Device::AccessFlags flag = Device::NONE)
     {
-      pokeImpl<true>(address, value, flags);
+      pokeImpl<true>(address, value, flag);
     }
 
     /**
@@ -272,8 +272,9 @@ class System : public Serializable
       Increase the given address's access counter
 
       @param address The address to modify
+      @param flag    One flag indicating the kind of access (e.g. CODE, DATA, WRITE)
     */
-    void increaseAccessCounter(uInt16 address, bool isWrite) const;
+    void increaseAccessCounter(uInt16 address, Device::AccessFlags flag) const;
 
     /**
       Get the read-access counter for the given address.
@@ -333,8 +334,10 @@ class System : public Serializable
         many times each address has been read; used by the debugger to show
         access frequencies.  Null for device-mapped pages that manage their
         own counters.
+        We differentiate between data reads and program counter (code) accesses.
       */
-      Device::AccessCounter* romPeekCounter{nullptr};
+      Device::AccessCounter* romDataPeekCounter{nullptr};
+      Device::AccessCounter* romCodePeekCounter{nullptr};
 
       /**
         Per-address write-access counter indexed by page offset.  Tracks how
@@ -439,13 +442,13 @@ class System : public Serializable
         oob      Out-of-band peeks are not part of the activity of the
                  emulated system
       @param address  The address from which the value should be loaded
-      @param flags    Indicates that this address has the given flags
+      @param flag     Indicates that this address has the given flag
                       for type of access (CODE, DATA, GFX, etc)
 
       @return The byte at the specified address
     */
     template<bool oob = false>
-    uInt8 peekImpl(uInt16 address, Device::AccessFlags flags);
+    uInt8 peekImpl(uInt16 address, Device::AccessFlags flag);
 
     /**
       Change the byte at the specified address to the given value.
@@ -463,7 +466,7 @@ class System : public Serializable
       @param value    The value to be stored at the address
     */
     template<bool oob = false>
-    void pokeImpl(uInt16 address, uInt8 value, Device::AccessFlags flags);
+    void pokeImpl(uInt16 address, uInt8 value, Device::AccessFlags flag);
 
   private:
     // The system RNG
@@ -525,7 +528,7 @@ class System : public Serializable
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 template<bool oob>
-inline uInt8 System::peekImpl(uInt16 addr, Device::AccessFlags flags)
+inline uInt8 System::peekImpl(uInt16 addr, Device::AccessFlags flag)
 {
   const uInt16 pageOffset = addr & PAGE_MASK;
   const uInt16 page       = (addr & myAddressMask) >> PAGE_SHIFT;
@@ -534,17 +537,18 @@ inline uInt8 System::peekImpl(uInt16 addr, Device::AccessFlags flags)
 #ifdef DEBUGGER_SUPPORT
   // Set access type
   if(access.romAccessBase)
-    *(access.romAccessBase + pageOffset) |= (flags | (addr & Device::HADDR));
+    *(access.romAccessBase + pageOffset) |= (flag | (addr & Device::HADDR));
   else
-    access.device->setAccessFlags(addr, flags);
+    access.device->setAccessFlags(addr, flag);
   // Increase access counter
-  if(flags != Device::NONE)
-  {
-    if(access.romPeekCounter)
-      *(access.romPeekCounter + pageOffset) += 1;
-    else
-      access.device->increaseAccessCounter(addr);
-  }
+#endif
+#if (defined DEBUGGER_SUPPORT) || (defined MEMVIEW_SUPPORT)
+  if((flag == Device::DATA) && access.romDataPeekCounter)
+      *(access.romDataPeekCounter + pageOffset) += 1;
+  else if((flag == Device::CODE) && access.romCodePeekCounter)
+      *(access.romCodePeekCounter + pageOffset) += 1;
+  else if (flag != Device::NONE)
+      access.device->increaseAccessCounter(addr, flag);
 #endif
 
   const uInt8 result = [&]() -> uInt8 {
@@ -571,7 +575,7 @@ inline uInt8 System::peekImpl(uInt16 addr, Device::AccessFlags flags)
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 template<bool oob>
-inline void System::pokeImpl(uInt16 addr, uInt8 value, Device::AccessFlags flags)
+inline void System::pokeImpl(uInt16 addr, uInt8 value, Device::AccessFlags flag)
 {
   if(!oob && myCartridgeDoesBusStuffing) [[unlikely]]
     value = myCart.overdrivePoke(addr, value);
@@ -583,16 +587,18 @@ inline void System::pokeImpl(uInt16 addr, uInt8 value, Device::AccessFlags flags
 #ifdef DEBUGGER_SUPPORT
   // Set access type
   if(access.romAccessBase)
-    *(access.romAccessBase + pageOffset) |= (flags | (addr & Device::HADDR));
+    *(access.romAccessBase + pageOffset) |= (flag | (addr & Device::HADDR));
   else
-    access.device->setAccessFlags(addr, flags);
+    access.device->setAccessFlags(addr, flag);
+#endif
+#if (defined DEBUGGER_SUPPORT) || (defined MEMVIEW_SUPPORT)
   // Increase access counter
-  if(flags != Device::NONE)
+  if(flag != Device::NONE)
   {
     if(access.romPokeCounter)
       *(access.romPokeCounter + pageOffset) += 1;
     else
-      access.device->increaseAccessCounter(addr, true);
+      access.device->increaseAccessCounter(addr, Device::WRITE);
   }
 #endif
 

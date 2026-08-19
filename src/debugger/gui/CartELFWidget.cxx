@@ -20,11 +20,11 @@
 #include "CartELF.hxx"
 #include "Widget.hxx"
 #include "StringParser.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "StringListWidget.hxx"
 #include "BrowserDialog.hxx"
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "Debugger.hxx"
 #include "bspf.hxx"
 
@@ -53,7 +53,7 @@ void CartridgeELFWidget::initialize()
 
   const StringParser parser(
     myCart.getDebugLog(),
-    (width - ScrollBarWidget::scrollBarWidth(_font)) / _font.getMaxCharWidth()
+    (width - ScrollBarVWidget::scrollBarWidth(_font)) / _font.getMaxCharWidth()
   );
 
   const auto& logLines = parser.stringList();

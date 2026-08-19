@@ -133,10 +133,11 @@ bool CartridgeCM::bank(uInt16 bank, uInt16)
   for(uInt16 addr = 0x1000; addr < 0x1800; addr += System::PAGE_SIZE)
   {
     const uInt16 offset = myBankOffset + (addr & 0x0FFF);
-    access.directPeekBase  = &myImage[offset];
-    access.romAccessBase   = &myRomAccessBase[offset];
-    access.romPeekCounter  = &myRomAccessCounter[offset];
-    access.romPokeCounter  = &myRomAccessCounter[offset + myAccessSize];
+    access.directPeekBase     = &myImage[offset];
+    access.romAccessBase      = &myRomAccessBase[offset];
+    access.romCodePeekCounter = &myRomCodePeekCounter[offset];
+    access.romDataPeekCounter = &myRomDataPeekCounter[offset];
+    access.romPokeCounter     = &myRomPokeCounter[offset];
     mySystem->setPageAccess(addr, access);
   }
 
@@ -148,19 +149,21 @@ bool CartridgeCM::bank(uInt16 bank, uInt16)
     if(mySWCHA & 0x10)
     {
       const uInt16 offset = myBankOffset + (addr & 0x0FFF);
-      access.directPeekBase  = &myImage[offset];
-      access.romAccessBase   = &myRomAccessBase[offset];
-      access.romPeekCounter  = &myRomAccessCounter[offset];
-      access.romPokeCounter  = &myRomAccessCounter[offset + myAccessSize];
+      access.directPeekBase     = &myImage[offset];
+      access.romAccessBase      = &myRomAccessBase[offset];
+      access.romCodePeekCounter = &myRomCodePeekCounter[offset];
+      access.romDataPeekCounter = &myRomDataPeekCounter[offset];
+      access.romPokeCounter     = &myRomPokeCounter[offset];
     }
     else
     {
-      const uInt16 ramOffset = addr & 0x7FF;
-      const uInt16 offset    = myBankOffset + ramOffset;
-      access.directPeekBase  = &myRAM[ramOffset];
-      access.romAccessBase   = &myRomAccessBase[offset];
-      access.romPeekCounter  = &myRomAccessCounter[offset];
-      access.romPokeCounter  = &myRomAccessCounter[offset + myAccessSize];
+      const uInt16 ramOffset    = addr & 0x7FF;
+      const uInt16 offset       = myBankOffset + ramOffset;
+      access.directPeekBase     = &myRAM[ramOffset];
+      access.romAccessBase      = &myRomAccessBase[offset];
+      access.romCodePeekCounter = &myRomCodePeekCounter[offset];
+      access.romDataPeekCounter = &myRomDataPeekCounter[offset];
+      access.romPokeCounter     = &myRomPokeCounter[offset];
     }
 
     access.directPokeBase = ((mySWCHA & 0x30) == 0x20)

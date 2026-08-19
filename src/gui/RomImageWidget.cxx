@@ -18,6 +18,7 @@
 #include <regex>
 #include "EventHandler.hxx"
 #include "Dialog.hxx"
+#include "MainFrameBuffer.hxx"
 #include "FBSurface.hxx"
 #include "Font.hxx"
 #include "JPGLibrary.hxx"
@@ -94,7 +95,7 @@ void RomImageWidget::reloadProperties(const FSNode& node)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void RomImageWidget::parseProperties(const FSNode& node, bool full)
 {
-  FrameBuffer& fb = instance().frameBuffer();
+  MainFrameBuffer& fb = instance().frameBuffer();
   const uInt64 startTime = TimerManager::getTicks() / 1000;
 
   if(myNavSurface == nullptr)
@@ -121,12 +122,12 @@ void RomImageWidget::parseProperties(const FSNode& node, bool full)
       if(mySurfaceIsValid)
       {
         if(myIsZoomed)
-          myFrameSurface->render();
-        mySurface->render();
+          myFrameSurface->updateAndRender();
+        mySurface->updateAndRender();
       }
 
       if(isHighlighted() && !myIsZoomed)
-        myNavSurface->render();
+        myNavSurface->updateAndRender();
     });
   }
 

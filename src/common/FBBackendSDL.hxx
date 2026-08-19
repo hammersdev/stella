@@ -22,6 +22,7 @@
 
 class OSystem;
 class FBSurfaceSDL;
+class FrameBuffer;
 
 #include "bspf.hxx"
 #include "FBBackend.hxx"
@@ -38,7 +39,7 @@ class FBBackendSDL : public FBBackend
     /**
       Creates a new SDL framebuffer
     */
-    explicit FBBackendSDL(OSystem& osystem);
+    explicit FBBackendSDL(OSystem& osystem, FrameBuffer& framebuffer);
     ~FBBackendSDL() override;
 
   public:
@@ -131,6 +132,14 @@ class FBBackendSDL : public FBBackend
       @return  the current display index or a 0 if no window is displayed
     */
     uInt32 getCurrentDisplayID() const override;
+
+    /**
+      This method is called to query the video hardware for the index
+      of the current window
+
+      @return  the current window index or a WINDOW_ID_NONE if no window is displayed
+    */
+    uInt32 getCurrentWindowID() const override;
 
     /**
       Clear the frame buffer.
@@ -260,6 +269,7 @@ class FBBackendSDL : public FBBackend
 
   private:
     OSystem& myOSystem;
+    FrameBuffer& myFrameBuffer;
 
     // The SDL video buffer
     SDL_Window* myWindow{nullptr};

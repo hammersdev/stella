@@ -28,7 +28,7 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ToolTip::ToolTip(Dialog& dialog, const GUI::Font& font)
   : myDialog{dialog},
-    myScale{myDialog.instance().frameBuffer().hidpiScaleFactor()}
+    myScale{myDialog.frameBuffer().hidpiScaleFactor()}
 {
   setFont(font);
 }
@@ -36,7 +36,7 @@ ToolTip::ToolTip(Dialog& dialog, const GUI::Font& font)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ToolTip::~ToolTip()
 {
-  myDialog.instance().frameBuffer().deallocateSurface(mySurface);
+  myDialog.frameBuffer().deallocateSurface(mySurface);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -53,7 +53,7 @@ void ToolTip::setFont(const GUI::Font& font)
   myHeight = fontHeight * MAX_ROWS + myTextYOfs * 2;
 
   // unallocate
-  myDialog.instance().frameBuffer().deallocateSurface(mySurface);
+  myDialog.frameBuffer().deallocateSurface(mySurface);
   mySurface = nullptr;
 }
 
@@ -61,7 +61,7 @@ void ToolTip::setFont(const GUI::Font& font)
 const shared_ptr<FBSurface>& ToolTip::surface()
 {
   if(mySurface == nullptr)
-    mySurface = myDialog.instance().frameBuffer().allocateSurface(myWidth, myHeight);
+    mySurface = myDialog.frameBuffer().allocateSurface(myWidth, myHeight);
 
   return mySurface;
 }
@@ -111,6 +111,15 @@ void ToolTip::update(const Widget* widget, const Common::Point& pos)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void ToolTip::refresh(const Widget* widget)
+{
+  // From now on, render optimization is active
+  mySelectiveRender = true;
+  if (myTipShown && (widget == myTipWidget) && (widget == myFocusWidget))
+    update(myTipWidget, myMousePos);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void ToolTip::hide()
 {
   if(myTipShown)
@@ -118,7 +127,7 @@ void ToolTip::hide()
     myTimer = 0;
     myTipWidget = myFocusWidget = nullptr;
     myTipShown = false;
-    myDialog.instance().frameBuffer().setPendingRender();
+    setPendingRender();
   }
 }
 
@@ -128,7 +137,7 @@ void ToolTip::release(bool emptyTip)
   if(myTipShown)
   {
     myTipShown = false;
-    myDialog.instance().frameBuffer().setPendingRender();
+    setPendingRender();
   }
 
   // After displaying a tip, slowly reset the timer to 0
@@ -168,7 +177,7 @@ void ToolTip::show(string_view tip)
   constexpr uInt32 V_GAP = 1;
   constexpr uInt32 H_CURSOR = 18;
   // Note: The rects include HiDPI scaling
-  const Common::Rect& imageRect = myDialog.instance().frameBuffer().imageRect();
+  const Common::Rect& imageRect = myDialog.frameBuffer().imageRect();
   const Common::Rect& dialogRect = myDialog.surface().dstRect();
   // Limit position to app size and adjust accordingly
   const Int32 xAbs = myTipPos.x + dialogRect.x() / myScale;
@@ -189,13 +198,28 @@ void ToolTip::show(string_view tip)
   surface()->setDstPos(x * myScale, y * myScale);
   surface()->frameRect(0, 0, width, height, kColor);
 
+  const bool render =
+    !mySelectiveRender
+    ||
+    !myTipShown
+    ||
+    (myCurrentRect != surface()->dstRect());
+
   myTipShown = true;
-  myDialog.instance().frameBuffer().setPendingRender();
+  if (render)
+    setPendingRender();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void ToolTip::setPendingRender()
+{
+  myDialog.frameBuffer().setPendingRender();
+  myCurrentRect = surface()->dstRect();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void ToolTip::render()
 {
   if(myTipShown)
-    surface()->render();
+    surface()->updateAndRender();
 }

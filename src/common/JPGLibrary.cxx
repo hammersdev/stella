@@ -21,7 +21,7 @@
 #include <limits>
 
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "FBSurface.hxx"
 #include "FSNode.hxx"
 #include "nanojpeg/nanojpeg_lib.hxx"
@@ -97,9 +97,9 @@ void JPGLibrary::loadImage(string_view filename, FBSurface& surface,
   uInt32  s_pitch{0};
   surface.basePtr(s_buf, s_pitch);
 
-  const FrameBuffer& fb = myOSystem.frameBuffer();
-  const size_t i_pitch = static_cast<size_t>(width) * bytesPerPixel;
-  const uInt8* i_buf   = pixels.data();
+  const MainFrameBuffer &fb = myOSystem.frameBuffer();
+  const size_t  i_pitch = static_cast<size_t>(width) * bytesPerPixel;
+  const uInt8*  i_buf   = pixels.data();
 
   // Get the shift values for each colour component
   const uInt32 rShift = std::countr_zero(fb.rMask());

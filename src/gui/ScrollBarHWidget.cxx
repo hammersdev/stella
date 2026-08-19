@@ -17,22 +17,21 @@
 
 #include "Dialog.hxx"
 #include "FBSurface.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarHWidget.hxx"
 #include "bspf.hxx"
 
 /*
  * TODO:
- * - Allow for a horizontal scrollbar, too?
  * - If there are less items than fit on one pages, no scrolling can be done
  *   and we thus should not highlight the arrows/slider.
  */
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ScrollBarWidget::ScrollBarWidget(GuiObject* boss, const GUI::Font& font,
+ScrollBarHWidget::ScrollBarHWidget(GuiObject* boss, const GUI::Font& font,
                                  int x, int y, int w, int h)
   : Widget(boss, font, x, y, w, h),
     CommandSender(boss),
-    _scrollBarWidth{scrollBarWidth(font)}
+    _scrollBarHeight{scrollBarHeight(font)}
 {
   _flags = Widget::FLAG_ENABLED | Widget::FLAG_TRACK_MOUSE | Widget::FLAG_CLEARBG;
   _bgcolor = kWidColor;
@@ -42,73 +41,79 @@ ScrollBarWidget::ScrollBarWidget(GuiObject* boss, const GUI::Font& font,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ScrollBarWidget::setArrows()
+void ScrollBarHWidget::setArrows()
 {
-  // Small up arrow
-  static constexpr std::array<uInt32, 6> up_arrow = {
-    0b0001000,
-    0b0011100,
-    0b0111110,
-    0b1110111,
-    0b1100011,
-    0b1000001,
+
+  // Small left arrow
+  static constexpr std::array<uInt32, 7> left_arrow = {
+    0b000111,
+    0b001110,
+    0b011100,
+    0b111000,
+    0b011100,
+    0b001110,
+    0b000111
   };
-  // Small down arrow
-  static constexpr std::array<uInt32, 6> down_arrow = {
-    0b1000001,
-    0b1100011,
-    0b1110111,
-    0b0111110,
-    0b0011100,
-    0b0001000
+  // Small right arrow
+  static constexpr std::array<uInt32, 7> right_arrow = {
+    0b111000,
+    0b011100,
+    0b001110,
+    0b000111,
+    0b001110,
+    0b011100,
+    0b111000
   };
 
-  // Large up arrow
-  static constexpr std::array<uInt32, 9> up_arrow_large = {
-    0b00000100000,
-    0b00001110000,
-    0b00011111000,
-    0b00111111100,
-    0b01111011110,
-    0b11110001111,
-    0b11100000111,
-    0b11000000011,
-    0b10000000001,
+  // Large left arrow
+  static constexpr std::array<uInt32, 11> left_arrow_large = {
+    0b000001111,
+    0b000011110,
+    0b000111100,
+    0b001111000,
+    0b011110000,
+    0b111100000,
+    0b011110000,
+    0b001111000,
+    0b000111100,
+    0b000011110,
+    0b000001111,
   };
-  // Large down arrow
-  static constexpr std::array<uInt32, 9> down_arrow_large = {
-    0b10000000001,
-    0b11000000011,
-    0b11100000111,
-    0b11110001111,
-    0b01111011110,
-    0b00111111100,
-    0b00011111000,
-    0b00001110000,
-    0b00000100000
+  // Large right arrow
+  static constexpr std::array<uInt32, 11> right_arrow_large = {
+    0b111100000,
+    0b011110000,
+    0b001111000,
+    0b000111100,
+    0b000011110,
+    0b000001111,
+    0b000011110,
+    0b000111100,
+    0b001111000,
+    0b011110000,
+    0b111100000
   };
-
 
   if(_font.getFontHeight() < 24)
   {
-    _upDownWidth = 7;
-    _upDownHeight = 6;
-    _upDownBoxHeight = 18;
-    _upImg = up_arrow.data();
-    _downImg = down_arrow.data();
+    _leftRightWidth = 6;
+    _leftRightHeight = 7;
+    _leftRightBoxWidth = 18;
+    _leftImg = left_arrow.data();
+    _rightImg = right_arrow.data();
   }
   else
   {
-    _upDownWidth = 11;
-    _upDownHeight = 9;
-    _upDownBoxHeight = 27;
-    _upImg = up_arrow_large.data();
-    _downImg = down_arrow_large.data();
+    _leftRightWidth = 9;
+    _leftRightHeight = 11;
+    _leftRightBoxWidth = 27;
+    _leftImg = left_arrow_large.data();
+    _rightImg = right_arrow_large.data();
   }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ScrollBarWidget::handleMouseDown(int x, int y, MouseButton b,
+void ScrollBarHWidget::handleMouseDown(int x, int y, MouseButton b,
                                       int clickCount)
 {
   // Ignore subsequent mouse clicks when the slider is being moved
@@ -121,30 +126,30 @@ void ScrollBarWidget::handleMouseDown(int x, int y, MouseButton b,
   if(_numEntries <= _entriesPerPage)
     return;
 
-  if(y <= _upDownBoxHeight)
+  if(x <= _leftRightBoxWidth)
   {
     // Up arrow
     _currentPos--;
-    _draggingPart = Part::UpArrow;
+    _draggingPart = Part::LeftArrow;
   }
-  else if(y >= _h - _upDownBoxHeight)
+  else if(x >= _w - _leftRightBoxWidth)
   {
     // Down arrow
     _currentPos++;
-    _draggingPart = Part::DownArrow;
+    _draggingPart = Part::RightArrow;
   }
-  else if(y < _sliderPos)
+  else if(x < _sliderPos)
   {
     _currentPos -= _entriesPerPage - 1;
   }
-  else if(y >= _sliderPos + _sliderHeight)
+  else if(x >= _sliderPos + _sliderWidth)
   {
     _currentPos += _entriesPerPage - 1;
   }
   else
   {
     _draggingPart = Part::Slider;
-    _sliderDeltaMouseDownPos = y - _sliderPos;
+    _sliderDeltaMouseDownPos = x - _sliderPos;
   }
 
   // Make sure that _currentPos is still inside the bounds
@@ -152,14 +157,14 @@ void ScrollBarWidget::handleMouseDown(int x, int y, MouseButton b,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ScrollBarWidget::handleMouseUp(int x, int y, MouseButton b,
+void ScrollBarHWidget::handleMouseUp(int x, int y, MouseButton b,
                                     int clickCount)
 {
   _draggingPart = Part::None;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ScrollBarWidget::handleMouseWheel(int x, int y, int direction)
+void ScrollBarHWidget::handleMouseWheel(int x, int y, int direction)
 {
   const int old_pos = _currentPos;
 
@@ -176,7 +181,7 @@ void ScrollBarWidget::handleMouseWheel(int x, int y, int direction)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ScrollBarWidget::handleMouseMoved(int x, int y)
+void ScrollBarHWidget::handleMouseMoved(int x, int y)
 {
   // Do nothing if there are less items than fit on one page
   if(_numEntries <= _entriesPerPage)
@@ -184,26 +189,26 @@ void ScrollBarWidget::handleMouseMoved(int x, int y)
 
   if(_draggingPart == Part::Slider)
   {
-    _sliderPos = BSPF::clamp(y - _sliderDeltaMouseDownPos,
-        _upDownBoxHeight, _h - _upDownBoxHeight - _sliderHeight);
+    _sliderPos = BSPF::clamp(x - _sliderDeltaMouseDownPos,
+        _leftRightBoxWidth, _w - _leftRightBoxWidth - _sliderWidth);
 
     const int old_pos = _currentPos;
-    _currentPos = (_sliderPos - _upDownBoxHeight) * (_numEntries - _entriesPerPage) /
-                  (_h - 2 * _upDownBoxHeight - _sliderHeight);
+    _currentPos = (_sliderPos - _leftRightBoxWidth) * (_numEntries - _entriesPerPage) /
+                  (_w - 2 * _leftRightBoxWidth - _sliderWidth);
     checkBounds(old_pos);
   }
   else
   {
     const Part old_part = _part;
 
-    if(y <= _upDownBoxHeight)   // Up arrow
-      _part = Part::UpArrow;
-    else if(y >= _h - _upDownBoxHeight)	// Down arrow
-      _part = Part::DownArrow;
-    else if(y < _sliderPos)
-      _part = Part::PageUp;
-    else if(y >= _sliderPos + _sliderHeight)
-      _part = Part::PageDown;
+    if(x <= _leftRightBoxWidth)   // Up arrow
+      _part = Part::LeftArrow;
+    else if(x >= _w - _leftRightBoxWidth)	// Down arrow
+      _part = Part::RightArrow;
+    else if(x < _sliderPos)
+      _part = Part::PageLeft;
+    else if(x >= _sliderPos + _sliderWidth)
+      _part = Part::PageRight;
     else
       _part = Part::Slider;
 
@@ -213,14 +218,14 @@ void ScrollBarWidget::handleMouseMoved(int x, int y)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool ScrollBarWidget::handleMouseClicks(int x, int y, MouseButton b)
+bool ScrollBarHWidget::handleMouseClicks(int x, int y, MouseButton b)
 {
   // Let continuous mouse clicks come through, as the scroll buttons need them
   return true;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ScrollBarWidget::checkBounds(int old_pos)
+void ScrollBarHWidget::checkBounds(int old_pos)
 {
   if(_numEntries <= _entriesPerPage || _currentPos < 0)
     _currentPos = 0;
@@ -236,42 +241,42 @@ void ScrollBarWidget::checkBounds(int old_pos)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ScrollBarWidget::handleMouseLeft()
+void ScrollBarHWidget::handleMouseLeft()
 {
   _part = Part::None;
   Widget::handleMouseLeft();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ScrollBarWidget::recalc()
+void ScrollBarHWidget::recalc()
 {
-  const int oldSliderHeight = _sliderHeight,
+  const int oldSliderWidth = _sliderWidth,
             oldSliderPos = _sliderPos;
 
   if(_numEntries > _entriesPerPage)
   {
-    _sliderHeight = std::max(_upDownBoxHeight,
-        (_h - 2 * _upDownBoxHeight) * _entriesPerPage / _numEntries);
+    _sliderWidth = std::max(_leftRightBoxWidth,
+        (_w - 2 * _leftRightBoxWidth) * _entriesPerPage / _numEntries);
 
     _sliderPos = std::max(0,
-      _upDownBoxHeight + (_h - 2 * _upDownBoxHeight - _sliderHeight) *
+      _leftRightBoxWidth + (_w - 2 * _leftRightBoxWidth - _sliderWidth) *
       _currentPos / (_numEntries - _entriesPerPage));
   }
   else
   {
-    _sliderHeight = _h - 2 * _upDownBoxHeight;
-    _sliderPos = _upDownBoxHeight;
+    _sliderWidth = _h - 2 * _leftRightBoxWidth;
+    _sliderPos = _leftRightBoxWidth;
   }
 
-  if(oldSliderHeight != _sliderHeight || oldSliderPos != _sliderPos)
+  if(oldSliderWidth != _sliderWidth || oldSliderPos != _sliderPos)
     setDirty(); // only set dirty when something changed
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ScrollBarWidget::drawWidget(bool hilite)
+void ScrollBarHWidget::drawWidget(bool hilite)
 {
   FBSurface& s = _boss->dialog().surface();
-  const int bottomY = _y + _h;
+  const int rightX = _x + _w;
   const bool isSinglePage = (_numEntries <= _entriesPerPage);
 
   s.frameRect(_x, _y, _w, _h, hilite ? kWidColorHi : kColor);
@@ -279,16 +284,27 @@ void ScrollBarWidget::drawWidget(bool hilite)
   if(_draggingPart != Part::None)
     _part = _draggingPart;
 
-  // Up arrow
-  if(hilite && _part == Part::UpArrow)
-    s.fillRect(_x + 1, _y + 1, _w - 2, _upDownBoxHeight - 2, kScrollColor);
+  // Left arrow
+  if(hilite && _part == Part::LeftArrow)
+    s.fillRect(_x + 1, _y + 1, _leftRightBoxWidth - 2, _h - 2, kScrollColor);
+
+/*
   s.drawBitmap(_upImg, _x + (_scrollBarWidth - _upDownWidth) / 2,
                _y + (_upDownBoxHeight - _upDownHeight) / 2,
                isSinglePage ? kColor
                             : (hilite && _part == Part::UpArrow) ? kWidColor : kTextColor,
                _upDownWidth, _upDownHeight);
+*/
 
-  // Down arrow
+  s.drawBitmap(_leftImg, _x + (_leftRightBoxWidth - _leftRightWidth) / 2,
+               _y + (_scrollBarHeight - _leftRightHeight) / 2 ,
+               isSinglePage ? kColor
+                            : (hilite && _part == Part::LeftArrow) ? kWidColor : kTextColor,
+               _leftRightWidth, _leftRightHeight);
+
+
+#if 0
+
   if(hilite && _part == Part::DownArrow)
     s.fillRect(_x + 1, bottomY - _upDownBoxHeight + 1, _w - 2, _upDownBoxHeight - 2, kScrollColor);
   s.drawBitmap(_downImg, _x + (_scrollBarWidth - _upDownWidth) / 2,
@@ -297,16 +313,34 @@ void ScrollBarWidget::drawWidget(bool hilite)
                             : (hilite && _part == Part::DownArrow) ? kWidColor : kTextColor,
                _upDownWidth, _upDownHeight);
 
+#endif
+
+  // Right arrow
+  if(hilite && _part == Part::RightArrow)
+    s.fillRect(rightX - _leftRightBoxWidth + 1, _y + 1, _leftRightBoxWidth - 2, _h - 2, kScrollColor);
+  s.drawBitmap(_rightImg, rightX - _leftRightBoxWidth + (_leftRightBoxWidth - _leftRightWidth) / 2,
+               _y + (_scrollBarHeight - _leftRightHeight) / 2,
+               isSinglePage ? kColor
+                            : (hilite && _part == Part::RightArrow) ? kWidColor : kTextColor,
+               _leftRightWidth, _leftRightHeight);
+
+
+
+
   // Slider
   if(!isSinglePage)
   {
     // align slider to scroll intervals
     const int alignedPos = std::max(0,
-      _upDownBoxHeight + (_h - 2 * _upDownBoxHeight - _sliderHeight) *
+      _leftRightBoxWidth + (_w - 2 * _leftRightBoxWidth - _sliderWidth) *
       _currentPos / (_numEntries - _entriesPerPage));
-
+/*
     s.fillRect(_x + 1, _y + alignedPos - 1, _w - 2, _sliderHeight + 2,
               (hilite && _part == Part::Slider) ? kScrollColorHi : kScrollColor);
+*/
+    s.fillRect(_x + alignedPos - 1, _y + 1, _sliderWidth + 2, _h - 2, 
+              (hilite && _part == Part::Slider) ? kScrollColorHi : kScrollColor);
   }
+
   clearDirty();
 }

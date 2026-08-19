@@ -22,7 +22,7 @@
 #include "Widget.hxx"
 #include "Font.hxx"
 #include "StringListWidget.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "CartDebugWidget.hxx"
 #include "CartRamWidget.hxx"
 
@@ -60,7 +60,7 @@ CartRamWidget::CartRamWidget(
   // Add Description
   const string& desc = cartDebug.internalRamDescription();
   constexpr uInt16 maxlines = 6;
-  const StringParser bs(desc, (fwidth - ScrollBarWidget::scrollBarWidth(_font)) / myFontWidth);
+  const StringParser bs(desc, (fwidth - ScrollBarVWidget::scrollBarWidth(_font)) / myFontWidth);
   const StringList& sl = bs.stringList();
 
   bool useScrollbar = false;

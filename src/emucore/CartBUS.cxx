@@ -791,8 +791,9 @@ bool CartridgeBUS::bank(uInt16 bank, uInt16)
   for(uInt16 addr = 0x1040; addr < 0x2000; addr += System::PAGE_SIZE)
   {
     access.romAccessBase = &myRomAccessBase[myBankOffset + (addr & 0x0FFF)];
-    access.romPeekCounter = &myRomAccessCounter[myBankOffset + (addr & 0x0FFF)];
-    access.romPokeCounter = &myRomAccessCounter[myBankOffset + (addr & 0x0FFF) + myAccessSize];
+    access.romCodePeekCounter = &myRomCodePeekCounter[myBankOffset + (addr & 0x0FFF)];
+    access.romDataPeekCounter = &myRomDataPeekCounter[myBankOffset + (addr & 0x0FFF)];
+    access.romPokeCounter = &myRomPokeCounter[myBankOffset + (addr & 0x0FFF)];
     mySystem->setPageAccess(addr, access);
   }
   return myBankChanged = true;

@@ -108,12 +108,12 @@ class MediaFactory
     #endif
     }
 
-    static unique_ptr<FBBackend> createVideoBackend(OSystem& osystem)
+    static unique_ptr<FBBackend> createVideoBackend(OSystem& osystem, FrameBuffer& framebuffer)
     {
     #ifdef __LIB_RETRO__
-      return std::make_unique<FBBackendLIBRETRO>(osystem);
-    #elifdef SDL_SUPPORT
-      return std::make_unique<FBBackendSDL>(osystem);
+      return std::make_unique<FBBackendLIBRETRO>(osystem, framebuffer);
+    #elif defined(SDL_SUPPORT)
+      return std::make_unique<FBBackendSDL>(osystem, framebuffer);
     #else
       #error Unsupported platform for FrameBuffer!
     #endif

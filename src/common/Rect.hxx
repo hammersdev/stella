@@ -68,6 +68,7 @@ struct Point
 
   auto operator<=>(const Point&) const = default;
   bool operator==(const Point&) const = default;
+  Point operator+(const Point& p) { return Point(x + p.x, y + p.y); }
 
   [[nodiscard]] string toString() const { return toStringPair(x, y); }
 

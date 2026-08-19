@@ -313,6 +313,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(Event::Type, {
   {Event::HighScoresMenuMode, "HighScoresMenuMode"},
   {Event::PlusRomsSetupMode, "PlusRomsSetupMode"},
   {Event::DebuggerMode, "DebuggerMode"},
+  {Event::OpenMemView, "OpenMemView"},
   {Event::ExitMode, "ExitMode"},
   {Event::TakeSnapshot, "TakeSnapshot"},
   {Event::ToggleContSnapshots, "ToggleContSnapshots"},

@@ -256,5 +256,5 @@ void Bezel::apply()
 void Bezel::render()
 {
   if(mySurface)
-    mySurface->render();
+    mySurface->updateAndRender();
 }

@@ -60,7 +60,7 @@ class Dialog;
 class OverlayMenu : public DialogContainer
 {
   public:
-    explicit OverlayMenu(OSystem& osystem);
+    explicit OverlayMenu(OSystem& osystem, FrameBuffer& framebuffer);
     ~OverlayMenu() override;
 
     // Take ownership of a transient dialog (deletes any previously held one)

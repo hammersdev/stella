@@ -16,7 +16,7 @@
 //============================================================================
 
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "Version.hxx"
 
 #include "WhatsNewDialog.hxx"

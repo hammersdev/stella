@@ -298,6 +298,13 @@ void DebuggerDialog::handleCommand(CommandSender* sender, int cmd,
       myRom->invalidate(myRomTab->getActiveTab() == 0);
       break;
 
+#if MEMVIEW_SUPPORT
+    case RomWidget::kMemViewButton:
+      // Open Memory View
+      instance().openMemView();
+      break;
+#endif
+
     default:
       Dialog::handleCommand(sender, cmd, data, id);
   }

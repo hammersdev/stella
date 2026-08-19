@@ -546,16 +546,16 @@ void TIASurface::render(bool shade)
   }
 
   // Draw TIA image
-  myTiaSurface->render();
+  myTiaSurface->updateAndRender();
 
   // Draw overlaying scanlines
   if(myScanlinesEnabled)
-    mySLineSurface->render();
+    mySLineSurface->updateAndRender();
 
   if(shade)
   {
     myShadeSurface->setDstRect(myTiaSurface->dstRect());
-    myShadeSurface->render();
+    myShadeSurface->updateAndRender();
   }
 
   if(mySaveSnapFlag)
@@ -615,9 +615,9 @@ void TIASurface::renderForSnapshot()
 
   if(myPhosphorHandler.phosphorEnabled())
   {
-    myTiaSurface->render();
+    myTiaSurface->updateAndRender();
     if(myScanlinesEnabled)
-      mySLineSurface->render();
+      mySLineSurface->updateAndRender();
   }
 }
 

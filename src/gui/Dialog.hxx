@@ -21,6 +21,7 @@
 #ifndef DIALOG_HXX
 #define DIALOG_HXX
 
+class FrameBuffer;
 class FBSurface;
 class OSystem;
 class DialogContainer;
@@ -150,6 +151,9 @@ class Dialog : public GuiObject
     int vGap() const { return fontHeight() / 4; }
     int indent() const { return fontWidth() * 2; }
 
+    /** Returnes the used FrameBuffer. */
+    FrameBuffer &frameBuffer() const;
+
   protected:
     enum {
       kHelpCmd = 'DlHp'
@@ -213,6 +217,10 @@ class Dialog : public GuiObject
 
     virtual bool repeatEnabled() { return true; }
 
+  #if MEMVIEW_SUPPORT
+    void skipBaseUpdate() { _skipBaseUpdate = true; }
+  #endif
+
   private:
     void buildCurrentFocusList(int tabID = -1);
     bool handleNavEvent(Event::Type e, bool repeated = false);
@@ -241,6 +249,9 @@ class Dialog : public GuiObject
     string  _helpURL;
     bool    _debuggerHelp{false};
     ButtonWidget* _helpWidget{nullptr};
+  #if MEMVIEW_SUPPORT
+    bool    _skipBaseUpdate{false};
+  #endif
 
   private:
     struct Focus {

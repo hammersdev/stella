@@ -115,7 +115,7 @@ class Event
 
       Quit, ReloadConsole, Fry,
       TogglePauseMode, StartPauseMode,
-      OptionsMenuMode, CmdMenuMode, DebuggerMode, PlusRomsSetupMode, ExitMode,
+      OptionsMenuMode, CmdMenuMode, DebuggerMode, OpenMemView, PlusRomsSetupMode, ExitMode,
       TakeSnapshot, ToggleContSnapshots, ToggleContSnapshotsFrame,
       ToggleTurbo,
 

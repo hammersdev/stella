@@ -42,6 +42,11 @@ class ColorWidget : public Widget, public CommandSender
     void setColor(ColorId color);
     ColorId getColor() const { return _color;  }
 
+  #ifdef MEMVIEW_SUPPORT
+    void setColorRgb(uInt32 color);
+    uInt32 getColorRgb() const;
+  #endif
+
     void setCrossed(bool enable);
 
     void handleMouseEntered() override { }
@@ -52,10 +57,16 @@ class ColorWidget : public Widget, public CommandSender
 
   protected:
     ColorId _color{kNone};
+  #ifdef MEMVIEW_SUPPORT
+    uInt32 _colorRgb{0x000000};
+  #endif
     bool _framed{true};
     int	_cmd{0};
 
     bool _crossGrid{false};
+  #ifdef MEMVIEW_SUPPORT
+    bool _rgbMode{false};
+  #endif
 
   private:
     // Following constructors and assignment operators not supported

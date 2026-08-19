@@ -15,8 +15,8 @@
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#ifndef SCROLL_BAR_WIDGET_HXX
-#define SCROLL_BAR_WIDGET_HXX
+#ifndef SCROLL_BAR_V_WIDGET_HXX
+#define SCROLL_BAR_V_WIDGET_HXX
 
 class GuiObject;
 
@@ -24,12 +24,12 @@ class GuiObject;
 #include "Command.hxx"
 #include "bspf.hxx"
 
-class ScrollBarWidget : public Widget, public CommandSender
+class ScrollBarVWidget : public Widget, public CommandSender
 {
   public:
-    ScrollBarWidget(GuiObject* boss, const GUI::Font& font,
+    ScrollBarVWidget(GuiObject* boss, const GUI::Font& font,
                     int x, int y, int w, int h);
-    ~ScrollBarWidget() override = default;
+    ~ScrollBarVWidget() override = default;
 
     void recalc();
     void handleMouseDown(int x, int y, MouseButton b, int clickCount) override;
@@ -77,11 +77,11 @@ class ScrollBarWidget : public Widget, public CommandSender
 
   private:
     // Following constructors and assignment operators not supported
-    ScrollBarWidget() = delete;
-    ScrollBarWidget(const ScrollBarWidget&) = delete;
-    ScrollBarWidget(ScrollBarWidget&&) = delete;
-    ScrollBarWidget& operator=(const ScrollBarWidget&) = delete;
-    ScrollBarWidget& operator=(ScrollBarWidget&&) = delete;
+    ScrollBarVWidget() = delete;
+    ScrollBarVWidget(const ScrollBarVWidget&) = delete;
+    ScrollBarVWidget(ScrollBarVWidget&&) = delete;
+    ScrollBarVWidget& operator=(const ScrollBarVWidget&) = delete;
+    ScrollBarVWidget& operator=(ScrollBarVWidget&&) = delete;
 };
 
-#endif  // SCROLL_BAR_WIDGET_HXX
+#endif  // SCROLL_BAR_V_WIDGET_HXX

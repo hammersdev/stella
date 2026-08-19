@@ -76,7 +76,7 @@ class Debugger : public DialogContainer
     /**
       Create a new debugger parent object
     */
-    Debugger(OSystem& osystem, Console& console);
+    Debugger(OSystem& osystem, FrameBuffer& framebuffer, Console& console);
     ~Debugger() override;
 
   public:
@@ -283,6 +283,7 @@ class Debugger : public DialogContainer
     */
     void lockSystem();
     void unlockSystem();
+    bool systemIsLocked() { return mySystemIsLocked; }
 
     /**
       Answers whether the debugger can be exited.  Currently this only
@@ -380,6 +381,8 @@ class Debugger : public DialogContainer
     static std::array<PseudoRegister, 18> ourPseudoRegisters;
 
     bool myFirstLog{true};
+
+    bool mySystemIsLocked{false};
 
   private:
     // rewind/unwind n states

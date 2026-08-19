@@ -330,12 +330,12 @@ bool FBMessageHandler::draw()
     }
 
     myMsg.dirty = false;
-    myMsg.surface->render();
+    myMsg.surface->updateAndRender();
     return true;
   }
 
   myMsg.counter--;
-  myMsg.surface->render();
+  myMsg.surface->updateAndRender();
 #endif  // GUI_SUPPORT
 
   return false;
@@ -398,6 +398,6 @@ void FBMessageHandler::drawStats(float framesPerSecond)
                                 myFB.imageRect().y() + myFB.imageRect().h() / 64);
   myStatsMsg.surface->setDstSize(myStatsMsg.w * myFB.hidpiScaleFactor(),
                                  myStatsMsg.h * myFB.hidpiScaleFactor());
-  myStatsMsg.surface->render();
+  myStatsMsg.surface->updateAndRender();
 #endif  // GUI_SUPPORT
 }

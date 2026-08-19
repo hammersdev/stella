@@ -37,7 +37,7 @@ class Launcher : public DialogContainer
     /**
       Create a new menu stack
     */
-    explicit Launcher(OSystem& osystem);
+    explicit Launcher(OSystem& osystem, FrameBuffer& framebuffer);
     ~Launcher() override;
 
     /**

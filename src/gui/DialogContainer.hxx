@@ -21,6 +21,7 @@
 class Dialog;
 class OSystem;
 class EventHandler;
+class FrameBuffer;
 
 #include "EventHandlerConstants.hxx"
 #include "Event.hxx"
@@ -47,7 +48,7 @@ class DialogContainer
     /**
       Create a new DialogContainer stack
     */
-    explicit DialogContainer(OSystem& osystem);
+    explicit DialogContainer(OSystem& osystem, FrameBuffer &framebuffer);
     virtual ~DialogContainer() = default;
 
   public:
@@ -193,8 +194,14 @@ class DialogContainer
     */
     void removeDialog();
 
+    /**
+      Returns the associated FrameBuffer.
+    */
+    FrameBuffer& frameBuffer() const { return myFrameBuffer; }
+
   protected:
     OSystem& myOSystem;
+    FrameBuffer& myFrameBuffer;
     Common::FixedStack<Dialog*> myDialogStack;
 
   private:

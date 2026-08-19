@@ -58,11 +58,17 @@ class FBSurfaceSDL : public FBSurface
     void setVisible(bool visible) override;
 
     void translateCoords(Int32& x, Int32& y) const override;
+
+    bool updateAndRender() override;
+    bool update() override;
     bool render() override;
+
     void invalidate() override;
     void invalidateRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h) override;
 
     void reload() override;
+    void updateStaticData() override;
+
     void resize(uInt32 width, uInt32 height) override;
 
     void enableBlend(bool enable) override;

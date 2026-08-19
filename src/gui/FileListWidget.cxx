@@ -16,7 +16,7 @@
 //============================================================================
 
 #include "bspf.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "TimerManager.hxx"
 #include "ProgressDialog.hxx"
 #include "FBSurface.hxx"

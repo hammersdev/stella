@@ -18,7 +18,7 @@
 #ifndef ROM_LIST_WIDGET_HXX
 #define ROM_LIST_WIDGET_HXX
 
-class ScrollBarWidget;
+class ScrollBarVWidget;
 class CheckListWidget;
 class RomListSettings;
 class DisasmColorsDialog;
@@ -108,7 +108,7 @@ class RomListWidget : public EditableWidget
 
     // Cached rendering colours, indexed by DisasmSegColor (0..14).
     CartDebug::DisasmColorMap myDisasmColorMap{};
-    ScrollBarWidget* myScrollBar{nullptr};
+    ScrollBarVWidget* myScrollBar{nullptr};
 
     int  _labelWidth{0};
     int  _bytesWidth{0};

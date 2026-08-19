@@ -17,12 +17,12 @@
 
 #include "OSystem.hxx"
 #include "EventHandler.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "FBSurface.hxx"
 #include "Font.hxx"
 #include "Dialog.hxx"
 #include "DialogContainer.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "PopUpWidget.hxx"
 #include "ContextMenu.hxx"
 
@@ -89,7 +89,8 @@ bool ContextMenu::isEnabled(int index) const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void ContextMenu::show(uInt32 x, uInt32 y, const Common::Rect& bossRect, int item)
 {
-  const uInt32 scale = instance().frameBuffer().hidpiScaleFactor();
+  const uInt32 scale = frameBuffer().hidpiScaleFactor();
+
   _xorig = bossRect.x() + x * scale;
   _yorig = bossRect.y() + y * scale;
 
@@ -97,7 +98,7 @@ void ContextMenu::show(uInt32 x, uInt32 y, const Common::Rect& bossRect, int ite
   if(!bossRect.contains(_xorig, _yorig))
     return;
 
-  recalc(instance().frameBuffer().imageRect());
+  recalc(frameBuffer().imageRect());
   open();
   setSelectedIndex(item);
   moveToSelected();
@@ -111,7 +112,7 @@ void ContextMenu::setPosition()
 
   // Now make sure that the entire menu can fit inside the screen bounds
   // If not, we reset its position
-  if(!instance().frameBuffer().screenRect().adjustToFit(
+  if(!frameBuffer().screenRect().adjustToFit(
       _xorig, _yorig, surface().dstRect()))
     surface().setDstPos(_xorig, _yorig);
 }
@@ -297,9 +298,9 @@ void ContextMenu::handleMouseWheel(int x, int y, int direction)
   if(_showScroll)
   {
     if(direction < 0)
-      scrollUp(ScrollBarWidget::getWheelLines());
+      scrollUp(ScrollBarVWidget::getWheelLines());
     else if(direction > 0)
-      scrollDown(ScrollBarWidget::getWheelLines());
+      scrollDown(ScrollBarVWidget::getWheelLines());
   }
 }
 

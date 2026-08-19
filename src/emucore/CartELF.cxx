@@ -255,8 +255,9 @@ void CartridgeELF::install(System& system)
 
   for (uInt16 addr = 0; addr < 0x1000; addr += System::PAGE_SIZE) {
     System::PageAccess access(this, System::PageAccessType::READ);
-    access.romPeekCounter = &myRomAccessCounter[addr];
-    access.romPokeCounter = &myRomAccessCounter[addr];
+    access.romCodePeekCounter = &myRomCodePeekCounter[addr];
+    access.romDataPeekCounter = &myRomDataPeekCounter[addr];
+    access.romPokeCounter = &myRomPokeCounter[addr];
 
     mySystem->setPageAccess(0x1000 + addr, access);
   }

@@ -26,7 +26,7 @@
 #include "DataGridWidget.hxx"
 #include "DataGridOpsWidget.hxx"
 #include "RamWidget.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "StellaKeys.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -65,8 +65,8 @@ DataGridWidget::DataGridWidget(GuiObject* boss, const GUI::Font& font,
   // Add a scrollbar if necessary
   if(useScrollbar)
   {
-    _scrollBar = new ScrollBarWidget(boss, font, _x + _w, _y,
-                                     ScrollBarWidget::scrollBarWidth(_font), _h);
+    _scrollBar = new ScrollBarVWidget(boss, font, _x + _w, _y,
+                                     ScrollBarVWidget::scrollBarWidth(_font), _h);
     _scrollBar->setTarget(this);
     _scrollBar->_numEntries = 1;
     _scrollBar->_currentPos = 0;
@@ -693,7 +693,7 @@ Common::Rect DataGridWidget::getEditRect() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 int DataGridWidget::getWidth() const
 {
-  return _w + (_scrollBar ? ScrollBarWidget::scrollBarWidth(_font) : 0);
+  return _w + (_scrollBar ? ScrollBarVWidget::scrollBarWidth(_font) : 0);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

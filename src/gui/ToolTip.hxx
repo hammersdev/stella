@@ -69,6 +69,13 @@ class ToolTip
     */
     void update(const Widget* widget, const Common::Point& pos);
 
+    /**
+      Ask the tooltip to refresh the content for the given widget even
+      if the mouse didn't move. Does nothing if the widget is not the
+      one the tooltip is currently shown for.
+    */
+    void refresh(const Widget* widget);
+
     /*
       Render the tooltip
     */
@@ -81,6 +88,8 @@ class ToolTip
     const shared_ptr<FBSurface>& surface();
 
     void show(string_view tip);
+
+    void setPendingRender();
 
   private:
     static constexpr uInt32 DELAY_TIME = 45;   // display delay [frames]
@@ -103,6 +112,9 @@ class ToolTip
     bool myTipShown{false};
     uInt32 myScale{1};
     shared_ptr<FBSurface> mySurface;
+    Common::Rect myCurrentRect;
+    // When activated, pendingRender will only be set when really needed:
+    bool mySelectiveRender{false};
 
   private:
     // Following constructors and assignment operators not supported

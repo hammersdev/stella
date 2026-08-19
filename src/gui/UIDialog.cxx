@@ -20,11 +20,11 @@
 #include "BrowserDialog.hxx"
 #include "Dialog.hxx"
 #include "OSystem.hxx"
-#include "FrameBuffer.hxx"
+#include "MainFrameBuffer.hxx"
 #include "FBSurface.hxx"
 #include "FileListWidget.hxx"
 #include "PopUpWidget.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "EditTextWidget.hxx"
 #include "Settings.hxx"
 #include "TabWidget.hxx"
@@ -520,7 +520,7 @@ void UIDialog::saveConfig()
 
   // Mouse wheel lines
   settings.setValue("mwheel", myWheelLinesSlider->getValue());
-  ScrollBarWidget::setWheelLines(myWheelLinesSlider->getValue());
+  ScrollBarVWidget::setWheelLines(myWheelLinesSlider->getValue());
 
   // Mouse double click
   settings.setValue("mdouble", myDoubleClickSlider->getValue());

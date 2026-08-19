@@ -38,7 +38,9 @@ class QisBlitter : public Blitter {
       uInt8 blendLevel, SDL_Surface* staticData
     ) override;
 
-    void blit(SDL_Surface& surface) override;
+    void update(SDL_Surface& surface) override;
+    void render() override;
+    void updateStaticData() override;
 
   private:
 

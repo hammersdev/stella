@@ -17,7 +17,7 @@
 
 #include "ContextMenu.hxx"
 #include "UndoHandler.hxx"
-#include "ScrollBarWidget.hxx"
+#include "ScrollBarVWidget.hxx"
 #include "FBSurface.hxx"
 #include "Font.hxx"
 #include "StellaKeys.hxx"
@@ -36,7 +36,7 @@ static constexpr string_view PROMPT = "> ";
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 PromptWidget::PromptWidget(GuiObject* boss, const GUI::Font& font,
                            int x, int y, int w, int h)
-  : Widget(boss, font, x, y, w - ScrollBarWidget::scrollBarWidth(font), h),
+  : Widget(boss, font, x, y, w - ScrollBarVWidget::scrollBarWidth(font), h),
     CommandSender(boss),
     _kConsoleCharWidth{font.getMaxCharWidth()},
     _kConsoleCharHeight{font.getFontHeight()},
@@ -50,15 +50,15 @@ PromptWidget::PromptWidget(GuiObject* boss, const GUI::Font& font,
   _bgcolorlo = kDlgColor;
 
   // Calculate depending values
-  _lineWidth = (_w - ScrollBarWidget::scrollBarWidth(_font) - 2) / _kConsoleCharWidth;
+  _lineWidth = (_w - ScrollBarVWidget::scrollBarWidth(_font) - 2) / _kConsoleCharWidth;
   _linesPerPage = (_h - 2) / _kConsoleLineHeight;
   _linesInBuffer = kBufferSize / _lineWidth;
 
   // Add scrollbar
   // We want to initialize here, not in the member list
   // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
-  _scrollBar = new ScrollBarWidget(boss, font, _x + _w, _y,
-                                   ScrollBarWidget::scrollBarWidth(_font), _h);
+  _scrollBar = new ScrollBarVWidget(boss, font, _x + _w, _y,
+                                   ScrollBarVWidget::scrollBarWidth(_font), _h);
   _scrollBar->setTarget(this);
 
   myUndoHandler = std::make_unique<UndoHandler>();
@@ -643,7 +643,7 @@ void PromptWidget::loadConfig()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 int PromptWidget::getWidth() const
 {
-  return _w + ScrollBarWidget::scrollBarWidth(_font);
+  return _w + ScrollBarVWidget::scrollBarWidth(_font);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

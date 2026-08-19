@@ -2563,8 +2563,9 @@ void TIA::setAccessFlags(uInt16 address, Device::AccessFlags flags)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void TIA::increaseAccessCounter(uInt16 address, bool isWrite)
+void TIA::increaseAccessCounter(uInt16 address, Device::AccessFlags flag)
 {
+  const bool isWrite = (flag == Device::WRITE);
   if(isWrite)
   {
     // the first two write accesses are assumed as initialization

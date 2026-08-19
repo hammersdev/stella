@@ -848,6 +848,21 @@ void ButtonWidget::drawWidget(bool hilite)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+int CheckboxWidget::neededWidth(const GUI::Font& font, const string_view label, const int& boxSize)
+{
+  if(label.empty())
+    return boxSize;
+  else
+    return font.getStringWidth(label) + boxSize + font.getMaxCharWidth() * 0.75;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+int CheckboxWidget::neededHeight(const GUI::Font& font, const int& boxSize)
+{
+  return font.getFontHeight() < boxSize ? boxSize : font.getFontHeight();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 CheckboxWidget::CheckboxWidget(GuiObject* boss, const GUI::Font& font,
                                int x, int y, string_view label,
                                int cmd)
@@ -861,11 +876,8 @@ CheckboxWidget::CheckboxWidget(GuiObject* boss, const GUI::Font& font,
 
   _editable = true;
 
-  if(label.empty())
-    _w = _boxSize;
-  else
-    _w = font.getStringWidth(label) + _boxSize + font.getMaxCharWidth() * 0.75;
-  _h = font.getFontHeight() < _boxSize ? _boxSize : font.getFontHeight();
+  _w = neededWidth(font, label, _boxSize);
+  _h = neededHeight(font, _boxSize);
 
   // Depending on font size, either the font or box will need to be
   // centered vertically
