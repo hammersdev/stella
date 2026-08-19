@@ -990,14 +990,18 @@ void DebuggerParser::executeBreak()
 {
   const uInt32 romBankCount = debugger.cartDebug().romBankCount();
   const uInt16 addr = (argCount == 0) ? debugger.cpuDebug().pc() : args[0];
-  uInt8 bank = 0;
+  // "all banks" is only ever requested explicitly (as bank 'ff'); an
+  // auto-detected current bank of 255 is a real bank, never a wildcard
+  bool allBanks = false;
+  uInt16 bank = 0;
 
   if(argCount < 2)
     bank = debugger.cartDebug().getBank(addr);
   else
   {
     bank = args[1];
-    if(bank >= romBankCount && bank != 0xff)
+    allBanks = (bank == 0xff);
+    if(bank >= romBankCount && !allBanks)
     {
       commandResult << red("invalid bank");
       return;
@@ -1005,7 +1009,7 @@ void DebuggerParser::executeBreak()
   }
 
   // Helper to format a single breakpoint result line
-  const auto formatBreak = [&](int b)
+  const auto formatBreak = [&](uInt16 b)
   {
     const bool set = debugger.toggleBreakPoint(addr, b);
     std::format_to(std::ostreambuf_iterator(commandResult),
@@ -1016,7 +1020,7 @@ void DebuggerParser::executeBreak()
                      " in bank #{}", b);
   };
 
-  if(bank != 0xff)
+  if(!allBanks)
   {
     formatBreak(bank);
   }
@@ -1581,7 +1585,7 @@ void DebuggerParser::executeHelp()
   if(argCount == 0)  // normal help, show all commands
   {
     static const size_t clen = []() {
-      size_t len = 0;
+      auto len = 0UZ;
       for(const auto& c: commands)
         len = std::max(len, c.cmdString.length());
       return len;
@@ -1775,7 +1779,7 @@ void DebuggerParser::executeListBreaks()
         if(count % 6)
           buf += ", ";
         buf += debugger.cartDebug().getLabel(bp.addr, true, 4);
-        if(bp.bank != 255)
+        if(bp.bank != BreakpointMap::ANY_BANK)
           std::format_to(std::back_inserter(buf), " #{}", static_cast<int>(bp.bank));
         else
           buf += " *";
@@ -1894,9 +1898,9 @@ void DebuggerParser::executeLoadState()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DebuggerParser::executeLogBreaks()
 {
-  const bool enable = !debugger.mySystem.m6502().getLogBreaks();
+  const bool enable = !debugger.mySystem->m6502().getLogBreaks();
 
-  debugger.mySystem.m6502().setLogBreaks(enable);
+  debugger.mySystem->m6502().setLogBreaks(enable);
   settings.setValue("dbg.logbreaks", enable);
   commandResult << "logBreaks " << (enable ? "enabled" : "disabled");
 }
@@ -1913,9 +1917,9 @@ void DebuggerParser::executeLogExec()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DebuggerParser::executeLogTrace()
 {
-  const bool enable = !debugger.mySystem.m6502().getLogTrace();
+  const bool enable = !debugger.mySystem->m6502().getLogTrace();
 
-  debugger.mySystem.m6502().setLogTrace(enable);
+  debugger.mySystem->m6502().setLogTrace(enable);
   settings.setValue("dbg.logtrace", enable);
   commandResult << "logTrace " << (enable ? "enabled" : "disabled");
 }
@@ -2077,7 +2081,7 @@ void DebuggerParser::executeRunTo()
   progress.setRange(0, static_cast<int>(max_iterations), 5);
   progress.open();
 
-  size_t count = 0;
+  auto count = 0UZ;
   bool done = false;
   do {
     debugger.step(false);

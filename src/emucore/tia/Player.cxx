@@ -102,11 +102,13 @@ void Player::nusiz(uInt8 value, bool hblank)
 
   // Changing NUSIZ can trigger a decode in the same cycle
   // (https://github.com/stella-emu/stella/issues/1012)
-  if (!myIsRendering && myDecodes[(myCounter + TIAConstants::H_PIXEL - 1) % TIAConstants::H_PIXEL]) {
+  const uInt8 prevCounter =
+    (myCounter + TIAConstants::H_PIXEL - 1) % TIAConstants::H_PIXEL;
+  if (!myIsRendering && myDecodes[prevCounter]) {
     myIsRendering = true;
     mySampleCounter = 0;
     myRenderCounter = renderCounterOffset;
-    myCopy = myDecodes[myCounter - 1];
+    myCopy = myDecodes[prevCounter];
   }
 
   if (
@@ -524,10 +526,15 @@ bool Player::load(Serializer& in)
     myCopy = in.getByte();
     myDivider = in.getByte();
     myDividerPending = in.getByte();
-    mySampleCounter = in.getByte();
+    // Masked as myDecodesOffset is below: used as a shift count (1 <<
+    // mySampleCounter) in tick(), so a corrupt save file must not push it
+    // past the 8 pixels a player sprite actually has
+    mySampleCounter = in.getByte() & 0x07;
     myDividerChangeCounter = in.getByte();
 
-    myDecodesOffset = in.getByte();
+    // Mask as in setNusiz(); the decode table has only 8 entries, so an
+    // out-of-range offset from a corrupt save file must not index past it
+    myDecodesOffset = in.getByte() & 0x07;
     myDecodes = DrawCounterDecodes::get().playerDecodes()[myDecodesOffset];
 
     myPatternOld = in.getByte();

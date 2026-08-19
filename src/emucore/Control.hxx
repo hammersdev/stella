@@ -46,11 +46,11 @@ class System;
     pin 2   D5  PIA SWCHA               D1  PIA SWCHA
     pin 3   D6  PIA SWCHA               D2  PIA SWCHA
     pin 4   D7  PIA SWCHA               D3  PIA SWCHA
-    pin 5   D7  TIA INPT1 (Dumped)      D7  TIA INPT3 (Dumped)
+    pin 5   D7  TIA INPT0 (Dumped)      D7  TIA INPT2 (Dumped)
     pin 6   D7  TIA INPT4 (Latched)     D7  TIA INPT5 (Latched)
     pin 7   +5                          +5
     pin 8   GND                         GND
-    pin 9   D7  TIA INPT0 (Dumped)      D7  TIA INPT2 (Dumped)
+    pin 9   D7  TIA INPT1 (Dumped)      D7  TIA INPT3 (Dumped)
 
   Each of the pins connected to the PIA can be configured as an
   input or output pin.  The "dumped" TIA pins are used to charge
@@ -369,11 +369,11 @@ class Controller : public Serializable
     */
     bool setPin(DigitalPin pin, bool value) {
       // A static value overrides any event binding on this pin
-      myDigitalPinEvent[static_cast<int>(pin)].fill(Event::NoType);
-      return myDigitalPinState[static_cast<int>(pin)] = value;
+      myDigitalPinEvent[std::to_underlying(pin)].fill(Event::NoType);
+      return myDigitalPinState[std::to_underlying(pin)] = value;
     }
     bool getPin(DigitalPin pin) const {
-      return myDigitalPinState[static_cast<int>(pin)];
+      return myDigitalPinState[std::to_underlying(pin)];
     }
 
     /**
@@ -385,11 +385,11 @@ class Controller : public Serializable
       sources, e.g. a fire button that the mouse buttons also trigger.
     */
     bool bindPin(DigitalPin pin, SpanOf<Event::Type> events) {
-      auto& bound = myDigitalPinEvent[static_cast<int>(pin)];
+      auto& bound = myDigitalPinEvent[std::to_underlying(pin)];
       bound.fill(Event::NoType);
 
       bool pressed = false;
-      size_t i = 0;
+      auto i = 0UZ;
       for(const Event::Type event: events)
       {
         bound[i++] = event;
@@ -397,7 +397,7 @@ class Controller : public Serializable
       }
 
       // Keep the static state current for getPin()/debugger display
-      return myDigitalPinState[static_cast<int>(pin)] = !pressed;
+      return myDigitalPinState[std::to_underlying(pin)] = !pressed;
     }
 
     bool bindPin(DigitalPin pin, Event::Type event) {
@@ -405,13 +405,13 @@ class Controller : public Serializable
     }
 
     void setPin(AnalogPin pin, AnalogReadout::Connection value) {
-      myAnalogPinValue[static_cast<int>(pin)] = value;
+      myAnalogPinValue[std::to_underlying(pin)] = value;
       if(myOnAnalogPinUpdateCallback)
         myOnAnalogPinUpdateCallback(pin);
     }
 
     AnalogReadout::Connection getPin(AnalogPin pin) const {
-      return myAnalogPinValue[static_cast<int>(pin)];
+      return myAnalogPinValue[std::to_underlying(pin)];
     }
 
     void resetDigitalPins() {
@@ -561,7 +561,7 @@ class Controller : public Serializable
         { "QuadTari",      "QUADTARI"      },
         { "Joy 2B+",       "JOY_2B+"       }
     });
-    static_assert(CONTROLLER_INFO.size() == static_cast<size_t>(Type::LastType),
+    static_assert(CONTROLLER_INFO.size() == std::to_underlying(Type::LastType),
         "CONTROLLER_INFO must have an entry for each Controller::Type");
 
   private:

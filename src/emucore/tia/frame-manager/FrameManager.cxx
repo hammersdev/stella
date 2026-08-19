@@ -24,7 +24,12 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 FrameManager::FrameManager()
 {
-  reset();
+  // Establish the reset state without invoking the virtual-dispatching reset()
+  // from the constructor: doing so lets GCC's LTO devirtualizer speculatively
+  // inline a sibling override (FrameLayoutDetector::onReset) and trip a bogus
+  // -Wstringop-overflow.  All members are NSDMI-initialized, so the statically
+  // bound onReset() plus recalculateMetrics() establishes the same state.
+  FrameManager::onReset();
   recalculateMetrics();
 }
 
@@ -222,7 +227,7 @@ bool FrameManager::onSave(Serializer& out) const
 {
   if (!myJitterEmulation.save(out)) return false;
 
-  out.putInt(static_cast<uInt32>(myState));
+  out.putInt(std::to_underlying(myState));
   out.putInt(myLineInState);
   out.putInt(myVsyncLineCount);
   out.putInt(myY);
@@ -234,6 +239,14 @@ bool FrameManager::onSave(Serializer& out) const
   out.putBool(myJitterEnabled);
   out.putBool(myVsyncPending);
   out.putInt(myVsyncPendingLines);
+
+  // Cycle stamps used to measure VSYNC/VBLANK duration for jitter emulation.
+  // A state may legally be saved mid-VSYNC (myVsyncPending set), so these must
+  // be preserved or the next frame's jitter is computed from stale values
+  out.putLong(myVsyncStart);
+  out.putLong(myVsyncEnd);
+  out.putLong(myVblankStart);
+  out.putLong(myVblankCycles);
 
   return true;
 }
@@ -249,12 +262,25 @@ bool FrameManager::onLoad(Serializer& in)
   myY = in.getInt();
   myLastY = in.getInt();
 
+  // Reject a corrupt save state before myY/myLastY can drive TIA::nextLine()
+  // or TIA::onFrameComplete() to build a row pointer or fill_n span that
+  // reaches past myBackBuffer
+  if (myState > State::frame ||
+      myY >= TIAConstants::frameBufferHeight ||
+      myLastY >= TIAConstants::frameBufferHeight)
+    throw std::runtime_error("frame manager: invalid save state");
+
   myVcenter = in.getInt();
   myVSizeAdjust = in.getInt();
 
   myJitterEnabled = in.getBool();
   myVsyncPending = in.getBool();
   myVsyncPendingLines = in.getInt();
+
+  myVsyncStart = in.getLong();
+  myVsyncEnd = in.getLong();
+  myVblankStart = in.getLong();
+  myVblankCycles = in.getLong();
 
   recalculateMetrics();
   return true;

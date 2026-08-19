@@ -133,7 +133,7 @@ bool AnalogReadout::save(Serializer& out) const
     myConnection.save(out);
     out.putLong(myTimestamp);
 
-    out.putInt(static_cast<int>(myConsoleTiming));
+    out.putInt(std::to_underlying(myConsoleTiming));
     out.putDouble(myClockFreq);
 
     out.putBool(myIsDumped);
@@ -177,7 +177,7 @@ bool AnalogReadout::Connection::save(Serializer& out) const
 {
   try
   {
-    out.putInt(static_cast<uInt8>(type));
+    out.putInt(std::to_underlying(type));
     out.putInt(resistance);
   }
   catch(...)
@@ -194,7 +194,13 @@ bool AnalogReadout::Connection::load(Serializer& in)
 {
   try
   {
-    type = static_cast<ConnectionType>(in.getInt());
+    const uInt32 t = in.getInt();
+    // Reject a corrupt save state before an out-of-range type can reach
+    // updateCharge()'s switch, whose default case throws with nothing to
+    // catch it once emulation is under way
+    if(t > static_cast<uInt32>(ConnectionType::disconnected))
+      return false;
+    type = static_cast<ConnectionType>(t);
     resistance = in.getInt();
   }
   catch(...)

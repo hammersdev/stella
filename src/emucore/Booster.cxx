@@ -23,17 +23,17 @@ BoosterGrip::BoosterGrip(Jack jack, const Event& event, const System& system)
 {
   if(myJack == Jack::Left)
   {
-    myBoosterEvent = Event::LeftJoystickFire5;
-    myTriggerEvent = Event::LeftJoystickFire9;
+    myBoosterEvent = Event::LeftJoystickFire9;
+    myTriggerEvent = Event::LeftJoystickFire5;
   }
   else
   {
-    myBoosterEvent = Event::RightJoystickFire5;
-    myTriggerEvent = Event::RightJoystickFire9;
+    myBoosterEvent = Event::RightJoystickFire9;
+    myTriggerEvent = Event::RightJoystickFire5;
   }
 
-  setPin(AnalogPin::Five, AnalogReadout::disconnect());
   setPin(AnalogPin::Nine, AnalogReadout::disconnect());
+  setPin(AnalogPin::Five, AnalogReadout::disconnect());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -49,10 +49,10 @@ void BoosterGrip::updateButtons()
   const bool boosterPressed = myEvent.get(myBoosterEvent) != 0 ||
       mousePressed(Event::MouseButtonRightValue);
   const bool triggerPressed = myEvent.get(myTriggerEvent) != 0;
-  setPin(AnalogPin::Five, boosterPressed
+  setPin(AnalogPin::Nine, boosterPressed
                             ? AnalogReadout::connectToVcc()
                             : AnalogReadout::disconnect());
-  setPin(AnalogPin::Nine, triggerPressed
+  setPin(AnalogPin::Five, triggerPressed
                             ? AnalogReadout::connectToVcc()
                             : AnalogReadout::disconnect());
 }

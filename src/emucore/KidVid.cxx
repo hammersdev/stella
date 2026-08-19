@@ -223,7 +223,21 @@ bool KidVid::load(Serializer& in)
   myBlockIdx = in.getInt();
   myBlock = in.getInt();
 
+  // Reject a corrupt save state whose indices would read past the read-only
+  // KidVid data tables: myTape drives tapeIndex()/ourBlocks[], mySongPointer
+  // indexes ourSongPositions[], (myIdx >> 3) indexes ourData[], and
+  // myBlockIdx == 0 would underflow on the next update() tick, permanently
+  // defeating the periodic re-clamp that otherwise keeps myIdx in range
+  if(myTape > 4 ||
+     mySongPointer >= ourSongPositions.size() ||
+     (myIdx >> 3) >= ourData.size() ||
+     myBlockIdx == 0 || myBlockIdx > NumBlockBits)
+    return false;
+
   myContinueSong = myFilesFound && mySongPlaying;
+  // The song-continue path in update() indexes ourSongPositions[mySongPointer - 1]
+  if(mySongPointer == 0)
+    myContinueSong = false;
 
   return Controller::load(in);
 }

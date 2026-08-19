@@ -282,12 +282,7 @@ uInt8 M6532::peek(uInt16 addr)
     }
 
     default:
-    {
-#ifdef DEBUG_ACCESSES
-      cerr << "BAD M6532 Peek: " << hex << addr << '\n';
-#endif
-      return 0;
-    }
+      std::unreachable();
   }
 }
 
@@ -322,33 +317,25 @@ bool M6532::poke(uInt16 addr, uInt8 value)
     switch(addr & 0x03)
     {
       case 0:     // SWCHA - Port A I/O Register (Joystick)
-      {
         myOutA = value;
         setPinState(true);
         break;
-      }
 
       case 1:     // SWACNT - Port A Data Direction Register
-      {
         myDDRA = value;
         setPinState(false);
         break;
-      }
 
       case 2:     // SWCHB - Port B I/O Register (Console switches)
-      {
         myOutB = value;
         break;
-      }
 
       case 3:     // SWBCNT - Port B Data Direction Register
-      {
         myDDRB = value;
         break;
-      }
 
-      default:  // satisfy compiler
-        break;
+      default:
+        std::unreachable();
     }
   }
   return true;
@@ -423,6 +410,8 @@ bool M6532::save(Serializer& out) const
     out.putLong(mySetTimerCycle);
   #ifdef DEBUGGER_SUPPORT
     out.putInt(myTimReadCycles);
+    out.putBool(myTimWrappedOnRead);
+    out.putBool(myTimWrappedOnWrite);
     out.putLong(myBusyRateTimReadCycles);
   #endif
 
@@ -457,12 +446,19 @@ bool M6532::load(Serializer& in)
     myTimer = in.getInt();
     mySubTimer = in.getInt();
     myDivider = in.getInt();
+    // myDivider must be one of the four legal timer intervals; anything else
+    // (e.g. 0) corrupts myDividerShift (shift-by-255) and the (myDivider - 1)
+    // bit masks used on the hot path
+    if(myDivider != 1 && myDivider != 8 && myDivider != 64 && myDivider != 1024)
+      return false;
     myDividerShift = static_cast<uInt8>(std::bit_width(myDivider) - 1);
     myWrappedThisCycle = in.getBool();
     myLastCycle = in.getLong();
     mySetTimerCycle = in.getLong();
   #ifdef DEBUGGER_SUPPORT
     myTimReadCycles = in.getInt();
+    myTimWrappedOnRead = in.getBool();
+    myTimWrappedOnWrite = in.getBool();
     myBusyRateTimReadCycles = in.getLong();
   #endif
 

@@ -40,7 +40,7 @@ namespace {
       case CDF1:      return Thumbulator::ConfigureFor::CDF1;
       case CDFJ:      return Thumbulator::ConfigureFor::CDFJ;
       case CDFJplus:  return Thumbulator::ConfigureFor::CDFJplus;
-      default:        throw std::runtime_error("unreachable");
+      default:        std::unreachable();
     }
   }
 }  // namespace
@@ -171,7 +171,7 @@ FORCE_INLINE void CartridgeCDF::updateMusicModeDataFetchers()
 
   // Let's update counters and flags of the music mode data fetchers
   if(wholeClocks > 0)
-    for(size_t x = 0; x < myMusicCounters.size(); ++x)
+    for(auto x = 0UZ; x < myMusicCounters.size(); ++x)
       myMusicCounters[x] += myMusicFrequencies[x] * wholeClocks;
 }
 
@@ -299,9 +299,18 @@ uInt8 CartridgeCDF::peek(uInt16 address)
       }
       else
       {
-        peekvalue = myDisplayImage[getWaveform(0) + (myMusicCounters[0] >> myMusicWaveformSize[0])]
-                  + myDisplayImage[getWaveform(1) + (myMusicCounters[1] >> myMusicWaveformSize[1])]
-                  + myDisplayImage[getWaveform(2) + (myMusicCounters[2] >> myMusicWaveformSize[2])];
+        // myMusicCounters/myMusicWaveformSize can grow or be corrupted (via
+        // save states, or a driver that simply doesn't reset the counter
+        // often enough) beyond what getWaveform()'s own bounding accounts
+        // for. Real hardware would alias into the Harmony RAM chip rather
+        // than fault, so wrap into myDisplayImage rather than fabricate a
+        // value; the shift is also clamped since 32+ is UB.
+        const auto waveformSample = [this](uInt8 index) -> uInt8 {
+          const uInt8 shift = std::min<uInt8>(myMusicWaveformSize[index], 31);
+          const uInt64 idx = static_cast<uInt64>(getWaveform(index)) + (myMusicCounters[index] >> shift);
+          return myDisplayImage[idx % myDisplayImage.size()];
+        };
+        peekvalue = waveformSample(0) + waveformSample(1) + waveformSample(2);
       }
       return peekvalue;
     }
@@ -454,7 +463,9 @@ bool CartridgeCDF::bank(uInt16 bank, uInt16)
   if(hotspotsLocked()) return false;
 
   // Remember what bank we're in
-  myBankOffset = bank << 12;
+  // Constrain to a valid bank so a corrupt bank value (e.g. from a
+  // tampered save state) can never offset myProgramImage[] out of bounds
+  myBankOffset = (bank % romBankCount()) << 12;
 
   // Setup the page access methods for the current bank
   System::PageAccess access(this, System::PageAccessType::READ);

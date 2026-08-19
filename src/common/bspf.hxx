@@ -166,7 +166,7 @@ namespace BSPF
     constexpr string_view ARCH = "ppc";
   #elif defined(__arm__) || defined(__thumb__)
     constexpr string_view ARCH = "arm32";
-  #elif defined(__aarch64__)
+  #elifdef __aarch64__
     constexpr string_view ARCH = "arm64";
   #else
     constexpr string_view ARCH = "NOARCH";
@@ -182,7 +182,7 @@ namespace BSPF
   // do not alias each other, enabling auto-vectorization of hot loops.
   #if defined(__clang__) || defined(__GNUC__)
     #define FORCE_RESTRICT __restrict__
-  #elif defined(_MSC_VER)
+  #elifdef _MSC_VER
     #define FORCE_RESTRICT __restrict
   #else
     /* no support for restricted pointers */
@@ -238,12 +238,12 @@ namespace BSPF
   constexpr bool isLowerAscii(char c) { return c >= 'a' && c <= 'z'; }
 
   // Convert string to given case
-  inline const string& toUpperCase(string& s)
+  constexpr string& toUpperCase(string& s)
   {
     std::ranges::transform(s, s.begin(), [](char c){ return toUpperAscii(c); });
     return s;
   }
-  inline const string& toLowerCase(string& s)
+  constexpr string& toLowerCase(string& s)
   {
     std::ranges::transform(s, s.begin(), [](char c){ return toLowerAscii(c); });
     return s;
@@ -251,7 +251,7 @@ namespace BSPF
 
   // Convert string to integer, using default value on any error
   template<int BASE = 10>
-  inline int stoi(string_view s, int defaultValue = 0)
+  constexpr int stoi(string_view s, int defaultValue = 0)
   {
     // Skip leading spaces safely
     const auto pos = s.find_first_not_of(' ');
@@ -270,7 +270,7 @@ namespace BSPF
   {
     // Only compare up to the length of the shorter string
     const auto maxsize = std::min(s1.size(), s2.size());
-    for(size_t i = 0; i < maxsize; ++i)
+    for(auto i = 0UZ; i < maxsize; ++i)
     {
       const char c1 = toUpperAscii(s1[i]);
       const char c2 = toUpperAscii(s2[i]);
@@ -336,8 +336,8 @@ namespace BSPF
       return false;
 
     // Remaining characters must appear in order
-    size_t pos = 1;
-    for(size_t j = 1; j < s2.size(); ++j)
+    auto pos = 1UZ;
+    for(auto j = 1UZ; j < s2.size(); ++j)
     {
       const char target = toUpperAscii(s2[j]);
       while(pos < s1.size() && toUpperAscii(s1[pos]) != target)
@@ -358,15 +358,15 @@ namespace BSPF
     if(s1.empty() || s2.empty()) return false;
 
     // Skip leading '_' for both strings if both start with it
-    const size_t ofs = (s1[0] == '_' && s2[0] == '_') ? 1 : 0;
+    const auto ofs = (s1[0] == '_' && s2[0] == '_') ? 1UZ : 0UZ;
 
     // First character must match (case insensitive)
     if(toUpperAscii(s1[ofs]) != toUpperAscii(s2[ofs]))
       return false;
 
-    size_t pos = 1 + ofs;  // current search position in s1 (absolute)
+    auto pos = 1UZ + ofs;  // current search position in s1 (absolute)
 
-    for(size_t j = 1 + ofs; j < s2.size(); ++j)
+    for(auto j = 1UZ + ofs; j < s2.size(); ++j)
     {
       const char c2 = s2[j];
 
@@ -422,10 +422,10 @@ namespace BSPF
       pattern = effectivePat;
     }
 
-    size_t si = 0;        // current position in str
-    size_t pi = 0;        // current position in pattern
-    size_t starPi = string_view::npos;  // position of last '*' in pattern
-    size_t starSi = 0;    // position in str when last '*' was matched
+    auto si = 0UZ;        // current position in str
+    auto pi = 0UZ;        // current position in pattern
+    auto starPi = string_view::npos;  // position of last '*' in pattern
+    auto starSi = 0UZ;    // position in str when last '*' was matched
 
     while(si < str.length())
     {
@@ -464,7 +464,7 @@ namespace BSPF
   constexpr void replaceAll(string& str, string_view from, string_view to)
   {
     if(from.empty()) return;
-    size_t start_pos = 0;
+    auto start_pos = 0UZ;
     while((start_pos = str.find(from, start_pos)) != string_view::npos)
     {
       str.replace(start_pos, from.length(), to);
@@ -490,7 +490,7 @@ namespace BSPF
   // name from a (potentially shared/imported) properties entry is concatenated
   // into a save/snapshot path.  Both '/' and '\' are replaced regardless of
   // platform so the result can't escape its intended directory.
-  inline string sanitizeFilename(string_view name)
+  constexpr string sanitizeFilename(string_view name)
   {
     string result{name};
     std::ranges::replace(result, '/', '_');
@@ -515,7 +515,7 @@ namespace BSPF
   constexpr bool isWhiteSpace(const char c)
   {
     constexpr string_view spaces{" ,.;:+-*&/\\'"};
-    return spaces.find(c) != string_view::npos;
+    return spaces.contains(c);
   }
 
   // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -532,10 +532,10 @@ namespace BSPF
     if(image.size() < sigsize)
       return false;
 
-    size_t count{0};
-    for(size_t i = 0; i <= image.size() - sigsize; ++i)
+    auto count = 0UZ;
+    for(auto i = 0UZ; i <= image.size() - sigsize; ++i)
     {
-      size_t j{0};
+      auto j = 0UZ;
       for(j = 0; j < sigsize; ++j)
       {
         if(image[i + j] != signature[j])

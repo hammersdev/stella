@@ -31,6 +31,15 @@ void CartridgeE7::initialize(ByteSpan image)
 {
   // Allocate array for the ROM image and copy it in
   myImage.assign(image.size(), 0);
+
+  // E7 assumes the 8K/12K/16K layouts (4/6/8 2K banks) it was designed for;
+  // below 3 banks the hardcoded hotspot-page offset in install() lands past
+  // the end of myRomAccessBase/myRomAccessCounter, and romBankCount() == 0
+  // divides by zero in bank(). A forced E7 type (extension/properties/-bs)
+  // bypasses CartDetector's size gate, so this must be checked here.
+  if(romBankCount() < 3)  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
+    throw std::runtime_error("CartridgeE7: invalid image size");
+
   std::copy_n(image.data(), std::min<size_t>(romSize(), image.size()), myImage.data());
   createRomAccessArrays(romSize() + myRAM.size());
 
@@ -95,21 +104,22 @@ void CartridgeE7::install(System& system)
 
   System::PageAccess access(this, System::PageAccessType::READ);
 
+  // The hotspots at $1FE0-$1FE7 live in the page starting here; that page is
+  // handled separately below since it must dispatch through peek()/poke()
+  constexpr uInt16 HOTSPOT_PAGE = 0x1FE0 & ~System::PAGE_MASK;
+
   // Set the page accessing methods for the hot spots
-  for(uInt16 addr = (0x1FE0 & ~System::PAGE_MASK); addr < 0x2000;
-      addr += System::PAGE_SIZE)
+  for(uInt16 addr = HOTSPOT_PAGE; addr < 0x2000; addr += System::PAGE_SIZE)
   {
     access.romAccessBase = &myRomAccessBase[0x1fc0];
     access.romPeekCounter = &myRomAccessCounter[0x1fc0];
     access.romPokeCounter = &myRomAccessCounter[0x1fc0 + myAccessSize];
     mySystem->setPageAccess(addr, access);
   }
-  /*setAccess(0x1FE0 & ~System::PAGE_MASK, System::PAGE_SIZE,
-            0, nullptr, 0x1fc0, System::PA_NONE, 0x1fc0);*/
 
   // Setup the second segment to always point to the last ROM bank
   const auto offset = static_cast<uInt16>(myRAMBank * BANK_SIZE);
-  setAccess(0x1A00, 0x1FE0U & (~System::PAGE_MASK - 0x1A00),
+  setAccess(0x1A00, HOTSPOT_PAGE - 0x1A00,
             offset, myImage.data(), offset,
             System::PageAccessType::READ, static_cast<uInt16>(BANK_SIZE - 1));
   myCurrentBank[1] = myRAMBank;
@@ -239,6 +249,10 @@ void CartridgeE7::bankRAM(uInt16 bank)
 {
   if(hotspotsLocked()) return;
 
+  // Constrain to a valid RAM bank (there are 4, as in the 0x1800 hotspots)
+  // so a corrupt value can't map page access outside myRAM
+  bank &= 0x03;
+
   // Remember what bank we're in
   myCurrentRAM = bank;
   const uInt16 offset = bank << 8; // * RAM_BANK_SIZE (256)
@@ -256,6 +270,10 @@ void CartridgeE7::bankRAM(uInt16 bank)
 bool CartridgeE7::bank(uInt16 bank, uInt16)
 {
   if(hotspotsLocked()) return false;
+
+  // Constrain to a valid bank so a corrupt value (e.g. from a tampered save
+  // state) can't map page access outside the ROM image
+  bank %= romBankCount();
 
   // Remember what bank we're in
   myCurrentBank[0] = bank;

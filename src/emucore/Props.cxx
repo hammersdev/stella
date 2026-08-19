@@ -40,7 +40,7 @@ bool Properties::save(KeyValueRepository& repo) const
   KVRMap props;
 
   auto* atomic = repo.atomic();
-  for(size_t i = 0; i < NUM_PROPS; ++i)
+  for(auto i = 0UZ; i < NUM_PROPS; ++i)
   {
     if(myProperties[i] == defaultValue(i))
     {
@@ -95,11 +95,13 @@ void Properties::set(PropType key, string_view value)
       break;
     }
 
+    case PropType::Bezel_Name:
     case PropType::Cart_Name:
       // The cart name is concatenated into save-state, snapshot and
-      // disassembly paths.  Neutralize path separators here, at the single
-      // point where the value is stored, so a name from a (possibly shared or
-      // imported) properties entry can't escape its intended directory.
+      // disassembly paths; the bezel name into a bezel-image path.
+      // Neutralize path separators here, at the single point where the
+      // value is stored, so a name from a (possibly shared or imported)
+      // properties entry can't escape its intended directory.
       myProperties[pos] = BSPF::sanitizeFilename(myProperties[pos]);
       break;
 
@@ -119,7 +121,7 @@ void Properties::reset(PropType key)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Properties::setDefaults()
 {
-  for(size_t i = 0; i < NUM_PROPS; ++i)
+  for(auto i = 0UZ; i < NUM_PROPS; ++i)
     myProperties[i] = defaultValue(i);
 }
 
@@ -160,7 +162,7 @@ PropType Properties::getPropType(string_view name)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Properties::print() const
 {
-  for(size_t i = 0; i < NUM_PROPS; ++i)
+  for(auto i = 0UZ; i < NUM_PROPS; ++i)
   {
     if(i > 0) cout << '|';
     cout << myProperties[i];
@@ -171,7 +173,7 @@ void Properties::print() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Properties::printHeader()
 {
-  for(size_t i = 0; i < NUM_PROPS; ++i)
+  for(auto i = 0UZ; i < NUM_PROPS; ++i)
   {
     if(i > 0) cout << '|';
     cout << ourPropertyNames[i];

@@ -82,14 +82,14 @@ bool PropertiesSet::getMD5(string_view md5, Properties& properties,
           return BSPF::compareIgnoreCase(a, b) < 0;
       },
       [](const auto& entry) {
-          return entry[static_cast<uInt8>(PropType::Cart_MD5)];
+          return entry[std::to_underlying(PropType::Cart_MD5)];
       });
 
     if(it != DefProps.end() &&
-       BSPF::compareIgnoreCase((*it)[static_cast<uInt8>(PropType::Cart_MD5)], md5) == 0)
+       BSPF::compareIgnoreCase((*it)[std::to_underlying(PropType::Cart_MD5)], md5) == 0)
     {
       const auto& entry = *it;
-      for(size_t p = 0; p < Properties::NUM_PROPS; ++p)
+      for(auto p = 0UZ; p < Properties::NUM_PROPS; ++p)
         if(entry[p][0] != 0)
           properties.set(static_cast<PropType>(p), entry[p]);
 
@@ -180,11 +180,11 @@ void PropertiesSet::print() const
   for(const auto& DefProp: DefProps)
   {
     properties.setDefaults();
-    for(size_t p = 0; p < Properties::NUM_PROPS; ++p)
+    for(auto p = 0UZ; p < Properties::NUM_PROPS; ++p)
       if(DefProp[p][0] != 0)
         properties.set(static_cast<PropType>(p), DefProp[p]);
 
-    list.emplace(DefProp[static_cast<size_t>(PropType::Cart_MD5)], properties);
+    list.emplace(DefProp[std::to_underlying(PropType::Cart_MD5)], properties);
   }
 
   // Merge temp props, overriding any built-in duplicates

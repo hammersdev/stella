@@ -88,7 +88,7 @@ Keyboard::columnStateToAnalogSignal(ColumnState state)
       return AnalogReadout::connectToVcc(INTERNAL_RESISTANCE);
 
     default:
-      throw std::runtime_error("unreachable");
+      std::unreachable();
   }
 }
 
@@ -112,6 +112,6 @@ void Keyboard::write(DigitalPin pin, bool value)
   const ColumnState stateCol2 = processColumn(col2);
 
   setPin(DigitalPin::Six, stateCol2 != ColumnState::gnd);
-  setPin(AnalogPin::Five, columnStateToAnalogSignal(stateCol1));
-  setPin(AnalogPin::Nine, columnStateToAnalogSignal(stateCol0));
+  setPin(AnalogPin::Nine, columnStateToAnalogSignal(stateCol1));
+  setPin(AnalogPin::Five, columnStateToAnalogSignal(stateCol0));
 }

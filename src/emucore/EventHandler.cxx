@@ -2014,12 +2014,33 @@ void EventHandler::setComboMap()
     {
       for(const json& combo : mapping)
       {
+        // An unrecognized "combo" value deserializes to Event::NoType (see
+        // jsonDefinitions.hxx's NLOHMANN_JSON_SERIALIZE_ENUM, which never
+        // throws), so a corrupted settings file can drive i far outside
+        // [0, COMBO_SIZE) rather than tripping the catch below
         const int i = combo.at("combo").get<Event::Type>() - Event::Combo1;
+        if(i < 0 || i >= COMBO_SIZE)
+          continue;
+
         int j = 0;
         const json events = combo.at("events");
 
         for(const json& event: events)
-          myComboTable[i][j++] = event;
+        {
+          if(j >= EVENTS_PER_COMBO)
+            break;
+
+          const Event::Type e = event;
+          // The GUI's combo-event-slot list excludes Combo1..Combo16 (see
+          // getComboList()'s "exclude combo events"); a settings file that
+          // names one anyway would make this combo trigger itself, directly
+          // or through another combo, recursing without bound in
+          // handleEvent()
+          if(e >= Event::Combo1 && e <= Event::Combo16)
+            continue;
+
+          myComboTable[i][j++] = e;
+        }
       }
     }
     catch(const json::exception&)
@@ -2494,6 +2515,14 @@ void EventHandler::changeMouseControllerMode(int direction)
     }
     ++i;
   }
+  if(i >= static_cast<int>(MODES.size()))
+  {
+    // 'usemouse' held a value that isn't one of the known modes (e.g. a
+    // hand-edited or corrupted settings file); fall back to the documented
+    // default rather than leaving i one past MSG's last valid index
+    i = 1;  // "analog", matches Settings.cxx's default
+    usemouse = MODES[i];
+  }
   myOSystem.settings().setValue("usemouse", usemouse);
   setMouseControllerMode(usemouse);
   myOSystem.frameBuffer().setCursorState(); // if necessary change grab mouse
@@ -2814,16 +2843,16 @@ EventHandler::EmulActionList EventHandler::ourEmulActionList = { {
   { Event::LeftJoystickLeft,        "Left Joystick Left"                    },
   { Event::LeftJoystickRight,       "Left Joystick Right"                   },
   { Event::LeftJoystickFire,        "Left Joystick Fire"                    },
-  { Event::LeftJoystickFire5,       "Left Top Booster Button, Button 'C'"   },
-  { Event::LeftJoystickFire9,       "Left Handle Grip Trigger, Button '3'"  },
+  { Event::LeftJoystickFire9,       "Left Top Booster Button, Button 'C'"   },
+  { Event::LeftJoystickFire5,       "Left Handle Grip Trigger, Button '3'"  },
 
   { Event::RightJoystickUp,         "Right Joystick Up"                     },
   { Event::RightJoystickDown,       "Right Joystick Down"                   },
   { Event::RightJoystickLeft,       "Right Joystick Left"                   },
   { Event::RightJoystickRight,      "Right Joystick Right"                  },
   { Event::RightJoystickFire,       "Right Joystick Fire"                   },
-  { Event::RightJoystickFire5,      "Right Top Booster Button, Button 'C'"  },
-  { Event::RightJoystickFire9,      "Right Handle Grip Trigger, Button '3'" },
+  { Event::RightJoystickFire9,      "Right Top Booster Button, Button 'C'"  },
+  { Event::RightJoystickFire5,      "Right Handle Grip Trigger, Button '3'" },
 
   { Event::QTJoystickThreeUp,       "QuadTari Joystick 3 Up"                },
   { Event::QTJoystickThreeDown,     "QuadTari Joystick 3 Down"              },
@@ -3159,9 +3188,9 @@ const Event::EventSet EventHandler::ConsoleEvents = {
 // NOLINTNEXTLINE(bugprone-throwing-static-initialization)
 const Event::EventSet EventHandler::JoystickEvents = {
   Event::LeftJoystickUp, Event::LeftJoystickDown, Event::LeftJoystickLeft, Event::LeftJoystickRight,
-  Event::LeftJoystickFire, Event::LeftJoystickFire5, Event::LeftJoystickFire9,
+  Event::LeftJoystickFire, Event::LeftJoystickFire9, Event::LeftJoystickFire5,
   Event::RightJoystickUp, Event::RightJoystickDown, Event::RightJoystickLeft, Event::RightJoystickRight,
-  Event::RightJoystickFire, Event::RightJoystickFire5, Event::RightJoystickFire9,
+  Event::RightJoystickFire, Event::RightJoystickFire9, Event::RightJoystickFire5,
   Event::QTJoystickThreeUp, Event::QTJoystickThreeDown, Event::QTJoystickThreeLeft, Event::QTJoystickThreeRight,
   Event::QTJoystickThreeFire,
   Event::QTJoystickFourUp, Event::QTJoystickFourDown, Event::QTJoystickFourLeft, Event::QTJoystickFourRight,

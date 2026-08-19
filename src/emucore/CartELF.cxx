@@ -45,7 +45,7 @@ namespace {
   {
     stream << "\nELF sections:\n\n";
 
-    size_t i = 0;
+    auto i = 0UZ;
     for (const auto& section: elf.getSections()) {
       if (section.type != 0x00) stream << i << " " << section << '\n';
       i++;
@@ -88,7 +88,7 @@ namespace {
     const auto& sections = parser.getSections();
     const auto& relocatedSections = linker.getRelocatedSections();
 
-    for (size_t i = 0; i < sections.size(); i++) {
+    for (auto i = 0UZ; i < sections.size(); i++) {
       if (!relocatedSections[i]) continue;
 
       stream
@@ -103,7 +103,7 @@ namespace {
     const auto& symbols = parser.getSymbols();
     const auto& relocatedSymbols = linker.getRelocatedSymbols();
 
-    for (size_t i = 0; i < symbols.size(); i++) {
+    for (auto i = 0UZ; i < symbols.size(); i++) {
       if (!relocatedSymbols[i]) continue;
 
       stream
@@ -268,14 +268,14 @@ bool CartridgeELF::save(Serializer& out) const
   try {
     out.putBool(myConfigStrictMode);
     out.putInt(myConfigMips);
-    out.putByte(static_cast<uInt8>(myConfigSystemType));
+    out.putByte(std::to_underlying(myConfigSystemType));
 
     out.putBool(myIsBusDriven);
     out.putByte(myDriveBusValue);
     out.putLong(myArmCyclesOffset);
-    out.putByte(static_cast<uInt8>(myExecutionStage));
+    out.putByte(std::to_underlying(myExecutionStage));
     out.putInt(myInitFunctionIndex);
-    out.putByte(static_cast<uInt8>(myConsoleTiming));
+    out.putByte(std::to_underlying(myConsoleTiming));
 
     out.putByteArray(myLastPeekResult);
 
