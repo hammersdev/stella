@@ -223,6 +223,15 @@ class M6532 : public Device
     constexpr uInt32 getRamCounterSize() const {
       return RAM_SIZE;
     }
+
+    /**
+      Get the offset position of the RAM access counters within the RAM.
+
+      @return Offset in bytes
+    */
+    constexpr uInt32 getRamCounterOffset() const {
+      return 0;
+    }
   #endif
 
   private:

@@ -218,6 +218,15 @@ class CartridgeEnhanced : public Cartridge
         myPlusROM->setMessageCallback(myMsgCallback);
     }
 
+  #ifdef MEMVIEW_SUPPORT
+    /**
+      Get RAM contents for direct external access
+
+      @return  Mutable span over RAM array.
+    */
+    ByteSpan getRAM() override { return myRAM; }
+  #endif
+
   protected:
     // The '2 ^ N = bank segment size' exponent
     uInt16 myBankShift{BANK_SHIFT};             // default 12 (-> one 4K segment)

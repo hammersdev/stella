@@ -44,7 +44,7 @@ class MemViewWidget : public Widget
   public:
 
     static constexpr std::string_view TEXT_UNSUPPORTED = "Unsupported ROM type";
-    static constexpr int MAX_BANK_SIZE = 4096;
+    static constexpr int DEFAULT_BANK_SIZE = 4096;
     using ColorTab = std::array<uInt32, 256>;
 
   public:
@@ -58,7 +58,8 @@ class MemViewWidget : public Widget
       @param y                  Y pos
       @param w                  Initial width
       @param h                  Initial height
-      @param dataSize           Size of the data to represent (bytes)
+      @param bankSize           Size of one bank to represent (bytes)
+      @param bankCount          Number of banks to represent (bytes)
       @param bankHeight         Initial bank height to use (in bytes) - may change later
       @param isZoomable         True when this view should be zoomable (also will have scrollbars)
       @param singleRow          Initial single row setting (all banks are in one row next each other)
@@ -68,16 +69,20 @@ class MemViewWidget : public Widget
       @param pcColorTab         The 256 entry table with all the heatmap colors for PC access data
       @param dataDefaultColor   Default color for data bytes (not faded)
       @param dataFadedColor     Color to use when byte fade is active
+      @param typeText           Short description of memory type to be shown in tool tip
       @param baseAddress        Base address of the data within the address range of the system
+      @param mirrorAddrOffset   Offset for a mirrored address (if any, else 0)
     */
     MemViewWidget(GuiObject *boss, const GUI::Font& font,
-      int x, int y, int w, int h,
-      int dataSize, int bankHeight, bool isZoomable, bool singleRow, bool separators, 
-      MemViewWidget::ColorTab& readColorTab,
-      MemViewWidget::ColorTab& writeColorTab,
-      MemViewWidget::ColorTab& pcColorTab,
-      uInt32 dataDefaultColor, uInt32 dataFadedColor,
-      uInt16 baseAddress
+      const int x, const int y, const int w, const int h,
+      const uInt16 bankSize, const uInt16 bankCount, const uInt16 bankHeight,
+      const bool isZoomable, bool singleRow, const bool separators, 
+      const MemViewWidget::ColorTab& readColorTab,
+      const MemViewWidget::ColorTab& writeColorTab,
+      const MemViewWidget::ColorTab& pcColorTab,
+      const uInt32 dataDefaultColor, uInt32 dataFadedColor,
+      const string_view typeText,
+      const uInt16 baseAddress, const int mirrorAddrOffset = 0
     );
 
     ~MemViewWidget() override;
@@ -107,12 +112,21 @@ class MemViewWidget : public Widget
     void updateData(const ByteSpan& data);
 
     /**
-      Set or update new access counter data for the heatmaps
+      Sets the size and position of the expected access data counters within our whole data range.
+
+      @param size     Number of access counters to take over
+      @param offset   Offset inside our whole data range to put the new data to
+
+      @returns true if valid
+    */
+    bool setAccessDataParams(uInt32 size, uInt32 offset);
+
+    /**
+      Set or update new access counter data for the heatmaps.
 
       @param readAccessData     Pointer to the new read access data values to take over
       @param writeAccessData    Pointer to the new write access data values to take over
       @param pcAccessData       Pointer to the new program counter access data values to take over
-      @param size               Size of each data set (must be the same for all)
       @param elapsedCycles      Number of CPU cycles elapsed since the last update
       @param elapsedFrames      Number of complete elapsed TV frames since last update.
     */
@@ -120,7 +134,7 @@ class MemViewWidget : public Widget
       Device::AccessCounter* readAccessData,
       Device::AccessCounter* writeAccessData,
       Device::AccessCounter* pcAccessData,
-      const uInt32 size, const uInt32 elapsedCycles, const int elapsedFrames
+      const uInt32 elapsedCycles, const int elapsedFrames
     );
 
     /**
@@ -204,6 +218,9 @@ class MemViewWidget : public Widget
     MemViewAccessLayer myPcLayer;
     MemViewMarkerLayer myPcMarker;
     MemViewMarkerLayer myMouseMarker;
+
+    string myTypeText;
+    int myMirrorAddrOffset;
 
     int myDataIsDirty{false};
     bool myIsSetup{false};

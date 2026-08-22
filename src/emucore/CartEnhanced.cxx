@@ -72,6 +72,14 @@ void CartridgeEnhanced::install(System& system)
   myReadOffset  = myRamWpHigh ? 0 : ramSize;        // e.g. = 0x0080
   // Allocate more space only if RAM has its own bank(s)
   createRomAccessArrays(myImage.size() + (myRomOffset > 0 ? 0 : myRamSize));
+#ifdef MEMVIEW_SUPPORT
+  // Setup access counter parameters
+  myRomAccessSize = myImage.size() - myRomOffset;
+  myRomAccessOffset = myRomOffset;
+  myRamAccessSize = ramSize;
+  myRamPeekAccessOffset = myReadOffset;
+  myRamPokeAccessOffset = myWriteOffset;
+#endif
 
   // Allocate array for the segment's current bank offset
   myCurrentSegOffset.resize(myBankSegs);

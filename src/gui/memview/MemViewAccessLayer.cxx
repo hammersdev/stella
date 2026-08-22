@@ -22,10 +22,12 @@
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 MemViewAccessLayer::MemViewAccessLayer(Dialog& dialog, MemViewParams &params,
-  ColorTab& colorTab
+  const ColorTab& colorTab
 ) : MemViewLayer(dialog, params, false),
     myColorTab{colorTab}
 {
+  myLastAccessData.assign(myParams.myDataSize, 0);
+  myStartAccessData.assign(myParams.myDataSize, 0);
   myHeatmap.assign(myParams.myDataSize, 0.0);
   myFields.assign(myParams.myDataSize, 0);
 }
@@ -63,19 +65,26 @@ void MemViewAccessLayer::render()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void MemViewAccessLayer::updateAccessData(Device::AccessCounter* accessData, 
+void MemViewAccessLayer::updateAccessData(Device::AccessCounter* accessData,
   const MemViewAccessLayer::HeatmapValue& currentDecrement,
   const int elapsedFrames
 )
 {
+  if (accessData == nullptr)
+    return;
   // Compare new data with last one and update our heatmap accordingly
-  if (myLastAccessData.empty() || mySkipNextUpdate)
+  if (myFirstRun || mySkipNextUpdate)
   {
     // First call - take over the data
-    myLastAccessData.assign(accessData, accessData + myParams.myDataSize);
+    std::copy_n(
+      accessData,
+      myParams.myAccessDataSize,
+      myLastAccessData.begin() + myParams.myAccessDataOffset
+    );
     if (!mySkipNextUpdate)
       myStartAccessData.assign(myParams.myDataSize, 0);
     mySkipNextUpdate = false;
+    myFirstRun = false;
   }
   else
     compareAccessData(accessData, currentDecrement, elapsedFrames);
@@ -109,7 +118,7 @@ void MemViewAccessLayer::loadTotals(bool skipNextUpdate)
 
   const double average = static_cast<double>(sum) / static_cast<double>(count);
   const double gain = static_cast<double>((255.0 - BASE_ACCESS_VALUE + 1.0) / 2.0) / average;
-  for (int i = 0; i < myParams.myDataSize; i++)
+  for (unsigned int i = 0; i < myParams.myDataSize; i++)
   {
     const Device::AccessCounter& accessValue = myLastAccessData[i];
     if (accessValue != 0) {
@@ -138,7 +147,8 @@ Device::AccessCounter MemViewAccessLayer::getDeltaValue(const unsigned int offse
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MemViewAccessLayer::compareAccessData(Device::AccessCounter* newData,
-  const MemViewAccessLayer::HeatmapValue& currentDecrement, const int elapsedFrames)
+  const MemViewAccessLayer::HeatmapValue& currentDecrement,
+  const int elapsedFrames)
 {
   std::vector<Device::AccessCounter>& oldData = myLastAccessData;
   std::vector<HeatmapValue>& heatMap = myHeatmap;
@@ -152,13 +162,18 @@ void MemViewAccessLayer::compareAccessData(Device::AccessCounter* newData,
   uInt32 sum = 0;
   uInt32 count = 0;
 
-  for (int i = 0; i < myParams.myDataSize; i++)
+  for (
+    unsigned int src = 0,
+    dst = myParams.myAccessDataOffset;
+    src < myParams.myAccessDataSize;
+    src++, dst++
+  )
   {
-    if (newData[i] != oldData[i])
+    if (newData[src] != oldData[dst])
     {
       // Calc diff and take over
-      uInt32 diff = newData[i] - oldData[i];
-      oldData[i] = newData[i];
+      uInt32 diff = newData[src] - oldData[dst];
+      oldData[dst] = newData[src];
 
       // Do the stats for gain control
       count++;
@@ -169,27 +184,27 @@ void MemViewAccessLayer::compareAccessData(Device::AccessCounter* newData,
       if (value > 255.0)
         value = 255.0;
 
-      if (value > heatMap[i])
+      if (value > heatMap[dst])
       {
-        heatMap[i] = value;
+        heatMap[dst] = value;
       }
       else
       {
         // At least decrement
-        if ((heatMap[i] - currentDecrement) < value)
-          heatMap[i] = value;
+        if ((heatMap[dst] - currentDecrement) < value)
+          heatMap[dst] = value;
         else
-          heatMap[i] -= currentDecrement;
+          heatMap[dst] -= currentDecrement;
       }
 
     }
     else
     {
       // Decrement because nothing new happened at this address
-      if (heatMap[i] <= currentDecrement)
-        heatMap[i] = 0;
+      if (heatMap[dst] <= currentDecrement)
+        heatMap[dst] = 0;
       else
-        heatMap[i] -= currentDecrement;
+        heatMap[dst] -= currentDecrement;
     }
   }
 

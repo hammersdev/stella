@@ -39,25 +39,29 @@
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 MemViewWidget::MemViewWidget(GuiObject *boss, const GUI::Font& font,
-  int x, int y, int w, int h,
-  int dataSize, int bankHeight, bool isZoomable, bool singleRow, bool separators, 
-  MemViewWidget::ColorTab& readColorTab,
-  MemViewWidget::ColorTab& writeColorTab,
-  MemViewWidget::ColorTab& pcColorTab,
-  uInt32 dataDefaultColor, uInt32 dataFadedColor,
-  uInt16 baseAddress
+  const int x, const int y, const int w, const int h,
+  const uInt16 bankSize, const uInt16 bankCount, const uInt16 bankHeight,
+  const bool isZoomable, bool singleRow, const bool separators, 
+  const MemViewWidget::ColorTab& readColorTab,
+  const MemViewWidget::ColorTab& writeColorTab,
+  const MemViewWidget::ColorTab& pcColorTab,
+  const uInt32 dataDefaultColor, const uInt32 dataFadedColor,
+  const string_view typeText,
+  const uInt16 baseAddress, const int mirrorAddrOffset
 )
   : Widget(boss, font, x, y, w, h),
     myInnerSurfaceX{x + FRAME_THICKNESS},
     myInnerSurfaceY{y + FRAME_THICKNESS},
     myIsZoomable{isZoomable},
-    myParams{dataSize, baseAddress, instance().console().cartridge(), myInnerSurfaceX, myInnerSurfaceY},
+    myParams{bankSize, bankCount, baseAddress, instance().console().cartridge(), myInnerSurfaceX, myInnerSurfaceY},
     myDataLayer{dialog(), myParams, dataDefaultColor, dataFadedColor},
     myReadLayer{dialog(), myParams, readColorTab},
     myWriteLayer{dialog(), myParams, writeColorTab},
     myPcLayer{dialog(), myParams, pcColorTab},
     myPcMarker{dialog(), myParams, MemViewDialog::PC_COLOR_HIGH | 0xFF000000},
-    myMouseMarker{dialog(), myParams, FBSurface::getColorRgb(kWidColorHi)}
+    myMouseMarker{dialog(), myParams, FBSurface::getColorRgb(kWidColorHi)},
+    myTypeText{typeText},
+    myMirrorAddrOffset{mirrorAddrOffset}
 {
   _flags = Widget::FLAG_ENABLED |
            Widget::FLAG_RETAIN_FOCUS | Widget::FLAG_TRACK_MOUSE;
@@ -69,53 +73,27 @@ MemViewWidget::MemViewWidget(GuiObject *boss, const GUI::Font& font,
   myInnerSurfaceH = h - 2 * FRAME_THICKNESS
     - (isZoomable ? (ScrollBarHWidget::scrollBarHeight(font) - FRAME_THICKNESS) : 0);
 
-  myIsSetup = true;
-
-  int bankSize = 0;
-  int bankCount = 0;
-  int bankWidth = 0;
-  if (dataSize < MAX_BANK_SIZE)
-  {
-    // Single bank
-    // Size must be a multiple of 512 (biggest selectable bankHeight)
-    if (dataSize % 512)
-    {
-      bankSize = dataSize;
-      bankCount = 1;
-      bankWidth = bankSize / bankHeight;
-      bankHeight = dataSize;
-    }
-    else
-    {
-      bankSize = dataSize;
-      bankCount = 1;
-      bankWidth = bankSize / bankHeight;
-    }
-  }
-  else
-  {
-    // Make sure the data size is in steps of MAX_BANK_SIZE
-    if (dataSize % MAX_BANK_SIZE)
-    {
-      // Unsupported ROM type
-      myIsSetup = false;
-    }
-    else
-    {
-      bankSize = MAX_BANK_SIZE;
-      bankCount = dataSize / MAX_BANK_SIZE;
-      bankWidth = MAX_BANK_SIZE / bankHeight;
-    }
-  }
+  // Check if bank is displayable
+  myIsSetup = 
+    (
+      (bankCount == 1)
+      &&
+      ((bankSize % bankHeight) == 0)
+    )
+    ||
+    (
+      ((bankSize % MemViewDialog::MAX_BANK_HEIGHT) == 0)
+      &&
+      ((bankSize % bankHeight) == 0)
+    );
 
   Logger::debug(std::format("New MemViewWidget"));
 
-  if (isSetup())
-    myIsSetup = myParams.setBankSize(bankSize);
-
+  uInt16 bankWidth = 0;
   if (isSetup())
   {
-    Logger::debug(std::format("Data size   = {}", dataSize));
+    bankWidth = bankSize / bankHeight;
+    Logger::debug(std::format("Data size   = {}", myParams.myDataSize));
     Logger::debug(std::format("Banks       = {}", bankCount));
     Logger::debug(std::format("Bank size   = {}", bankSize));
     Logger::debug(std::format("Bank width  = {}", bankWidth));
@@ -123,13 +101,12 @@ MemViewWidget::MemViewWidget(GuiObject *boss, const GUI::Font& font,
   }
   else
   {
-    Logger::error(std::format("MemViewWidget: Unsupported data size: {}", dataSize));
+    Logger::error(std::format("MemViewWidget: Unsupported bank size: {}", bankSize));
     // Setup some emergency values to prevent crashing
-    bankSize = MAX_BANK_SIZE;
-    bankCount = 1;
-    bankWidth = MAX_BANK_SIZE / bankHeight;
-    myParams.myDataSize = MAX_BANK_SIZE;
-    myParams.setBankSize(bankSize);
+    bankWidth = DEFAULT_BANK_SIZE / bankHeight;
+    myParams.myBankSize = DEFAULT_BANK_SIZE;
+    myParams.myBankCount = 1;
+    myParams.myDataSize = DEFAULT_BANK_SIZE;
   }
 
   // Find the initial best layout to use (how are the banks arranged)
@@ -186,6 +163,9 @@ MemViewWidget::MemViewWidget(GuiObject *boss, const GUI::Font& font,
   VarList::push_back(l, "Save data picture", "pic");
 #endif
   myMenu = new ContextMenu(this, font, l);
+
+  // Resize data array
+  myCurrentData.resize(myParams.myDataSize);
 
   addFocusWidget(this);
 }
@@ -438,9 +418,10 @@ string MemViewWidget::getToolTip(const Common::Point& pos) const
   int bank = 0;
   unsigned int offset = 0;
   uInt16 address = myParams.getAddress(internalPos.x, internalPos.y, &bank, &offset);
+  uInt16 mirrorAddress = address + myMirrorAddrOffset;
 
   // Build tip
-#if 1
+
   // Hexadecimal
   const uInt8 value = myCurrentData[offset];
   string text = std::format("${:0>2X}", value);
@@ -456,33 +437,29 @@ string MemViewWidget::getToolTip(const Common::Point& pos) const
   text += std::format("  %{:0>8B}", myCurrentData[offset]);
 
   // Address
-  if (
-    (address >= MemViewDialog::RAM_BASE)
-    &&
-    (address < (MemViewDialog::RAM_BASE + MemViewDialog::RAM_SIZE))
-  )
+  if ((myParams.myBaseAddress + myParams.myDataSize) <= 0x100)
   {
-    // RAM
-    text += std::format("\n${:0>2X} [RAM]", address);
+    // 2-digit address
+    text += std::format("\n${:0>2X}", address);
+#if 0
+    if (mirrorAddress != address)
+      text += std::format("/${:0>2X}", mirrorAddress);
+#endif
+    text += " [" + myTypeText + "]";
   }
   else
   {
-    // ROM
+    // 4-digit address
     text += std::format("\n${:0>4X}", address);
+    if (mirrorAddress != address)
+      text += std::format("/${:0>4X}", mirrorAddress);
+    text += " [" + myTypeText;
+    // Bank?
     if (myParams.myBankCount > 1)
-      text += std::format(" [Bank {}]", bank);
+      text += std::format(" Bank {}]", bank);
     else
-      text += std::format(" [ROM]", bank);
+      text += "]";
   }
-#else
-  // Simple version
-  string text = std::format("${:0>2X}, ${:0>4X}",
-    myCurrentData[offset],
-    address
-  );
-  if (myParams.myBankCount > 1)
-    text += std::format(" [Bank {}]", bank);
-#endif
 
   // Total access counters
   text += std::format("\nTotal: PC {}, R {}, W {}",
@@ -512,9 +489,24 @@ void MemViewWidget::updateData(const ByteSpan& data)
 {
   if (!isSetup())
     return;
+
+  if (data.size() != myParams.myDataSize)
+  {
+    cerr << "MemView data size mismatch (" << data.size() << " != " << myParams.myDataSize << ")\n";
+    return;
+  }
+
   myCurrentData.assign(data.begin(), data.end());
   myDataLayer.updateData(myCurrentData);
   setDirtyData();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool MemViewWidget::setAccessDataParams(uInt32 size, uInt32 offset)
+{
+  Logger::debug(std::format("[{}] Access counters offset = {}", myParams.myDataSize, offset));
+  Logger::debug(std::format("[{}] Access counters size   = {}", myParams.myDataSize, size));
+  return myParams.setAccessDataParams(size, offset);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -522,19 +514,12 @@ void MemViewWidget::updateAccessData(
   Device::AccessCounter* readAccessData,
   Device::AccessCounter* writeAccessData,
   Device::AccessCounter* pcAccessData,
-  const uInt32 size,
   const uInt32 elapsedCycles,
   const int elapsedFrames
 )
 {
   if (!isSetup())
     return;
-
-  if (size != static_cast<uInt32>(myParams.myDataSize))
-  {
-    cerr << "MemView access data size mismatch (" << size << " != " << myParams.myDataSize << ")\n";
-    return;
-  }
 
   // Scale heatmap decrement value according to elapsed cycles for all layers
   // Note: this is currently based on NTSC cycles, PAL will be nearly the same

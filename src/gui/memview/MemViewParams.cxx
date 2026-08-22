@@ -22,10 +22,12 @@
 #include <cmath>
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-MemViewParams::MemViewParams(int dataSize, uInt16 baseAddress, Cartridge& cartridge,
+MemViewParams::MemViewParams(uInt16 bankSize, uInt16 bankCount, uInt16 baseAddress, Cartridge& cartridge,
   int posX, int posY
 )
-  : myDataSize{dataSize},
+  : myBankSize{bankSize},
+    myBankCount{bankCount},
+    myDataSize{static_cast<uInt32>(bankSize * bankCount)},
     myBaseAddress{baseAddress},
     myCartridge{cartridge},
     mySurfacePosX{posX},
@@ -35,19 +37,20 @@ MemViewParams::MemViewParams(int dataSize, uInt16 baseAddress, Cartridge& cartri
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool MemViewParams::setBankSize(int bankSize)
+bool MemViewParams::setAccessDataParams(uInt32 size, uInt32 offset)
 {
-  myBankSize = bankSize;
-  myBankCount = myDataSize / myBankSize;
+  if ((offset + size) > myDataSize)
+  {
+    cerr << "MemView access data size/offset error (" << offset << " + " << size <<
+      " > " << myDataSize << ")\n";
+    myAccessDataSize = myAccessDataOffset = 0;
+    return false;
+  }
 
-  return
-    !(myBaseAddress & 0x1000)
-    ||
-    (
-      (myCartridge.bankSize() == myBankSize)
-      &&
-      (myCartridge.romBankCount() == myBankCount)
-    );
+  myAccessDataSize = size;
+  myAccessDataOffset = offset;
+
+  return true;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

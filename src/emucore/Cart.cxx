@@ -131,6 +131,15 @@ void Cartridge::pokeRAM(uInt8& dest, uInt16 address, uInt8 value)
 void Cartridge::createRomAccessArrays(size_t size)
 {
   myAccessSize = static_cast<uInt32>(size);
+#ifdef MEMVIEW_SUPPORT
+  // These five parameters must be overwritten by derived carts with RAM or
+  // special offsets to get correct result in the memory viewer:
+  myRomAccessSize = myAccessSize;
+  myRamAccessSize = 0;
+  myRomAccessOffset = 0;
+  myRamPeekAccessOffset = 0;
+  myRamPokeAccessOffset = 0;
+#endif
 
   // Always create ROM access base even if DEBUGGER_SUPPORT is disabled,
   // since other parts of the code depend on it existing

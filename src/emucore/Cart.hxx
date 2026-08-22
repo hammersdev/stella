@@ -233,8 +233,8 @@ class Cartridge : public Device
 
       @return Pointer to the buffer holding the counters for each address of the ROM.
     */
-    Device::AccessCounter* getRomCodePeekCounter() {
-      return myRomCodePeekCounter.get();
+    virtual Device::AccessCounter* getRomCodePeekCounter() {
+      return myRomCodePeekCounter.get() + myRomAccessOffset;
     }
 
     /**
@@ -242,8 +242,8 @@ class Cartridge : public Device
 
       @return Pointer to the buffer holding the counters for each address of the ROM.
     */
-    Device::AccessCounter* getRomDataPeekCounter() {
-      return myRomDataPeekCounter.get();
+    virtual Device::AccessCounter* getRomDataPeekCounter() {
+      return myRomDataPeekCounter.get() + myRomAccessOffset;
     }
 
     /**
@@ -251,8 +251,8 @@ class Cartridge : public Device
 
       @return Pointer to the buffer holding the counters for each address of the ROM.
     */
-    Device::AccessCounter* getRomPokeCounter() {
-      return myRomPokeCounter.get();
+    virtual Device::AccessCounter* getRomPokeCounter() {
+      return myRomPokeCounter.get() + myRomAccessOffset;
     }
 
     /**
@@ -261,9 +261,84 @@ class Cartridge : public Device
 
       @return Size in Device::AccessCounter values
     */
-    const uInt32& getRomCounterSize() const {
-      return myAccessSize;
+    virtual const uInt32& getRomCounterSize() const {
+      return myRomAccessSize;
     }
+
+    /**
+      Get the offset position of the ROM access counters within the getImage()
+      data range.
+
+      @return Offset in bytes
+    */
+    virtual uInt32 getRomCounterOffset() const {
+      return myRomAccessOffset;
+    }
+
+    /**
+      Get back the full access counters for cartridge RAM code reads
+      (reads of the program counter).
+
+      @return Pointer to the buffer holding the counters for each address of the RAM.
+    */
+    virtual Device::AccessCounter* getRamCodePeekCounter() {
+      return myRomCodePeekCounter.get() + myRamPeekAccessOffset;
+    }
+
+    /**
+      Get back the full access counters for cartridge RAM data reads.
+
+      @return Pointer to the buffer holding the counters for each address of the RAM.
+    */
+    virtual Device::AccessCounter* getRamDataPeekCounter() {
+      return myRomDataPeekCounter.get() + myRamPeekAccessOffset;
+    }
+
+    /**
+      Get back the full access counters for data writes on the cartridge RAM.
+
+      @return Pointer to the buffer holding the counters for each address of the RAM.
+    */
+    virtual Device::AccessCounter* getRamPokeCounter() {
+      return myRomPokeCounter.get() + myRamPokeAccessOffset;
+    }
+
+    /**
+      Get the size of each access counter buffers which will be retrieved by
+      getRamCodePeekCounter(), getRamDataPeekCounter() and getRamPokeCounter().
+
+      @return Size in Device::AccessCounter values
+    */
+    virtual uInt32 getRamCounterSize() const {
+      return myRamAccessSize;
+    }
+
+    /**
+      Get the offset position of the cartridge RAM access counters within the getRAM()
+      data range. This will probably always be 0.
+
+      @return Offset in bytes
+    */
+    constexpr uInt32 getRamCounterOffset() const {
+      return 0;
+    }
+
+    /**
+      Returns the offset difference between read and write access addresses
+      of the internal cartridge RAM.
+
+      @return Offset in bytes
+    */
+    int getRamMirrorAddrDiff() const {
+      return myRamPeekAccessOffset - myRamPokeAccessOffset;
+    }
+
+    /**
+      Get cartridge RAM contents for direct external access
+
+      @return  Mutable span over RAM array.
+    */
+    virtual ByteSpan getRAM() { return ByteSpan(); }
   #endif
 
   public:
@@ -512,6 +587,18 @@ class Cartridge : public Device
 
     // Total size of ROM access area (might include RAM too)
     uInt32 myAccessSize{0};
+
+  #ifdef MEMVIEW_SUPPORT
+    // Size of ROM access counters delivered by getRom***Counter()
+    uInt32 myRomAccessSize{0};
+    // Size of RAM access counters delivered by getRam***Counter()
+    uInt32 myRamAccessSize{0};
+    // Offset of ROM access counters delivered by getRom***Counter()
+    uInt32 myRomAccessOffset{0};
+    // Offset of RAM access counters delivered by getRam***Counter()
+    uInt32 myRamPeekAccessOffset{0};
+    uInt32 myRamPokeAccessOffset{0};
+  #endif
 
     // Callback to output messages
     messageCallback myMsgCallback{nullptr};

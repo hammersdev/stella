@@ -48,7 +48,7 @@ class MemViewAccessLayer : public MemViewLayer
       @param params       Reference to the parameters common for everything within this view
       @param colorTab     A table with 256 colors to be used for this heatmap display
     */
-    MemViewAccessLayer(Dialog& dialog, MemViewParams &params, ColorTab& colorTab);
+    MemViewAccessLayer(Dialog& dialog, MemViewParams &params, const ColorTab& colorTab);
     virtual ~MemViewAccessLayer() override;
 
     /**
@@ -70,7 +70,7 @@ class MemViewAccessLayer : public MemViewLayer
                                 last update.
       @param elapsedFrames      Number of complete elapsed TV frames since last update.
     */
-    void updateAccessData(Device::AccessCounter* accessData, 
+    void updateAccessData(Device::AccessCounter* accessData,
       const MemViewAccessLayer::HeatmapValue& currentDecrement,
       const int elapsedFrames
     );
@@ -103,16 +103,17 @@ class MemViewAccessLayer : public MemViewLayer
 
   private:
 
-    ColorTab& myColorTab;  // ARGB
+    const ColorTab& myColorTab;  // ARGB
     std::vector<Device::AccessCounter> myLastAccessData;
     std::vector<Device::AccessCounter> myStartAccessData;
     std::vector<HeatmapValue> myHeatmap;
     double myHeatmapGain{1.0};
+    bool myFirstRun{true};
     bool mySkipNextUpdate{false};
 
   private:
 
-    void compareAccessData(Device::AccessCounter* newData, 
+    void compareAccessData(Device::AccessCounter* newData,
       const MemViewAccessLayer::HeatmapValue& currentDecrement,
       const int elapsedFrames
     );

@@ -59,6 +59,7 @@ class MemViewDialog : public Dialog
     static constexpr uInt16 ROM_BASE = 0x1000;
     static constexpr int MIN_RAM_HEIGHT = RAM_SIZE * 2;
     static constexpr int MIN_ROM_WIDTH = 256;
+    static constexpr int MAX_BANK_HEIGHT = 512;
     static constexpr int COLOR_WIDGET_WIDTH = 32;
     static constexpr double ROM_ALPHA_MAX = 196.0;
     static constexpr double RAM_ALPHA_MAX = 128.0;
@@ -164,6 +165,7 @@ class MemViewDialog : public Dialog
 
     MemViewWidget*    myRamView{nullptr};
     MemViewWidget*    myRomView{nullptr};
+    MemViewWidget*    myCartRamView{nullptr};
 
     MemViewWidget::ColorTab myRamReadColorTab;  // ARGB
     MemViewWidget::ColorTab myRamWriteColorTab; // ARGB

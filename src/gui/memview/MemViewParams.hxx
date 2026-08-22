@@ -43,24 +43,28 @@ class MemViewParams
     /**
       Constructor
 
-      @param dataSize     The size of data (RAM or ROM) processed by this instance of MemViewWidget
+      @param bankSize     The size of one bank (RAM or ROM) processed by this instance of MemViewWidget
+      @param bankCount    The number of banks processed by this instance of MemViewWidget
       @param baseAddress  Base address within system's address range
       @param cartridge    Reference to running cartridge to be able to calculate addresses
       @param posX         X position of surface within the window
       @param posY         Y position of surface within the window
     */
-    MemViewParams(int dataSize, uInt16 baseAddress, Cartridge &cartridge, int posX, int posY);
+    MemViewParams(uInt16 bankSize, uInt16 bankCount, uInt16 baseAddress, Cartridge &cartridge, 
+      int posX, int posY);
     MemViewParams(const MemViewParams&) = default;
 
     ~MemViewParams() = default;
 
     /**
-      Sets the size of one bank.
+      Sets the size and position of the expected access data counters within our whole data range.
 
-      @param bankSize   Bank size in bytes
-      @return Result if the calculated values make sense
+      @param size     Number of access counters to take over
+      @param offset   Offset inside our whole data range to put the new data to
+
+      @returns true if valid
     */
-    bool setBankSize(int bankSize);
+    bool setAccessDataParams(uInt32 size, uInt32 offset);
 
     /**
       Sets layout parameters to be used and calculates all depending values.
@@ -171,7 +175,9 @@ class MemViewParams
 
   public:
 
-    int myDataSize;           // Data size in bytes
+    uInt16 myBankSize;        // Bytes
+    uInt16 myBankCount;       // Number of banks
+    uInt32 myDataSize;        // Data size in bytes
     uInt16 myBaseAddress;     // Byte-Address
     Cartridge &myCartridge;   // Reference to cartidge to retrieve addresses
     int mySurfaceWidth{0};    // Pixel
@@ -180,8 +186,8 @@ class MemViewParams
     int mySurfacePosY{0};     // Pixel
     int myOffsetX{0};         // Pixel
     int myOffsetY{0};         // Pixel
-    int myBankWidth{1};       // Bytes
-    int myBankHeight{1};      // Bytes
+    uInt16 myBankWidth{1};    // Bytes
+    uInt16 myBankHeight{1};   // Bytes
     int myHBanks{1};          // Number of horizontally banks
     int myVBanks{1};          // Number of vertically banks
 
@@ -211,8 +217,6 @@ class MemViewParams
     int myTotalSepsWidth{0};      // Pixel
     int myTotalSepsHeight{0};     // Pixel
     int myTotalBytesX{1};         // Bytes per line
-    int myBankSize{1};            // Bytes
-    int myBankCount{1};           // Number of banks
     int myBankRowSize{1};         // Total bytes of one bank row
 
     int myYStart{0};              // Y position within surface where first data is
@@ -224,6 +228,9 @@ class MemViewParams
 
     // Precalculated value for heatmap data decrements based on the user's decay rate slider setting
     double myAccessDataDecrement{4.0};
+
+    uInt32 myAccessDataSize{0};
+    uInt32 myAccessDataOffset{0};
 
   private:
     // Following constructors and assignment operators not supported

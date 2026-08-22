@@ -85,7 +85,7 @@ void MemViewDataLayer::setVisualParameters(bool inverted, bool byteFade)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MemViewDataLayer::updateData(const std::vector<uInt8>& data)
 {
-  if (static_cast<int>(data.size()) != myParams.myDataSize)
+  if (data.size() != myParams.myDataSize)
     return;
 
   // Copy and rearrange the data to our layout
