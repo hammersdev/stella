@@ -92,6 +92,24 @@ uInt16 Cartridge::bankSize(uInt16 bank) const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ByteSpan Cartridge::getImage(ImageScope scope) const
+{
+  // Look for desired scope
+  auto it = myImageScopes.find(scope);
+  if (it != myImageScopes.end())
+    return it->second;
+  if (scope == ImageScope::PROGRAM)
+  {
+    // Try to return FULL scope instead
+    it = myImageScopes.find(ImageScope::FULL);
+    if (it != myImageScopes.end())
+      return it->second;
+  }
+  // Nothing found
+  return ByteSpan();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt8 Cartridge::peekRAM(uInt8& dest, uInt16 address)
 {
   const uInt8 value = myRWPRandomValues[address & 0xFF];
@@ -131,12 +149,17 @@ void Cartridge::pokeRAM(uInt8& dest, uInt16 address, uInt8 value)
 void Cartridge::createRomAccessArrays(size_t size)
 {
   myAccessSize = static_cast<uInt32>(size);
+
 #ifdef MEMVIEW_SUPPORT
-  // These five parameters must be overwritten by derived carts with RAM or
-  // special offsets to get correct result in the memory viewer:
-  myRomAccessSize = myAccessSize;
+  // These parameters must be overwritten by derived carts with RAM or
+  // special offsets to get correct result in the memory viewer
+  // (everything not set defaults to zero):
+  myRomAccessSizes[ImageScope::FULL] = myAccessSize;
+  myRomAccessSizes[ImageScope::PROGRAM] = myAccessSize;
+  myRomAccessOffsets[ImageScope::FULL] = 0;
+  myRomAccessOffsets[ImageScope::PROGRAM] = 0;
+
   myRamAccessSize = 0;
-  myRomAccessOffset = 0;
   myRamPeekAccessOffset = 0;
   myRamPokeAccessOffset = 0;
 #endif
@@ -235,6 +258,76 @@ uInt16 Cartridge::bankOrigin(uInt16 bank, uInt16 PC) const
     }
   }
   return maxIdx << 13 | 0x1000; //| (offset & 0xfff);
+}
+#endif
+
+#ifdef MEMVIEW_SUPPORT
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Device::AccessCounter* Cartridge::getRomCodePeekCounter(ImageScope scope) const
+{
+  return myRomCodePeekCounter.get() + getRomCounterOffset(scope) + getRomScopeOffset(scope);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Device::AccessCounter* Cartridge::getRomDataPeekCounter(ImageScope scope) const
+{
+  return myRomDataPeekCounter.get() + getRomCounterOffset(scope) + getRomScopeOffset(scope);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Device::AccessCounter* Cartridge::getRomPokeCounter(ImageScope scope) const
+{
+  return myRomPokeCounter.get() + getRomCounterOffset(scope) + getRomScopeOffset(scope);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+uInt32 Cartridge::getRomCounterSize(ImageScope scope) const
+{
+  auto it = myRomAccessSizes.find(scope);
+  return (it != myRomAccessSizes.end()) ? it->second : 0;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+uInt32 Cartridge::getRomCounterOffset(ImageScope scope) const
+{
+  auto it = myRomAccessOffsets.find(scope);
+  return (it != myRomAccessOffsets.end()) ? it->second : 0;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Device::AccessCounter* Cartridge::getRamCodePeekCounter() const
+{
+  return myRomCodePeekCounter.get() + myRamPeekAccessOffset;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Device::AccessCounter* Cartridge::getRamDataPeekCounter() const
+{
+  return myRomDataPeekCounter.get() + myRamPeekAccessOffset;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Device::AccessCounter* Cartridge::getRamPokeCounter() const
+{
+  return myRomPokeCounter.get() + myRamPokeAccessOffset;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+uInt32 Cartridge::getRamCounterSize() const
+{
+  return myRamAccessSize;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+int Cartridge::getRamMirrorAddrDiff() const
+{
+  return myRamPeekAccessOffset - myRamPokeAccessOffset;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+uInt32 Cartridge::getRomScopeOffset(ImageScope scope) const {
+  auto it = myRomOffsets.find(scope);
+  return (it != myRomOffsets.end()) ? it->second : 0;
 }
 #endif
 

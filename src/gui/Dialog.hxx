@@ -217,7 +217,7 @@ class Dialog : public GuiObject
 
     virtual bool repeatEnabled() { return true; }
 
-  #if MEMVIEW_SUPPORT
+  #ifdef MEMVIEW_SUPPORT
     void skipBaseUpdate() { _skipBaseUpdate = true; }
   #endif
 
@@ -249,7 +249,7 @@ class Dialog : public GuiObject
     string  _helpURL;
     bool    _debuggerHelp{false};
     ButtonWidget* _helpWidget{nullptr};
-  #if MEMVIEW_SUPPORT
+  #ifdef MEMVIEW_SUPPORT
     bool    _skipBaseUpdate{false};
   #endif
 

@@ -41,6 +41,9 @@ CartridgeCTY::CartridgeCTY(ByteSpan image, string_view md5,
   // Subspan pointing to the first tune
   myFrequencyImage = myTuneData;
 
+  // Store image scope to be accessible by getImage()
+  myImageScopes[ImageScope::FULL] = myImage;
+
   myMusicCounters.fill(0);
   myMusicFrequencies.fill(0);
 }
@@ -298,12 +301,6 @@ bool CartridgeCTY::patch(uInt16 address, uInt8 value)
     myImage[myBankOffset + address] = value;
 
   return myBankChanged = true;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteSpan CartridgeCTY::getImage() const
-{
-  return myImage;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -97,6 +97,10 @@ CartridgeCDF::CartridgeCDF(ByteSpan image, string_view md5,
     thumulatorConfiguration(myCDFSubtype),
     this);
 
+  // Store image scopes to be accessible by getImage()
+  myImageScopes[ImageScope::FULL] = myImage;
+  myImageScopes[ImageScope::PROGRAM] = myProgramImage;
+
   this->setInitialState();  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
 
   myPlusROM = std::make_unique<PlusROM>(mySettings, *this);
@@ -507,12 +511,6 @@ bool CartridgeCDF::patch(uInt16 address, uInt8 value)
     return myBankChanged = true;
   }
   return false;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteSpan CartridgeCDF::getImage() const
-{
-  return myImage;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

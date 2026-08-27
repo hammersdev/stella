@@ -1671,13 +1671,6 @@ void CartridgeMVC::consoleChanged(ConsoleTiming timing)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteSpan CartridgeMVC::getImage() const
-{
-  // not used
-  return myImage;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool CartridgeMVC::patch(uInt16 address, uInt8 value)
 {
   myMovie->writeROM(address, value);

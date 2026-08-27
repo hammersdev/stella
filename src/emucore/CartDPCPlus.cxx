@@ -77,6 +77,10 @@ CartridgeDPCPlus::CartridgeDPCPlus(ByteSpan image, string_view md5,
      myDriverMD5 == "8dd73b44fd11c488326ce507cbeb19d1" )
     myFractionalLowMask = 0x0F0000;
 
+  // Store image scopes to be accessible by getImage()
+  myImageScopes[ImageScope::FULL] = ByteSpan{myImage}.first(mySize);
+  myImageScopes[ImageScope::PROGRAM] = myProgramImage;
+
   this->setInitialState();  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
 
   myPlusROM = std::make_unique<PlusROM>(mySettings, *this);
@@ -677,12 +681,6 @@ bool CartridgeDPCPlus::patch(uInt16 address, uInt8 value)
   }
   else
     return false;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteSpan CartridgeDPCPlus::getImage() const
-{
-  return ByteSpan{myImage}.first(mySize);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

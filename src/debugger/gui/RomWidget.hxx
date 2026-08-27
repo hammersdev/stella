@@ -32,7 +32,7 @@ class RomWidget : public Widget, public CommandSender
     // This enum needs to be seen outside the class
     enum {
       kInvalidateListing  = 'INli'
-  #if MEMVIEW_SUPPORT
+  #ifdef MEMVIEW_SUPPORT
       ,kMemViewButton     = 'MVBt'
   #endif
     };
@@ -49,7 +49,7 @@ class RomWidget : public Widget, public CommandSender
 
     void scrollTo(int line);
 
-  #if MEMVIEW_SUPPORT
+  #ifdef MEMVIEW_SUPPORT
     void updateMemViewButton();
   #endif
 
@@ -68,7 +68,7 @@ class RomWidget : public Widget, public CommandSender
   private:
     RomListWidget*  myRomList{nullptr};
     EditTextWidget* myBank{nullptr};
-  #if MEMVIEW_SUPPORT
+  #ifdef MEMVIEW_SUPPORT
     ButtonWidget*   myMvButton{nullptr};
   #endif
 

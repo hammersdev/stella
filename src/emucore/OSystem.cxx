@@ -1084,7 +1084,7 @@ double OSystem::dispatchEmulation(EmulationWorker& emulationWorker)
 void OSystem::mainLoop()
 {
 
-#if MEMVIEW_SUPPORT
+#ifdef MEMVIEW_SUPPORT
   TimeChecker timeFrame("Frame", false);
   TimeChecker timeMain("Main", false);
   TimeChecker timeMemView("MemView", false);
@@ -1100,7 +1100,7 @@ void OSystem::mainLoop()
   for(;;)
   {
 
-  #if MEMVIEW_SUPPORT
+  #ifdef MEMVIEW_SUPPORT
     timeFrame.start();
 
     if (hasMemViewFrameBuffer())
@@ -1157,7 +1157,7 @@ void OSystem::mainLoop()
       myFrameBuffer->update();
     }
 
-  #if MEMVIEW_SUPPORT
+  #ifdef MEMVIEW_SUPPORT
     timeMain.stop(nullptr, true);
   #endif
 
@@ -1181,7 +1181,7 @@ void OSystem::mainLoop()
       std::this_thread::sleep_until(virtualTime);
     }
 
-  #if MEMVIEW_SUPPORT
+  #ifdef MEMVIEW_SUPPORT
     timeFrame.stop();
   #endif
 

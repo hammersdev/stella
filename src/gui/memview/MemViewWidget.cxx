@@ -74,17 +74,21 @@ MemViewWidget::MemViewWidget(GuiObject *boss, const GUI::Font& font,
     - (isZoomable ? (ScrollBarHWidget::scrollBarHeight(font) - FRAME_THICKNESS) : 0);
 
   // Check if bank is displayable
-  myIsSetup = 
+  myIsSetup =
+    ((bankSize * bankCount) > 0)
+    &&
     (
-      (bankCount == 1)
-      &&
-      ((bankSize % bankHeight) == 0)
-    )
-    ||
-    (
-      ((bankSize % MemViewDialog::MAX_BANK_HEIGHT) == 0)
-      &&
-      ((bankSize % bankHeight) == 0)
+      (
+        (bankCount == 1)
+        &&
+        ((bankSize % bankHeight) == 0)
+      )
+      ||
+      (
+        ((bankSize % MemViewDialog::MAX_BANK_HEIGHT) == 0)
+        &&
+        ((bankSize % bankHeight) == 0)
+      )
     );
 
   Logger::debug(std::format("New MemViewWidget"));
@@ -555,6 +559,10 @@ void MemViewWidget::setLayoutParameters(bool singleRow, bool separators, int ban
 
   // Set original data again to let the corresponding layer copy the data to it's new layout
   myDataLayer.updateData(myCurrentData);
+
+  // Update heatmap layout to new arrangement when paused or in debugger
+  if (instance().eventHandler().state() != EventHandlerState::EMULATION)
+    heatmapsToFields(true);
 
   recalcScrollBars();
   updateMarker();

@@ -2849,7 +2849,7 @@ void EventHandler::setState(EventHandlerState state)
   myOSystem.stateChanged(myState); // does nothing
   myOSystem.frameBuffer().stateChanged(myState); // ignores state
   myOSystem.frameBuffer().setCursorState(); // en/disables cursor for UI and emulation states
-#if MEMVIEW_SUPPORT
+#ifdef MEMVIEW_SUPPORT
   if (myOSystem.hasMemViewFrameBuffer())
     myOSystem.stateChanged(myState);
 #endif

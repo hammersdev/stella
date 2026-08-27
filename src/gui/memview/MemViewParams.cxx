@@ -39,15 +39,24 @@ MemViewParams::MemViewParams(uInt16 bankSize, uInt16 bankCount, uInt16 baseAddre
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool MemViewParams::setAccessDataParams(uInt32 size, uInt32 offset)
 {
-  if ((offset + size) > myDataSize)
+  if (offset > myDataSize)
   {
     cerr << "MemView access data size/offset error (" << offset << " + " << size <<
       " > " << myDataSize << ")\n";
     myAccessDataSize = myAccessDataOffset = 0;
     return false;
   }
+  else if ((offset + size) > myDataSize)
+  {
+    cerr << "MemView access data size/offset warning (" << offset << " + " << size <<
+      " > " << myDataSize << ")\n";
+    myAccessDataSize = myDataSize - offset;
+  }
+  else
+  {
+    myAccessDataSize = size;
+  }
 
-  myAccessDataSize = size;
   myAccessDataOffset = offset;
 
   return true;
@@ -400,7 +409,7 @@ uInt16 MemViewParams::getAddress(int x, int y, int* bank, unsigned int* offset) 
     *bank = b;
 
   if (myBaseAddress & 0x1000)
-    return myCartridge.bankOrigin(b) + (linOffset % myBankSize);
+    return (myBaseAddress & 0xFFF) + myCartridge.bankOrigin(b) + (linOffset % myBankSize);
   else
     return myBaseAddress + linOffset;
 }

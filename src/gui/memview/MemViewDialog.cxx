@@ -33,6 +33,62 @@
 #include "MemViewWidget.hxx"
 #include "MemViewDialog.hxx"
 
+/*
+  Cartridge support status:
+
+  0FA0      OK
+  2K        OK
+  3E        Breakpoints not working, PC position not shown, no access data for cartridge RAM
+  3E+       Breakpoints not working, PC position not shown, No access data for cartridge RAM
+  3EX       ?
+  03E0      Breakpoints not working (Montezuma's Revenge)
+  3F        Breakpoints not working for big ROMs (Bad Apple)
+  4A50      No access data for internal RAM, program ROM only 4K, cart RAM not exposed
+  4K        OK
+  4KSC      OK
+  0840      OK
+  AR        Unsure - what is RAM/ROM? No access data
+  BF        OK
+  BFSC      OK
+  BUS       Cart RAM without content, no access data for cart RAM, no access data for internal RAM 
+  CDF       Cart RAM without content, no access data for cart RAM, no access data for internal RAM
+  CDFJ+     Cart RAM without content, no access data for cart RAM, no access data for internal RAM
+  CM        No access data for internal RAM
+  CTY       Cart RAM not exposed
+  CV        OK
+  DevCard   ?
+  DF        OK
+  DFSC      OK
+  DPC       OK
+  DPC+      Cart RAM without content, PC in cart RAM (false addresses)
+  E0        Breakpoints not always working
+  E7        Cart RAM not exposed
+  EF/EFF    Breakpoints not always working (invalid bank)
+  EFSC      OK
+  ELF       Only 4K of ROM(?) exposed
+  F0        OK
+  F4        OK
+  F4SC      OK
+  F6        OK
+  F6SC      OK
+  F8        OK
+  F8SC      OK
+  FA        OK
+  FA2       OK
+  FC        OK
+  FE        OK
+  GL        Cartridge RAM access counters (addresses) mixed with ROM
+  JANE      ?
+  MDM       OK
+  MVC       Unsupported
+  SB        Breakpoints not always working (invalid bank)
+  TVBoy     OK
+  UA        OK
+  WD        OK
+  WF8       OK
+  X07       No access data for internal RAM
+*/
+
 #define COLORMIX50(a, b) \
   ((((a & 0xFF0000) + (b & 0xFF0000)) / 2) & 0xFF0000) | \
   ((((a & 0xFF00) + (b & 0xFF00)) / 2) & 0xFF00) | \
@@ -72,86 +128,19 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
 
   const int ramXPos = H_OUTER_BORDER;
   const int ramYPos = V_OUTER_BORDER;
+  const int romYPos = V_OUTER_BORDER;
   const int settingsWidth = getSettingsWidth(font);
   const int settingsHeight = getSettingsHeight(font);
   const int ramMaxWidth = settingsWidth;
   const int ramMaxHeight = _h - 2 * V_OUTER_BORDER - settingsHeight - V_INNER_DIST;
   const int settingsXPos = H_OUTER_BORDER;
   const int settingsYPos = _h - V_OUTER_BORDER - settingsHeight;
-
-  // Place RAM view and get dimensions
-  myRamView = new MemViewWidget(this, font, ramXPos, ramYPos, ramMaxWidth, ramMaxHeight,
-    RAM_SIZE, 1, RAM_SIZE, false, true, false,
-    myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
-    MemViewDataLayer::RAM_DATA_COLOR_DEFAULT, MemViewDataLayer::RAM_DATA_COLOR_FADED,
-    "RAM", RAM_BASE
-  );
-  myRamView->setLayoutParameters(true, false, RAM_SIZE);
-  M6532& riot = instance().console().riot();
-  myRamView->setAccessDataParams(riot.getRamCounterSize(), riot.getRamCounterOffset());
-
-  const int ramWidth = myRamView->getWidth();
-  int ramTotalWidth = ramWidth + H_TEXT_TO_WIDGET_DIST + font.getStringWidth(TEXT_RAM);
-
-  // Get the cartridge infos
-  Cartridge &cart = instance().console().cartridge();
-
-  ByteSpan fullRomContent = cart.getImage();
-  size_t fullRomSize = fullRomContent.size();
-
-  uInt16 romBankSize = cart.bankSize();
-  uInt16 romBankCount = cart.romBankCount();
-  uInt32 romSize = romBankSize * romBankCount;
-
-  if (romSize > fullRomSize)
-  {
-    // For now: cut down size to full banks
-    romBankCount = fullRomSize / romBankSize;
-    romSize = romBankSize * romBankCount;
-  }
-  ByteSpan romContent = ByteSpan(fullRomContent.begin(), romSize);
-
-  uInt32 cartRamSize = cart.internalRamSize();
-  uInt16 cartRamBankCount = cart.ramBankCount();
-  uInt32 extraRomSize = fullRomSize - romSize;
-  Logger::debug(std::format("Full ROM size  = {}", fullRomSize));
-  Logger::debug(std::format("Bank size      = {}", romBankSize));
-  Logger::debug(std::format("ROM bank count = {}", romBankCount));
-  Logger::debug(std::format("Extra ROM size = {}", extraRomSize));
-  Logger::debug(std::format("RAM bank count = {}", cartRamBankCount));
-  Logger::debug(std::format("Int RAM size   = {}", cartRamSize));
-
-  // Does the cartridge have internal RAM to be displayed?
-  if (cartRamSize != 0)
-  {
-    if (cartRamSize <= 256)
-    {
-      // Smaller cartridge RAM will be shown next to the RIOT's RAM
-      const int cartRamXPos = ramXPos + ramTotalWidth + H_TEXT_TO_WIDGET_DIST;
-      myCartRamView = new MemViewWidget(this, font, cartRamXPos, ramYPos, ramWidth * 2,
-        ramMaxHeight, cartRamSize, 1, RAM_SIZE, false, true, false,
-        myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
-        MemViewDataLayer::RAM_DATA_COLOR_DEFAULT, MemViewDataLayer::RAM_DATA_COLOR_FADED,
-        "Cart RAM", ROM_BASE, abs(cart.getRamMirrorAddrDiff())
-      );
-      myCartRamView->setLayoutParameters(true, false, RAM_SIZE);
-      myCartRamView->setAccessDataParams(cart.getRamCounterSize(), cart.getRamCounterOffset());
-      ramTotalWidth += H_INNER_DIST + myCartRamView->getWidth();
-    }
-  }
-
-  // Calculate ROM position
-  const int romTextWidth = font.getStringWidth(TEXT_ROM);
-  int romTextXPos = std::max(ramTotalWidth + H_INNER_DIST + H_TEXT_TO_WIDGET_DIST,
-    settingsXPos + getSettingsWidth(font) + H_INNER_DIST - H_TEXT_TO_WIDGET_DIST - romTextWidth);
-  myRomXPos = romTextXPos + romTextWidth + H_TEXT_TO_WIDGET_DIST;
-  myRomYPos = V_OUTER_BORDER;
-  myRomWidth = _w - myRomXPos - H_OUTER_BORDER;
-  myRomHeight = _h - 2 * V_OUTER_BORDER;
+  const int mainHeight = _h - 2 * V_OUTER_BORDER;
   const int colorsXPos = std::max(
     settingsXPos + CheckboxWidget::neededWidth(font, TEXT_LONGEST, boxSize) + H_TEXT_TO_WIDGET_DIST,
     settingsXPos + settingsWidth - COLOR_WIDGET_WIDTH
   );
+  const int romTextWidth = font.getStringWidth(TEXT_ROM);
 
   // Place settings
   int ypos = settingsYPos;
@@ -225,28 +214,277 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
     settingsWidth, checkboxHeight, TEXT_CLEAR, kClearButtonPressed
   );
 
-  // Place ROM view
-  myRomView = new MemViewWidget(this, font, myRomXPos, myRomYPos, myRomWidth, myRomHeight,
-    romBankSize, romBankCount, 256, true, false, true, 
-    myRomReadColorTab, myRomWriteColorTab, myRomPcColorTab, 
-    MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED, "ROM", ROM_BASE
-  );
-  myRomView->setAccessDataParams(cart.getRomCounterSize(), cart.getRomCounterOffset());
+  // Get the cartridge infos
+  bool setupOk = true;
+  bool singleRow = true;
+  Cartridge &cart = instance().console().cartridge();
 
-  // Check if ROM is supported and corresponding view is setup correctly
-  if (myRomView->isSetup())
+  // Determine ROM parameters
+  const ByteSpan programRomContent = cart.getImage(Cartridge::ImageScope::PROGRAM);
+  const uInt32 programRomSize = static_cast<uInt32>(programRomContent.size());
+  uInt16 romBankSize = cart.bankSize();
+  uInt16 romBankCount = cart.romBankCount();
+  uInt32 romSize = romBankSize * romBankCount;
+
+  Logger::debug(std::format("ROM size        = {}", programRomSize));
+  Logger::debug(std::format("Calced ROM size = {} ({} x {})", romSize, romBankCount, romBankSize));
+
+  // Check if the calculated size is bigger than the delivered one
+  if (romSize > programRomSize)
   {
-    // Set current content
-    myRomView->updateData(romContent);
+    if (programRomSize < romBankSize)
+    {
+      // Special case (e.g. for small CV ROMs)
+      romBankCount = 1;
+      romBankSize = programRomSize;
+      romSize = programRomSize;
+    }
+    else
+    {
+      // For now: cut down size to full banks
+      romBankCount = programRomSize / romBankSize;
+      romSize = romBankSize * romBankCount;
+    }
+    Logger::debug(std::format("Corrected size  = {} ({} x {})", romSize, romBankCount, romBankSize));
+  }
+  // Limit content to the size we support
+  ByteSpan romContent = ByteSpan(programRomContent.begin(), romSize);
+
+  // Go through additional image scopes to add up byte
+  // sizes and build a map of scopes needed at the main area
+  struct MainAreaScope {
+    MainAreaScope() : myBytes{0}, myWidth{0} { };
+    MainAreaScope(uInt32 bytes, int width = 0) : myBytes{bytes}, myWidth{width} { }
+    uInt32 myBytes;
+    int myWidth;
+  };
+  std::map<Cartridge::ImageScope, MainAreaScope> mainAreaScopes;
+  mainAreaScopes[Cartridge::ImageScope::PROGRAM] = MainAreaScope(romSize);
+  uInt32 mainAreaLeftBytes = romSize;
+  Cartridge::ImageScope largestScope = Cartridge::ImageScope::PROGRAM;
+  for (
+    Cartridge::ImageScope scope = extraScopeFirst;
+    scope <= extraScopeLast;
+    scope = Cartridge::ImageScope(std::to_underlying(scope) + 1)
+  )
+  {
+    uInt32 extraBytes = static_cast<uInt32>(cart.getImage(scope).size());
+    if (extraBytes > 0)
+    {
+      mainAreaLeftBytes += extraBytes;
+      mainAreaScopes[scope] = MainAreaScope(extraBytes);
+      if (extraBytes > mainAreaScopes[largestScope].myBytes)
+        largestScope = scope;
+    }
+  }
+
+  // Place RAM view and get dimensions
+  int xpos = ramXPos;
+  myRamView = new MemViewWidget(this, font, xpos, ramYPos, ramMaxWidth, ramMaxHeight,
+    RAM_SIZE, 1, RAM_SIZE, false, true, false,
+    myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
+    MemViewDataLayer::RAM_DATA_COLOR_DEFAULT, MemViewDataLayer::RAM_DATA_COLOR_FADED,
+    "RAM", RAM_BASE
+  );
+  myViews.insert({Cartridge::ImageScope::NONE, myRamView});
+  const int ramWidth = myRamView->getWidth();
+  xpos += ramWidth + H_TEXT_TO_WIDGET_DIST;
+
+  // Configure RAM view
+  myRamView->setLayoutParameters(true, false, RAM_SIZE);
+  M6532& riot = instance().console().riot();
+  myRamView->setAccessDataParams(riot.getRamCounterSize(), riot.getRamCounterOffset());
+
+  // Place RAM text
+  const int ramTextWidth = font.getStringWidth(TEXT_RAM);
+  new StaticTextWidget(this, font, xpos, ramYPos, ramTextWidth,
+    fontHeight, TEXT_RAM, TextAlign::Left
+  );
+  xpos += ramTextWidth;
+
+  // Setup cartridge's RAM part (if any)
+  const uInt32 cartRamSize = cart.internalRamSize();
+  const uInt16 cartRamBankCount = cart.ramBankCount();
+  Logger::debug(std::format("RAM bank count = {}", cartRamBankCount));
+  Logger::debug(std::format("Int RAM size   = {}", cartRamSize));
+
+  int mainAreaLeftSize = _w - H_OUTER_BORDER;
+  int mainAreaNetLeftSize = mainAreaLeftSize - ramTextWidth - H_TEXT_TO_WIDGET_DIST -
+    static_cast<int>(mainAreaScopes.size() - 1) * H_INNER_DIST;
+
+  // Does the cartridge have internal RAM to be displayed?
+  if (cartRamSize > 0)
+  {
+    if (cartRamSize <= 256)
+    {
+      // Smaller cartridge RAM will be shown next to the RIOT's RAM
+      xpos += H_TEXT_TO_WIDGET_DIST;
+      uInt32 bankHeight = std::min((uInt32)RAM_SIZE, cartRamSize);
+      myCartRamView = new MemViewWidget(this, font, xpos, ramYPos,
+        (cartRamSize <= 128) ? ramWidth : (ramWidth * 2),
+        ramMaxHeight, cartRamSize, 1, bankHeight, false, true, false,
+        myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
+        MemViewDataLayer::RAM_DATA_COLOR_DEFAULT, MemViewDataLayer::RAM_DATA_COLOR_FADED,
+        "Cart RAM", ROM_BASE, abs(cart.getRamMirrorAddrDiff())
+      );
+      myViews.insert({Cartridge::ImageScope::NONE, myCartRamView});
+
+      xpos += myCartRamView->getWidth() + H_INNER_DIST;
+      xpos = std::max(xpos, settingsXPos + settingsWidth + H_INNER_DIST - H_TEXT_TO_WIDGET_DIST - romTextWidth);
+      mainAreaLeftSize -= xpos;
+      mainAreaNetLeftSize -= xpos;
+
+      myCartRamView->setLayoutParameters(true, false, bankHeight);
+      myCartRamView->setAccessDataParams(cart.getRamCounterSize(), cart.getRamCounterOffset());
+    }
+    else
+    {
+      // Big RAM is placed in the big GUI area before the ROM
+      myBigCartRam = true;
+      xpos += H_INNER_DIST;
+      xpos = std::max(xpos, settingsXPos + settingsWidth + H_INNER_DIST - H_TEXT_TO_WIDGET_DIST - ramTextWidth);
+
+      // Place RAM text
+      new StaticTextWidget(this, font, xpos, ramYPos, ramTextWidth,
+        fontHeight, TEXT_RAM, TextAlign::Left
+      );
+      xpos += ramTextWidth + H_TEXT_TO_WIDGET_DIST;
+      mainAreaNetLeftSize -= xpos + H_INNER_DIST;
+
+      double cartRamRatio = static_cast<double>(cartRamSize) / static_cast<double>(mainAreaLeftBytes + cartRamSize);
+      int cartRamWidth = round(static_cast<double>(mainAreaNetLeftSize) * cartRamRatio);
+      cartRamWidth = std::max(MIN_ROM_WIDTH, cartRamWidth);
+
+      uInt16 bankCount = std::max((uInt16)1, cartRamBankCount);
+      myCartRamView = new MemViewWidget(this, font, xpos, ramYPos, cartRamWidth,
+        mainHeight, cartRamSize / bankCount, bankCount, 256, true, false, true,
+        myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
+        MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED,
+        "Cart RAM", ROM_BASE, abs(cart.getRamMirrorAddrDiff())
+      );
+      myViews.insert({Cartridge::ImageScope::NONE, myCartRamView});
+      setupOk = setupOk && myCartRamView->isSetup();
+      singleRow = singleRow && myCartRamView->lockedSingleRow();
+
+      xpos += cartRamWidth + H_INNER_DIST;
+      mainAreaLeftSize -= xpos;
+      mainAreaNetLeftSize -= cartRamWidth;
+
+      myCartRamView->setAccessDataParams(cart.getRamCounterSize(), cart.getRamCounterOffset());
+    }
+  }
+  else
+  {
+    xpos += H_INNER_DIST;
+    xpos = std::max(xpos, settingsXPos + settingsWidth + H_INNER_DIST - H_TEXT_TO_WIDGET_DIST - romTextWidth);
+    mainAreaLeftSize -= xpos;
+    mainAreaNetLeftSize -= xpos;
+  }
+
+  // Pre-calculate all ROM view GUI sizes
+  if (mainAreaLeftBytes > 0)
+  {
+    for (auto &[scope, entry] : mainAreaScopes)
+    {
+      double ratio = static_cast<double>(entry.myBytes) / static_cast<double>(mainAreaLeftBytes);
+      int width = round(static_cast<double>(mainAreaNetLeftSize) * ratio);
+      int clampedWidth = std::max(MIN_ROM_WIDTH, width);
+      int diffWidth = clampedWidth - width;
+      // Subtract extra needs from the largest area
+      if (diffWidth && (scope != largestScope))
+      {
+        // Take the extra needed space from the largest one
+        mainAreaScopes[largestScope].myWidth -= diffWidth;
+        entry.myWidth += clampedWidth;
+      }
+      else
+      {
+        entry.myWidth += width;
+      }
+    }
+  }
+  else
+  {
+    mainAreaScopes[Cartridge::ImageScope::PROGRAM].myWidth = mainAreaNetLeftSize;
+  }
+
+  // Setup cartridge's ROM part
+
+  // Place ROM text
+  new StaticTextWidget(this, font, xpos, romYPos,
+    font.getStringWidth(TEXT_RAM), fontHeight, TEXT_ROM, TextAlign::Right
+  );
+  xpos += romTextWidth + H_TEXT_TO_WIDGET_DIST;
+
+  // Instantiate and place all ROM views
+  for (const auto &[scope, entry] : mainAreaScopes)
+  {
+    const int& width = entry.myWidth;
+    MemViewWidget* newView = nullptr;
+
+    switch (scope)
+    {
+      case Cartridge::ImageScope::PROGRAM:
+      {
+        // Place program ROM view
+        newView = new MemViewWidget(this, font, xpos, romYPos, width, mainHeight,
+          romBankSize, romBankCount, 256, true, false, true,
+          myRomReadColorTab, myRomWriteColorTab, myRomPcColorTab,
+          MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED, "ROM",
+          ROM_BASE + cart.getRomScopeOffset(scope)
+        );
+        // Set current content
+        newView->updateData(romContent);
+        break;
+      }
+
+      case Cartridge::ImageScope::DISPLAY_DATA:
+      {
+        // Place display data ROM view
+        ByteSpan image = cart.getImage(scope);
+        // TODO: check and adjust the image's size if necessary
+        newView = new MemViewWidget(this, font, xpos, romYPos, width, mainHeight,
+          static_cast<uInt16>(image.size()), 1, 256, true, false, true,
+          myRomReadColorTab, myRomWriteColorTab, myRomPcColorTab,
+          MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED, "Display data",
+          ROM_BASE + cart.getRomScopeOffset(scope)
+        );
+        // Set current content
+        newView->updateData(image);
+        break;
+      }
+
+      default:
+        cerr << "Maybe you forgot something here?\n";
+        continue;
+    }
+
+    if (newView != nullptr)
+    {
+      setupOk = setupOk && newView->isSetup();
+      singleRow = singleRow && newView->lockedSingleRow();
+      newView->setAccessDataParams(
+        cart.getRomCounterSize(scope),
+        cart.getRomCounterOffset(scope)
+      );
+      myViews.insert({scope, newView});
+      xpos += width + H_INNER_DIST;
+    }
+  }
+
+  // Check if ROM is supported and hide settings if unnecessary
+  if (setupOk)
+  {
     updateLayoutParameters();
 
-    if (myRomView->lockedSingleRow())
+    if (singleRow)
     {
       mySingleRow->setState(false);
       mySingleRow->setEnabled(false);
     }
 
-    if (romBankCount <= 1) {
+    if ((romBankCount <= 1) && (cartRamBankCount <= 1))
+    {
       // No separators if one bank only
       mySeparators->setState(false);
       mySeparators->setEnabled(false);
@@ -262,16 +500,7 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
     mySeparators->setEnabled(false);
   }
 
-  // Place RAM text
-  new StaticTextWidget(this, font, ramXPos + ramWidth + H_TEXT_TO_WIDGET_DIST,
-    ramYPos, font.getStringWidth(TEXT_RAM), fontHeight, TEXT_RAM, TextAlign::Left
-  );
-
-  // Place ROM text
-  new StaticTextWidget(this, font, romTextXPos, myRomYPos,
-    font.getStringWidth(TEXT_RAM), fontHeight, TEXT_ROM, TextAlign::Right
-  );
-
+  // Setup rest
   addToFocusList(wid);
 
   myLastCycles = instance().console().system().cycles();
@@ -284,10 +513,8 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
   addRenderCallback(
     [this]()
     {
-      myRamView->render();
-      if (myCartRamView)
-        myCartRamView->render();
-      myRomView->render();
+      for (const auto &[scope, view] : myViews)
+        view->render();
     }
   );
 
@@ -352,10 +579,8 @@ void MemViewDialog::tick()
   }
 
   // Update misc stuff
-  myRamView->updateRest();
-  if (myCartRamView)
-    myCartRamView->updateRest();
-  myRomView->updateRest();
+  for (const auto &[scope, view] : myViews)
+    view->updateRest();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -373,13 +598,9 @@ void MemViewDialog::setMinSize(Common::Size& size, const GUI::Font& font)
 bool MemViewDialog::needsRedraw()
 {
   bool dirtyGui = isDirty() || isChainDirty();
-  bool dirtyViews =
-    myRamView->isDirty()
-    ||
-    (myCartRamView ? myCartRamView->isDirty() : false)
-    ||
-    myRomView->isDirty();
-
+  bool dirtyViews = false;
+  for (const auto &[scope, view] : myViews)
+    dirtyViews = dirtyViews || view->isDirty();
   if (!myForcedUpdate && dirtyViews && !dirtyGui)
     skipBaseUpdate();
 
@@ -407,17 +628,13 @@ void MemViewDialog::handleCommand(CommandSender* sender, int cmd, int data, int 
       break;
 
     case kDecayRateChanged:
-      myRamView->setDecayRate(myDecaySlider->getValue());
-      if (myCartRamView)
-        myCartRamView->setDecayRate(myDecaySlider->getValue());
-      myRomView->setDecayRate(myDecaySlider->getValue());
+      for (const auto &[scope, view] : myViews)
+        view->setDecayRate(myDecaySlider->getValue());
       break;
 
     case kClearButtonPressed:
-      myRamView->clearHeatmaps();
-      if (myCartRamView)
-        myCartRamView->clearHeatmaps();
-      myRomView->clearHeatmaps();
+      for (const auto &[scope, view] : myViews)
+        view->clearHeatmaps();
       break;
 
     default:
@@ -495,46 +712,40 @@ void MemViewDialog::calcColorDataTab(uInt32 colorHigh, uInt32 colorMid, const do
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MemViewDialog::updateVisualParameters()
 {
-  myRamView->setVisualParameters(
-    myShowData->getState(),
-    myShowPc->getState(),
-    myShowReads->getState(),
-    myShowWrites->getState(),
-    myInverted->getState(),
-    myByteFade->getState()
-  );
-
-  if (myCartRamView)
+  for (const auto &[scope, view] : myViews)
   {
-    myCartRamView->setVisualParameters(
+    view->setVisualParameters(
       myShowData->getState(),
       myShowPc->getState(),
       myShowReads->getState(),
-      myShowWrites->getState(),
+      ((view == myRamView) || (view == myCartRamView))
+        ? myShowWrites->getState() : false,
       myInverted->getState(),
       myByteFade->getState()
     );
   }
-
-  myRomView->setVisualParameters(
-    myShowData->getState(),
-    myShowPc->getState(),
-    myShowReads->getState(),
-    false,
-    myInverted->getState(),
-    myByteFade->getState()
-  );
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MemViewDialog::updateLayoutParameters()
 {
   const int bankHeight = std::stoi(myBankHeight->getSelectedName());
-  myRomView->setLayoutParameters(
-    mySingleRow->getState(),
-    mySeparators->getState(),
-    bankHeight
-  );
+
+  for (const auto &[scope, view] : myViews)
+  {
+    if (
+      (view == myRamView)
+      ||
+      ((view == myCartRamView) && !myBigCartRam)
+    )
+      continue;
+
+    view->setLayoutParameters(
+      mySingleRow->getState(),
+      mySeparators->getState(),
+      bankHeight
+    );
+  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -567,12 +778,20 @@ void MemViewDialog::updateAccessData(uInt32 cyclesDiff, int elapsedFrames)
     );
   }
 
-  // Update ROM accesses
-  myRomView->updateAccessData(
-    cart.getRomDataPeekCounter(),
-    cart.getRomPokeCounter(),
-    cart.getRomCodePeekCounter(),
-    cyclesDiff,
-    elapsedFrames
-  );
+  // Update ROM views
+  for (const auto &[scope, view] : myViews)
+  {
+    if (scope == Cartridge::ImageScope::NONE)
+      // These are the RAM views already handled above
+      continue;
+
+    // Update ROM accesses
+    view->updateAccessData(
+      cart.getRomDataPeekCounter(scope),
+      cart.getRomPokeCounter(scope),
+      cart.getRomCodePeekCounter(scope),
+      cyclesDiff,
+      elapsedFrames
+    );
+  }
 }

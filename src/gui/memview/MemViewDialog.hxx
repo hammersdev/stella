@@ -26,8 +26,10 @@ class PopUpWidget;
 class ColorWidget;
 class SliderWidget;
 
+#include "Cart.hxx"
 #include "Dialog.hxx"
 #include "MemViewWidget.hxx"
+#include <map>
 
 /**
   The main dialog for all Memory View functionalities and displays.
@@ -38,6 +40,9 @@ class SliderWidget;
 class MemViewDialog : public Dialog
 {
   public:
+
+    static constexpr Cartridge::ImageScope extraScopeFirst = Cartridge::ImageScope::DISPLAY_DATA;
+    static constexpr Cartridge::ImageScope extraScopeLast = Cartridge::ImageScope::DISPLAY_DATA;
 
     static constexpr uInt32 READ_COLOR_HIGH = 0xc9c5ff;
     static constexpr uInt32 READ_COLOR_MID = 0x302abc;
@@ -58,7 +63,7 @@ class MemViewDialog : public Dialog
     static constexpr uInt16 RAM_BASE = 0x80;
     static constexpr uInt16 ROM_BASE = 0x1000;
     static constexpr int MIN_RAM_HEIGHT = RAM_SIZE * 2;
-    static constexpr int MIN_ROM_WIDTH = 256;
+    static constexpr int MIN_ROM_WIDTH = 250;
     static constexpr int MAX_BANK_HEIGHT = 512;
     static constexpr int COLOR_WIDGET_WIDTH = 32;
     static constexpr double ROM_ALPHA_MAX = 196.0;
@@ -164,8 +169,9 @@ class MemViewDialog : public Dialog
     ColorWidget*      myWriteColor{nullptr};
 
     MemViewWidget*    myRamView{nullptr};
-    MemViewWidget*    myRomView{nullptr};
     MemViewWidget*    myCartRamView{nullptr};
+    bool              myBigCartRam{false};
+    std::multimap<Cartridge::ImageScope, MemViewWidget*> myViews{};
 
     MemViewWidget::ColorTab myRamReadColorTab;  // ARGB
     MemViewWidget::ColorTab myRamWriteColorTab; // ARGB
@@ -176,10 +182,6 @@ class MemViewDialog : public Dialog
     MemViewWidget::ColorTab myRomPcColorTab;  // ARGB
 
     bool myForcedUpdate{false};
-    int myRomXPos{0};
-    int myRomYPos{0};
-    int myRomWidth{0};
-    int myRomHeight{0};
 
     uInt64 myLastCycles{0};
     uInt32 myLastFrames{0};

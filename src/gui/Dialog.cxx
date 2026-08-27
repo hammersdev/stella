@@ -337,13 +337,13 @@ void Dialog::render()
 
   // Update dialog surface; also render any extra surfaces
   // Extra surfaces must be rendered afterwards, so they are drawn on top
-#if MEMVIEW_SUPPORT
+#ifdef MEMVIEW_SUPPORT
   if(!_skipBaseUpdate)
   {
 #endif
     if(_surface->updateAndRender())
       _renderCallback();
-#if MEMVIEW_SUPPORT
+#ifdef MEMVIEW_SUPPORT
   }
   else
   {

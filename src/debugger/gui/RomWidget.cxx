@@ -38,7 +38,7 @@ RomWidget::RomWidget(GuiObject* boss, const GUI::Font& lfont, const GUI::Font& n
   int xpos = x, ypos = y + 7;
   const auto* t = new StaticTextWidget(boss, lfont, xpos, ypos, "Info ");
 
-#if MEMVIEW_SUPPORT
+#ifdef MEMVIEW_SUPPORT
   // Add an extra button to the Disassembly tab to open Memory View
   static constexpr string TEXT_MEMORY_VIEW = "Memory View";
   const int hGap = _fontWidth;
@@ -275,7 +275,7 @@ void RomWidget::scrollTo(int line)
   myRomList->setSelected(line);
 }
 
-#if MEMVIEW_SUPPORT
+#ifdef MEMVIEW_SUPPORT
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void RomWidget::updateMemViewButton()
 {

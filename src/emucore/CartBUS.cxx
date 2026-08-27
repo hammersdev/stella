@@ -107,6 +107,10 @@ CartridgeBUS::CartridgeBUS(ByteSpan image, string_view md5,
       this);
   }
 
+  // Store image scopes to be accessible by getImage()
+  myImageScopes[ImageScope::FULL] = myImage;
+  myImageScopes[ImageScope::PROGRAM] = myProgramImage;
+
   this->setInitialState();  // NOLINT(clang-analyzer-optin.cplusplus.VirtualCall)
 
   myPlusROM = std::make_unique<PlusROM>(mySettings, *this);
@@ -826,12 +830,6 @@ bool CartridgeBUS::patch(uInt16 address, uInt8 value)
   }
   else
     return false;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteSpan CartridgeBUS::getImage() const
-{
-  return myImage;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

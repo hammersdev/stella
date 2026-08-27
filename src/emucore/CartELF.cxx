@@ -231,6 +231,9 @@ CartridgeELF::CartridgeELF(ByteSpan image, string_view md5,
   myImage.assign(image.size(), 0);
   std::copy_n(image.data(), image.size(), myImage.data());
 
+  // Store image scope to be accessible by getImage()
+  myImageScopes[ImageScope::FULL] = myImage;
+
   myLastPeekResult.assign(0x1000, 0);
 
   createRomAccessArrays(0x1000);
@@ -350,12 +353,6 @@ bool CartridgeELF::poke(uInt16 address, uInt8 value)
 void CartridgeELF::consoleChanged(ConsoleTiming timing)
 {
   myConsoleTiming = timing;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteSpan CartridgeELF::getImage() const
-{
-  return myImage;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

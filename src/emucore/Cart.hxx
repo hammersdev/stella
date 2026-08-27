@@ -34,7 +34,9 @@ class Settings;
     class Font;
   }  // namespace GUI
 #endif
-
+#ifdef MEMVIEW_SUPPORT
+#include <map>
+#endif
 /**
   A cartridge is a device which contains the machine code for a
   game and handles any bankswitching performed by the cartridge.
@@ -55,6 +57,17 @@ class Cartridge : public Device
 
     // Maximum size of a ROM cart that Stella can support
     static constexpr size_t maxSize() { return 512_KB; }
+
+    /**
+      Scope types for querying ROM image data
+    */
+    enum class ImageScope : int
+    {
+      NONE = -1,
+      FULL = 0,
+      PROGRAM,
+      DISPLAY_DATA
+    };
 
   public:
     /**
@@ -229,89 +242,76 @@ class Cartridge : public Device
 
   #ifdef MEMVIEW_SUPPORT
     /**
-      Get back the full access counters for code reads (reads of the program counter).
+      Get back the code read (program counter) access counters for a specific ROM scope
 
-      @return Pointer to the buffer holding the counters for each address of the ROM.
+      @param scope  Determines which part of the ROM image is meant
+      @return Pointer to the buffer holding the counters for each address of the ROM's scope
     */
-    virtual Device::AccessCounter* getRomCodePeekCounter() {
-      return myRomCodePeekCounter.get() + myRomAccessOffset;
-    }
+    virtual Device::AccessCounter* getRomCodePeekCounter(ImageScope scope = ImageScope::FULL) const;
 
     /**
-      Get back the full access counters for data reads.
+      Get back the data read access counters for a specific ROM scope
 
-      @return Pointer to the buffer holding the counters for each address of the ROM.
+      @param scope  Determines which part of the ROM image is meant
+      @return Pointer to the buffer holding the counters for each address of the ROM's scope
     */
-    virtual Device::AccessCounter* getRomDataPeekCounter() {
-      return myRomDataPeekCounter.get() + myRomAccessOffset;
-    }
+    virtual Device::AccessCounter* getRomDataPeekCounter(ImageScope scope = ImageScope::FULL) const;
 
     /**
-      Get back the full access counters for data writes on the ROM (shouldn't be too many).
+      Get back the data write access counters for a specific ROM scope (shouldn't be too many)
 
-      @return Pointer to the buffer holding the counters for each address of the ROM.
+      @param scope  Determines which part of the ROM image is meant
+      @return Pointer to the buffer holding the counters for each address of the ROM's scope
     */
-    virtual Device::AccessCounter* getRomPokeCounter() {
-      return myRomPokeCounter.get() + myRomAccessOffset;
-    }
+    virtual Device::AccessCounter* getRomPokeCounter(ImageScope scope = ImageScope::FULL) const;
 
     /**
-      Get the size of each access counter buffers which will be retrieved by
-      getRomCodePeekCounter(), getRomDataPeekCounter() and getRomPokeCounter().
+      Get the size of each access counter buffers for a specific ROM scope which will be retrieved by
+      getRomCodePeekCounter(), getRomDataPeekCounter() and getRomPokeCounter()
 
+      @param scope  Determines which part of the ROM image is meant
       @return Size in Device::AccessCounter values
     */
-    virtual const uInt32& getRomCounterSize() const {
-      return myRomAccessSize;
-    }
+    virtual uInt32 getRomCounterSize(ImageScope scope = ImageScope::FULL) const;
 
     /**
-      Get the offset position of the ROM access counters within the getImage()
-      data range.
+      Get the offset position of the ROM access counters for a scope in relation to the data
+      you get when calling getImage() for that scope
 
+      @param scope  Determines which part of the ROM image is meant
       @return Offset in bytes
     */
-    virtual uInt32 getRomCounterOffset() const {
-      return myRomAccessOffset;
-    }
+    virtual uInt32 getRomCounterOffset(ImageScope scope = ImageScope::FULL) const;
 
     /**
       Get back the full access counters for cartridge RAM code reads
-      (reads of the program counter).
+      (reads of the program counter)
 
-      @return Pointer to the buffer holding the counters for each address of the RAM.
+      @return Pointer to the buffer holding the counters for each address of the RAM
     */
-    virtual Device::AccessCounter* getRamCodePeekCounter() {
-      return myRomCodePeekCounter.get() + myRamPeekAccessOffset;
-    }
+    virtual Device::AccessCounter* getRamCodePeekCounter() const;
 
     /**
-      Get back the full access counters for cartridge RAM data reads.
+      Get back the full access counters for cartridge RAM data reads
 
-      @return Pointer to the buffer holding the counters for each address of the RAM.
+      @return Pointer to the buffer holding the counters for each address of the RAM
     */
-    virtual Device::AccessCounter* getRamDataPeekCounter() {
-      return myRomDataPeekCounter.get() + myRamPeekAccessOffset;
-    }
+    virtual Device::AccessCounter* getRamDataPeekCounter() const;
 
     /**
-      Get back the full access counters for data writes on the cartridge RAM.
+      Get back the full access counters for data writes on the cartridge RAM
 
-      @return Pointer to the buffer holding the counters for each address of the RAM.
+      @return Pointer to the buffer holding the counters for each address of the RAM
     */
-    virtual Device::AccessCounter* getRamPokeCounter() {
-      return myRomPokeCounter.get() + myRamPokeAccessOffset;
-    }
+    virtual Device::AccessCounter* getRamPokeCounter() const;
 
     /**
       Get the size of each access counter buffers which will be retrieved by
-      getRamCodePeekCounter(), getRamDataPeekCounter() and getRamPokeCounter().
+      getRamCodePeekCounter(), getRamDataPeekCounter() and getRamPokeCounter()
 
       @return Size in Device::AccessCounter values
     */
-    virtual uInt32 getRamCounterSize() const {
-      return myRamAccessSize;
-    }
+    virtual uInt32 getRamCounterSize() const;
 
     /**
       Get the offset position of the cartridge RAM access counters within the getRAM()
@@ -319,9 +319,7 @@ class Cartridge : public Device
 
       @return Offset in bytes
     */
-    constexpr uInt32 getRamCounterOffset() const {
-      return 0;
-    }
+    constexpr uInt32 getRamCounterOffset() const { return 0; }
 
     /**
       Returns the offset difference between read and write access addresses
@@ -329,9 +327,7 @@ class Cartridge : public Device
 
       @return Offset in bytes
     */
-    int getRamMirrorAddrDiff() const {
-      return myRamPeekAccessOffset - myRamPokeAccessOffset;
-    }
+    int getRamMirrorAddrDiff() const;
 
     /**
       Get cartridge RAM contents for direct external access
@@ -339,6 +335,15 @@ class Cartridge : public Device
       @return  Mutable span over RAM array.
     */
     virtual ByteSpan getRAM() { return ByteSpan(); }
+
+    /**
+      Returns the internal offset positions where specific ImageScope parts start at 
+      within the full myImage range.
+
+      @param  ImageScope identifier which part is meant (defaults to ImageScope::FULL)
+      @return  The offset in bytes
+    */
+    uInt32 getRomScopeOffset(ImageScope scope = ImageScope::FULL) const;
   #endif
 
   public:
@@ -436,11 +441,13 @@ class Cartridge : public Device
     virtual bool patch(uInt16 address, uInt8 value) = 0;
 
     /**
-      Access the internal ROM image for this cartridge.
+      Access a specific scope of the internal ROM image for this cartridge
+      (defaults to ImageScope::FULL for full ROM)
 
+      @param scope    Selects the image part (or FULL) to be returned
       @return  A const span of the internal ROM image data
     */
-    virtual ByteSpan getImage() const = 0;
+    virtual ByteSpan getImage(ImageScope scope = ImageScope::FULL) const;
 
     /**
       Get a descriptor for the cart name.
@@ -569,6 +576,9 @@ class Cartridge : public Device
     // Settings class for the application
     const Settings& mySettings;
 
+    // Look up table for separate image scopes (if any)
+    std::map<ImageScope, ByteSpan> myImageScopes;
+
     // Indicates if the bank has changed somehow (a bankswitch has occurred)
     bool myBankChanged{true};
 
@@ -589,12 +599,18 @@ class Cartridge : public Device
     uInt32 myAccessSize{0};
 
   #ifdef MEMVIEW_SUPPORT
-    // Size of ROM access counters delivered by getRom***Counter()
-    uInt32 myRomAccessSize{0};
+    // Sizes of access counter data sets for specific ImageScopes
+    std::map<ImageScope, uInt32> myRomAccessSizes;
+    // Offsets for access counter data sets for specific ImageScopes,
+    // relative to the start of the corresponding ROM image part
+    // retrieved by getImage(scope)
+    std::map<ImageScope, uInt32> myRomAccessOffsets;
+    // Internal offsets to use for handing out ROM image parts by
+    // getImage(scope) relative to the full myImage (getImage(FULL))
+    std::map<ImageScope, uInt32> myRomOffsets;
+
     // Size of RAM access counters delivered by getRam***Counter()
     uInt32 myRamAccessSize{0};
-    // Offset of ROM access counters delivered by getRom***Counter()
-    uInt32 myRomAccessOffset{0};
     // Offset of RAM access counters delivered by getRam***Counter()
     uInt32 myRamPeekAccessOffset{0};
     uInt32 myRamPokeAccessOffset{0};

@@ -43,6 +43,9 @@ void CartridgeE7::initialize(ByteSpan image)
   std::copy_n(image.data(), std::min<size_t>(romSize(), image.size()), myImage.data());
   createRomAccessArrays(romSize() + myRAM.size());
 
+  // Store image scope to be accessible by getImage()
+  myImageScopes[ImageScope::FULL] = myImage;
+
   myRAM.fill(0xFF);
   myCurrentBank.fill(0);
 
@@ -338,12 +341,6 @@ bool CartridgeE7::patch(uInt16 address, uInt8 value)
     myImage[(myCurrentBank[address >> 11] << 11) + (address & (BANK_SIZE-1))] = value;
 
   return myBankChanged = true;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteSpan CartridgeE7::getImage() const
-{
-  return myImage;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

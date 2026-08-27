@@ -28,6 +28,9 @@ CartridgeCM::CartridgeCM(ByteSpan image, string_view md5,
   // Copy the ROM image into my buffer
   std::copy_n(image.data(), std::min(16_KB, image.size()), myImage.begin());
   createRomAccessArrays(16_KB);
+
+  // Store image scope to be accessible by getImage()
+  myImageScopes[ImageScope::FULL] = myImage;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -201,12 +204,6 @@ bool CartridgeCM::patch(uInt16 address, uInt8 value)
     myImage[myBankOffset + address] = value;
 
   return myBankChanged = true;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteSpan CartridgeCM::getImage() const
-{
-  return myImage;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -44,6 +44,8 @@ CartridgeEnhanced::CartridgeEnhanced(ByteSpan image, string_view md5,
   // Only copy up to the amount of data the ROM provides; extra unused
   // space will be filled with 0's from above
   std::copy_n(image.data(), std::min(bsSize, size), myImage.begin());
+  // Store full image scope to be accessible by getImage()
+  myImageScopes[ImageScope::FULL] = myImage;
 
   myPlusROM = std::make_unique<PlusROM>(mySettings, *this);
 
@@ -72,10 +74,12 @@ void CartridgeEnhanced::install(System& system)
   myReadOffset  = myRamWpHigh ? 0 : ramSize;        // e.g. = 0x0080
   // Allocate more space only if RAM has its own bank(s)
   createRomAccessArrays(myImage.size() + (myRomOffset > 0 ? 0 : myRamSize));
+
 #ifdef MEMVIEW_SUPPORT
   // Setup access counter parameters
-  myRomAccessSize = myImage.size() - myRomOffset;
-  myRomAccessOffset = myRomOffset;
+  myRomAccessSizes[ImageScope::PROGRAM] = static_cast<uInt32>(myImage.size()) - myRomOffset;
+  myRomAccessOffsets[ImageScope::PROGRAM] = myRomOffset;
+
   myRamAccessSize = ramSize;
   myRamPeekAccessOffset = myReadOffset;
   myRamPokeAccessOffset = myWriteOffset;
@@ -393,13 +397,6 @@ bool CartridgeEnhanced::patch(uInt16 address, uInt8 value)
   return myBankChanged = true;
 }
 
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-ByteSpan CartridgeEnhanced::getImage() const
-{
-  return myImage;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool CartridgeEnhanced::save(Serializer& out) const
 {
