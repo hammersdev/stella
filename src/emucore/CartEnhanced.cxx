@@ -80,7 +80,7 @@ void CartridgeEnhanced::install(System& system)
   myRomAccessSizes[ImageScope::PROGRAM] = static_cast<uInt32>(myImage.size()) - myRomOffset;
   myRomAccessOffsets[ImageScope::PROGRAM] = myRomOffset;
 
-  myRamAccessSize = ramSize;
+  myRamAccessSize = myRamSize;
   myRamPeekAccessOffset = myReadOffset;
   myRamPokeAccessOffset = myWriteOffset;
 #endif

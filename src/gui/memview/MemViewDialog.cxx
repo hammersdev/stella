@@ -39,7 +39,7 @@
   0FA0      OK
   2K        OK
   3E        Breakpoints not working, PC position not shown, no access data for cartridge RAM
-  3E+       Breakpoints not working, PC position not shown, No access data for cartridge RAM
+  3E+       Breakpoints not working, PC position not shown, no access data for cartridge RAM
   3EX       ?
   03E0      Breakpoints not working (Montezuma's Revenge)
   3F        Breakpoints not working for big ROMs (Bad Apple)
@@ -77,7 +77,7 @@
   FA2       OK
   FC        OK
   FE        OK
-  GL        Cartridge RAM access counters (addresses) mixed with ROM
+  GL        Cart RAM addresses (and PC marking in RAM) incorrect
   JANE      ?
   MDM       OK
   MVC       Unsupported

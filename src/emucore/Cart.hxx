@@ -34,9 +34,8 @@ class Settings;
     class Font;
   }  // namespace GUI
 #endif
-#ifdef MEMVIEW_SUPPORT
 #include <map>
-#endif
+
 /**
   A cartridge is a device which contains the machine code for a
   game and handles any bankswitching performed by the cartridge.
