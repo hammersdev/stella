@@ -71,7 +71,6 @@ class MemViewDialog : public Dialog
 
     static constexpr std::string_view TEXT_RAM = "RAM";
     static constexpr std::string_view TEXT_ROM = "ROM";
-    static constexpr std::string_view TEXT_BANK_HEIGHT = "Bank height:";
     static constexpr std::string_view TEXT_SINGLE_ROW = "Single row";
     static constexpr std::string_view TEXT_SEPARATORS = "Separators";
     static constexpr std::string_view TEXT_INVERTED = "Inverted";
@@ -82,11 +81,10 @@ class MemViewDialog : public Dialog
     static constexpr std::string_view TEXT_SHOW_WRITES = "Show writes";
     static constexpr std::string_view TEXT_DECAY_RATE = "Decay rate:";
     static constexpr std::string_view TEXT_CLEAR = "Clear";
-    static constexpr int SETTINGS_COUNT = 12;
+    static constexpr int SETTINGS_COUNT = 11;
     static constexpr std::string_view TEXT_LONGEST = TEXT_SHOW_WRITES;
 
     enum {
-      kBankHeightChanged      = 'BHch',
       kSingleRowChanged       = 'RSch',
       kSeparatorsChanged      = 'Sech',
       kInvertedChanged        = 'Inch',
@@ -152,7 +150,6 @@ class MemViewDialog : public Dialog
 
   private:
 
-    PopUpWidget*      myBankHeight{nullptr};
     CheckboxWidget*   mySingleRow{nullptr};
     CheckboxWidget*   myInverted{nullptr};
     CheckboxWidget*   myByteFade{nullptr};
@@ -175,11 +172,11 @@ class MemViewDialog : public Dialog
 
     MemViewWidget::ColorTab myRamReadColorTab;  // ARGB
     MemViewWidget::ColorTab myRamWriteColorTab; // ARGB
-    MemViewWidget::ColorTab myRamPcColorTab;  // ARGB
+    MemViewWidget::ColorTab myRamPcColorTab;    // ARGB
 
     MemViewWidget::ColorTab myRomReadColorTab;  // ARGB
-    MemViewWidget::ColorTab& myRomWriteColorTab{myRomReadColorTab}; // currently not needed
-    MemViewWidget::ColorTab myRomPcColorTab;  // ARGB
+    MemViewWidget::ColorTab myRomWriteColorTab; // ARGB
+    MemViewWidget::ColorTab myRomPcColorTab;    // ARGB
 
     bool myForcedUpdate{false};
 

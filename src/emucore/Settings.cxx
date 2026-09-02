@@ -194,7 +194,7 @@ Settings::Settings()
   setPermanent("mv.pos", Common::Size(50, 50));
   setPermanent("mv.display", 0);
   setPermanent("mv.res", Common::Size(1800, 1100));
-  setPermanent("mv.bankheight", 2);
+  setPermanent("mv.bankheight", 0);
   setPermanent("mv.singlerow", false);
   setPermanent("mv.inverted", false);
   setPermanent("mv.bytefade", true);
@@ -752,8 +752,8 @@ void Settings::usage()
     << "  -mv.res        <WxH>           The resolution to use in memory view window\n"
     << "  -mv.pos        <XxY>           The default position of the memory view window\n"
     << "  -mv.display    <number>        The default display ID to show the memory window\n"
-    << "  -mv.bankheight <number>        Preferred bank height in bytes\n"
-    << "                                  (0 = 64, 1 = 128, 2 = 256, 3 = 512)\n"
+    << "  -mv.bankheight <value>         Preferred bank height in bytes for main ROM view\n"
+    << "                                  (0 = auto-determined, 64, 128, 256, 512)\n"
     << "  -mv.singlerow  <0|1>           Show all banks of a ROM in one single row\n"
     << "  -mv.separators <0|1>           Have separator lines between the banks\n"
     << "  -mv.inverted   <0|1>           Invert the byte data for display\n"

@@ -295,6 +295,12 @@ uInt32 Cartridge::getRomCounterOffset(ImageScope scope) const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+uInt32 Cartridge::getRomScopeOffset(ImageScope scope) const {
+  auto it = myRomOffsets.find(scope);
+  return (it != myRomOffsets.end()) ? it->second : 0;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Device::AccessCounter* Cartridge::getRamCodePeekCounter() const
 {
   return myRomCodePeekCounter.get() + myRamPeekAccessOffset;
@@ -316,18 +322,6 @@ Device::AccessCounter* Cartridge::getRamPokeCounter() const
 uInt32 Cartridge::getRamCounterSize() const
 {
   return myRamAccessSize;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-int Cartridge::getRamMirrorAddrDiff() const
-{
-  return myRamPeekAccessOffset - myRamPokeAccessOffset;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-uInt32 Cartridge::getRomScopeOffset(ImageScope scope) const {
-  auto it = myRomOffsets.find(scope);
-  return (it != myRomOffsets.end()) ? it->second : 0;
 }
 #endif
 

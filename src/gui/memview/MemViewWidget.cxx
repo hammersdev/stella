@@ -40,14 +40,14 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 MemViewWidget::MemViewWidget(GuiObject *boss, const GUI::Font& font,
   const int x, const int y, const int w, const int h,
-  const uInt16 bankSize, const uInt16 bankCount, const uInt16 bankHeight,
-  const bool isZoomable, bool singleRow, const bool separators, 
+  const uInt16 bankSize, const uInt16 bankCount, uInt16 initialBankHeight,
+  const bool isZoomable,
   const MemViewWidget::ColorTab& readColorTab,
   const MemViewWidget::ColorTab& writeColorTab,
   const MemViewWidget::ColorTab& pcColorTab,
   const uInt32 dataDefaultColor, const uInt32 dataFadedColor,
   const string_view typeText,
-  const uInt16 baseAddress, const int mirrorAddrOffset
+  const uInt32 baseAddress
 )
   : Widget(boss, font, x, y, w, h),
     myInnerSurfaceX{x + FRAME_THICKNESS},
@@ -60,113 +60,51 @@ MemViewWidget::MemViewWidget(GuiObject *boss, const GUI::Font& font,
     myPcLayer{dialog(), myParams, pcColorTab},
     myPcMarker{dialog(), myParams, MemViewDialog::PC_COLOR_HIGH | 0xFF000000},
     myMouseMarker{dialog(), myParams, FBSurface::getColorRgb(kWidColorHi)},
-    myTypeText{typeText},
-    myMirrorAddrOffset{mirrorAddrOffset}
+    myTypeText{typeText}
 {
   _flags = Widget::FLAG_ENABLED |
            Widget::FLAG_RETAIN_FOCUS | Widget::FLAG_TRACK_MOUSE;
   _bgcolor = _bgcolorhi = kDlgColor;
 
-  // Set maximal available inner surface dimensions
-  myInnerSurfaceW = w - 2 * FRAME_THICKNESS
-    - (isZoomable ? (ScrollBarVWidget::scrollBarWidth(font) - FRAME_THICKNESS) : 0);
-  myInnerSurfaceH = h - 2 * FRAME_THICKNESS
-    - (isZoomable ? (ScrollBarHWidget::scrollBarHeight(font) - FRAME_THICKNESS) : 0);
-
-  // Check if bank is displayable
-  myIsSetup =
-    ((bankSize * bankCount) > 0)
-    &&
-    (
-      (
-        (bankCount == 1)
-        &&
-        ((bankSize % bankHeight) == 0)
-      )
-      ||
-      (
-        ((bankSize % MemViewDialog::MAX_BANK_HEIGHT) == 0)
-        &&
-        ((bankSize % bankHeight) == 0)
-      )
-    );
-
-  Logger::debug(std::format("New MemViewWidget"));
-
-  uInt16 bankWidth = 0;
-  if (isSetup())
-  {
-    bankWidth = bankSize / bankHeight;
-    Logger::debug(std::format("Data size   = {}", myParams.myDataSize));
-    Logger::debug(std::format("Banks       = {}", bankCount));
-    Logger::debug(std::format("Bank size   = {}", bankSize));
-    Logger::debug(std::format("Bank width  = {}", bankWidth));
-    Logger::debug(std::format("Bank height = {}", bankHeight));
-  }
-  else
-  {
-    Logger::error(std::format("MemViewWidget: Unsupported bank size: {}", bankSize));
-    // Setup some emergency values to prevent crashing
-    bankWidth = DEFAULT_BANK_SIZE / bankHeight;
-    myParams.myBankSize = DEFAULT_BANK_SIZE;
-    myParams.myBankCount = 1;
-    myParams.myDataSize = DEFAULT_BANK_SIZE;
-  }
-
-  // Find the initial best layout to use (how are the banks arranged)
-  int minZoomLevel = 1;
-  int hBanks = 0;
-  int vBanks = 0;
-  Common::Size size = findBestLayout(bankWidth, bankHeight, separators, singleRow,
-    hBanks, vBanks, minZoomLevel);
+  auto [size, layoutParams] = calcNeededSize(font, w, h, isZoomable, bankSize, bankCount, initialBankHeight,
+    myIsSetup, &myParams.mySurfaceWidth, &myParams.mySurfaceHeight, &myParams);
 
   // Create scrollbars if the view should be zoomable
   if (isZoomable)
   {
-    myVScrollBar = new ScrollBarVWidget(boss, font, myInnerSurfaceX + myInnerSurfaceW, y,
+    myVScrollBar = new ScrollBarVWidget(boss, font, myInnerSurfaceX + myParams.mySurfaceWidth, y,
       ScrollBarVWidget::scrollBarWidth(font), h);
     myVScrollBar->setTarget(this);
 
     myHScrollBar = new ScrollBarHWidget(boss, font, x, 
-      myInnerSurfaceY + myInnerSurfaceH, w - ScrollBarVWidget::scrollBarWidth(font),
+      myInnerSurfaceY + myParams.mySurfaceHeight, w - ScrollBarVWidget::scrollBarWidth(font),
       ScrollBarHWidget::scrollBarHeight(font));
     myHScrollBar->setTarget(this);
   }
   else
   {
     // Case with no scroll bars = not zoomable -> widget size is only as big as necessary
-    myInnerSurfaceW = size.w;
-    myInnerSurfaceH = size.h;
-    setWidth(myInnerSurfaceW + 2 * FRAME_THICKNESS);
-    setHeight(myInnerSurfaceH + 2 * FRAME_THICKNESS);
+    setWidth(size.w);
+    setHeight(size.h);
   }
 
-  // Update parameters with surface size for layers
-  myParams.mySurfaceWidth = myInnerSurfaceW;
-  myParams.mySurfaceHeight = myInnerSurfaceH;
-
-  if (!isSetup())
+  if (isSetup())
+  {
+    myParams.setLayoutParameters(layoutParams, false, true);
+  }
+  else
   {
     // Show error message
     const int fontHeight = font.getFontHeight();
     new StaticTextWidget(boss, font, myInnerSurfaceX, 
-      myInnerSurfaceY + (myInnerSurfaceH - fontHeight) / 2,
-      myInnerSurfaceW, fontHeight, TEXT_UNSUPPORTED,
+      myInnerSurfaceY + (myParams.mySurfaceHeight - fontHeight) / 2,
+      myParams.mySurfaceWidth, fontHeight, TEXT_UNSUPPORTED,
       TextAlign::Center
     );
   }
 
   // Create context menu for commands
-  VariantList l;
-  VarList::push_back(l, "Toggle breakpoint", "bp");
-  VarList::push_back(l, "Toggle R/W trap", "rwt");
-  VarList::push_back(l, "Toggle read trap", "rt");
-  VarList::push_back(l, "Toggle write trap", "wt");
-  VarList::push_back(l, "Show totals", "st");
-#ifdef IMAGE_SUPPORT
-  VarList::push_back(l, "Save data picture", "pic");
-#endif
-  myMenu = new ContextMenu(this, font, l);
+  myMenu = new ContextMenu(this, font, getContextMenuItems());
 
   // Resize data array
   myCurrentData.resize(myParams.myDataSize);
@@ -218,41 +156,50 @@ void MemViewWidget::updateRest()
   if (!isSetup())
     return;
 
-  bool debuggerActive = (instance().eventHandler().state() == EventHandlerState::DEBUGGER);
+  bool stopped = (instance().eventHandler().state() != EventHandlerState::EMULATION);
 
   // Update ToolTip (even if the mouse didn't move)
-  if (!debuggerActive)
+  if (!stopped)
     dialog().tooltip().refresh(this);
 
   // Care about PC counter marker
-  if (debuggerActive)
+  if (stopped)
   {
-    // Check if the PC is in our address range at all
-    const uInt16 pc = instance().debugger().cpuDebug().pc();
-    const uInt16 pc13 = pc & ((1 << 13) - 1);
-    const uInt16 base13 = myParams.myBaseAddress & ((1 << 13) - 1);
+    // Get current bank from the cartridge debugger
+    int bank = instance().debugger().cartDebug().getPCBank();
 
-    if (
-      (pc13 >= base13)
-      &&
-      (pc13 < (base13 + myParams.myBankSize))
-    )
+    // Adjust for RAM banks if necessary
+    if (myParams.myBaseAddress & QUERY_RAM_BANK_ORIGIN)
+      bank -= myParams.myCartridge.ramBankOffset();
+
+    if ((bank >= 0) && (bank < myParams.myBankCount))
     {
-      // PC is within our range
-      const int bank = (base13 & 0x1000) ? instance().debugger().cartDebug().getPCBank() : 0;
-      const int offset = bank * myParams.myBankSize + pc13 - base13;
-      const int byteOffset = myParams.getRearrangedOffset(offset);
+      // Check if the PC really is in the address range of that bank
+      const uInt16 pc = instance().debugger().cpuDebug().pc();
 
-      if (myPcMarker.set(true, byteOffset))
-        setDirty(true);
+      Common::RwAddress address = myParams.getBankOrigin(bank, pc);
+      if (
+        address.valid
+        &&
+        (pc >= address.read)
+        &&
+        (pc < (address.read + myParams.myBankSize))
+      )
+      {
+        const int offset = bank * myParams.myBankSize + pc - address.read;
+        const int byteOffset = myParams.getRearrangedOffset(offset);
 
-      return;
+        if (myPcMarker.set(true, byteOffset))
+          setDirty(true);
+
+        return;
+      }
     }
   }
 
   // PC marker not active
   if (myPcMarker.set(false))
-    setDirty(debuggerActive);
+    setDirty(stopped);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -421,8 +368,7 @@ string MemViewWidget::getToolTip(const Common::Point& pos) const
   const Common::Point internalPos = extPosConv(pos);
   int bank = 0;
   unsigned int offset = 0;
-  uInt16 address = myParams.getAddress(internalPos.x, internalPos.y, &bank, &offset);
-  uInt16 mirrorAddress = address + myMirrorAddrOffset;
+  Common::RwAddress address = myParams.getAddress(internalPos.x, internalPos.y, &bank, &offset);
 
   // Build tip
 
@@ -441,22 +387,41 @@ string MemViewWidget::getToolTip(const Common::Point& pos) const
   text += std::format("  %{:0>8B}", myCurrentData[offset]);
 
   // Address
-  if ((myParams.myBaseAddress + myParams.myDataSize) <= 0x100)
+  if (
+    address.valid
+    &&
+    !(myParams.myBaseAddress & (QUERY_ROM_BANK_ORIGIN | QUERY_RAM_BANK_ORIGIN)) 
+    &&
+    ((myParams.myBaseAddress + myParams.myDataSize) <= 0x100)
+  )
   {
-    // 2-digit address
-    text += std::format("\n${:0>2X}", address);
+    // 2-digit address (internal RAM)
+    text += std::format("\n${:0>2X}", address.read);
 #if 0
-    if (mirrorAddress != address)
-      text += std::format("/${:0>2X}", mirrorAddress);
+    if (address.write != address.read)
+      text += std::format("/${:0>2X}", address.write);
 #endif
     text += " [" + myTypeText + "]";
   }
   else
   {
     // 4-digit address
-    text += std::format("\n${:0>4X}", address);
-    if (mirrorAddress != address)
-      text += std::format("/${:0>4X}", mirrorAddress);
+    if (address.valid)
+    {
+      // Normal address display
+      text += std::format("\n${:0>4X}", address.read);
+      if (address.write != address.read)
+        text += std::format("/${:0>4X}", address.write);
+    }
+    else
+    {
+      // Invalid address (probably currently not mapped)
+      text += std::format("\n(${:0>4X}", address.read);
+      if (address.write != address.read)
+        text += std::format("/${:0>4X})", address.write);
+      else
+        text += ")";
+    }
     text += " [" + myTypeText;
     // Bank?
     if (myParams.myBankCount > 1)
@@ -480,10 +445,13 @@ string MemViewWidget::getToolTip(const Common::Point& pos) const
   );
 
   // Label (if any)
-  CartDebug& cartDebug = instance().debugger().cartDebug();
-  string label = cartDebug.getLabel(address, true);
-  if (!label.empty())
-    text += "\n" + label;
+  if (address.valid)
+  {
+    CartDebug& cartDebug = instance().debugger().cartDebug();
+    string label = cartDebug.getLabel(address.read, true);
+    if (!label.empty())
+      text += "\n" + label;
+  }
 
   return text;
 }
@@ -543,19 +511,17 @@ void MemViewWidget::updateAccessData(
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void MemViewWidget::setLayoutParameters(bool singleRow, bool separators, int bankHeight)
+void MemViewWidget::setLayoutParameters(int bankHeight, bool singleRow, bool separators)
 {
   if (!isSetup())
     return;
 
-  const int bankWidth = myParams.myBankSize / bankHeight;
-  int hBanks = 0;
-  int vBanks = 0;
-  int minZoomLevel = 1;
-
-  findBestLayout(bankWidth, bankHeight, separators, singleRow, hBanks, vBanks, minZoomLevel);
-
-  myParams.setLayoutParameters(bankWidth, bankHeight, hBanks, vBanks, minZoomLevel, separators);
+  // Calculate new arrangement and set to params
+  auto [size, layoutParams] = findBestLayout(
+    myParams.myBankSize, myParams.myBankCount, myParams.mySurfaceWidth, myParams.mySurfaceHeight,
+    myIsZoomable, myIsZoomable ? bankHeight : myParams.myBankHeight, singleRow, separators
+  );
+  myParams.setLayoutParameters(layoutParams, singleRow, separators);
 
   // Set original data again to let the corresponding layer copy the data to it's new layout
   myDataLayer.updateData(myCurrentData);
@@ -617,7 +583,7 @@ void MemViewWidget::clearHeatmaps()
 bool MemViewWidget::lockedSingleRow()
 {
   // Odd bank counts can only be displayed in single row mode
-  return myParams.myBankCount & 1;
+  return (myParams.myVBanks == 1);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -662,8 +628,8 @@ void MemViewWidget::drawWidget(bool hilite)
 Common::Point MemViewWidget::extPosConv(const Common::Point& pos) const
 {
   return Common::Point(
-    BSPF::clamp(pos.x - myInnerSurfaceX - 1, 0, myInnerSurfaceW - 1),
-    BSPF::clamp(pos.y - myInnerSurfaceY - 1, 0, myInnerSurfaceH - 1)
+    BSPF::clamp(pos.x - myInnerSurfaceX - 1, 0, myParams.mySurfaceWidth - 1),
+    BSPF::clamp(pos.y - myInnerSurfaceY - 1, 0, myParams.mySurfaceHeight - 1)
   );
 }
 
@@ -691,6 +657,33 @@ bool MemViewWidget::intPosInData(int x, int y) const
     (y >= myParams.myTopBorderHeight)
     &&
     (y < (myParams.myTopBorderHeight + myParams.myCurrentHeight));
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+VariantList MemViewWidget::getContextMenuItems() const
+{
+  VariantList list;
+  VarList::push_back(list, "Toggle breakpoint", "bp");
+  VarList::push_back(list, "Toggle R/W trap", "rwt");
+  VarList::push_back(list, "Toggle read trap", "rt");
+  VarList::push_back(list, "Toggle write trap", "wt");
+  VarList::push_back(list, "Show totals", "st");
+#ifdef IMAGE_SUPPORT
+  VarList::push_back(list, "Save data picture", "pic");
+#endif
+  if (myIsZoomable)
+  {
+    VarList::push_back(list, std::format("Bank height 64{}",
+      ((myParams.myBankHeight == 64) ? " *" : "")), "bh64");
+    VarList::push_back(list, std::format("Bank height 128{}",
+      ((myParams.myBankHeight == 128) ? " *" : "")), "bh128");
+    VarList::push_back(list, std::format("Bank height 256{}",
+      ((myParams.myBankHeight == 256) ? " *" : "")), "bh256");
+    VarList::push_back(list, std::format("Bank height 512{}",
+      ((myParams.myBankHeight == 512) ? " *" : "")), "bh512");
+  }
+
+  return list;
 }
 
 #ifdef IMAGE_SUPPORT
@@ -773,31 +766,50 @@ void MemViewWidget::handleCommand(CommandSender* sender, int cmd, int data, int 
       if ((rmb == "bp") || (rmb == "rwt") || (rmb == "rt") || (rmb == "wt")) 
       {
         // User wishes to run a debugger function
+        string message;
         int bank = 0;
-        uInt16 address = myParams.getAddress(myRightClickX, myRightClickY, &bank);
+        Common::RwAddress address = myParams.getAddress(myRightClickX, myRightClickY, &bank);
+        if (address.valid)
+        {
+          Debugger& debugger = instance().debugger();
+          bool wasLocked = debugger.systemIsLocked();
+          if (!wasLocked)
+            debugger.lockSystem();
 
-        Debugger& debugger = instance().debugger();
-        bool wasLocked = debugger.systemIsLocked();
-        if (!wasLocked)
-          debugger.lockSystem();
+          // Build debugger command
+          string command;
+          if (rmb == "bp")
+          {
+            if (!(myParams.myBaseAddress & QUERY_RAM_BANK_ORIGIN))
+              command = std::format("break ${:X} {}", address.read, bank);
+            else
+              command = std::format("break ${:X}", address.read);
+          }
+          else if (rmb == "rwt")
+          {
+            command = std::format("trap ${:X}", address.read);
+            if (address.write != address.read)
+            {
+              debugger.parser().run(command);
+              command = std::format("trap ${:X}", address.write);
+            }
+          }
+          else if (rmb == "rt")
+            command = std::format("trapRead ${:X}", address.read);
+          else if (rmb == "wt")
+            command = std::format("trapWrite ${:X}", address.write);
+          else
+            assert(false);
 
-        // Build debugger command
-        string command;
-        if (rmb == "bp")
-          command = std::format("break ${:X} {}", address, bank);
-        else if (rmb == "rwt")
-          command = std::format("trap ${:X}", address);
-        else if (rmb == "rt")
-          command = std::format("trapRead ${:X}", address);
-        else if (rmb == "wt")
-          command = std::format("trapWrite ${:X}", address);
+          // Run
+          message = debugger.parser().run(command);
+          if (!wasLocked)
+            debugger.unlockSystem();
+        }
         else
-          assert(false);
-
-        // Run
-        const string message = debugger.parser().run(command);
-        if (!wasLocked)
-          debugger.unlockSystem();
+        {
+          message = "Address currently not mapped";
+        }
         instance().memViewFrameBuffer().showTextMessage(message);
       }
       else if (rmb == "st")
@@ -813,6 +825,16 @@ void MemViewWidget::handleCommand(CommandSender* sender, int cmd, int data, int 
           // Set current state to paused so the user can actually see the
           // total values before they disappear
           instance().eventHandler().setState(EventHandlerState::PAUSE);
+        }
+      }
+      else if ((rmb == "bh64") || (rmb == "bh128") || (rmb == "bh256") || (rmb == "bh512"))
+      {
+        uInt16 bankHeight = static_cast<uInt16>(BSPF::stoi(rmb.substr(2)));
+        if (myParams.myBankHeight != bankHeight)
+        {
+          // Change the bank height
+          setLayoutParameters(bankHeight, myParams.mySingleRow, myParams.mySeparators);
+          myMenu->addItems(getContextMenuItems());
         }
       }
 #ifdef IMAGE_SUPPORT
@@ -831,9 +853,9 @@ void MemViewWidget::handleCommand(CommandSender* sender, int cmd, int data, int 
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Common::Size MemViewWidget::calcSizeAndZoom(int availableWidth, int availableHeight,
-  int bankWidth, int bankHeight, int hBanks, int vBanks,
-  bool separators, int& minZoomLevel
+Common::Size MemViewWidget::calcSizeAndZoom(const int availableWidth, const int availableHeight,
+  const int bankWidth, const int bankHeight, const int hBanks, const int vBanks,
+  const bool separators, int& minZoomLevel
 )
 {
   const int totalSeparatorWidth = (separators && (hBanks >= 2)) ? (hBanks - 1) * MemViewParams::SEPARATOR_WIDTH : 0;
@@ -855,120 +877,222 @@ Common::Size MemViewWidget::calcSizeAndZoom(int availableWidth, int availableHei
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Common::Size MemViewWidget::findBestLayout(
-  const int& bankWidth, const int& bankHeight, const bool& separators, bool& singleRow,
-  int& hBanks, int& vBanks, int& minZoomLevel)
+std::tuple<Common::Size, MemViewParams::LayoutParams> MemViewWidget::findBestLayout(
+  const uInt16& bankSize, const uInt16& bankCount,
+  const int& innerSurfaceW, const int& innerSurfaceH,
+  const bool& isZoomable,
+  const uInt16 bankHeight,
+  bool singleRow, const bool separators
+)
 {
-  if (lockedSingleRow())
+  if (bankCount == 1)
     singleRow = true;
 
+  const double destAspect = static_cast<double>(innerSurfaceW) / static_cast<double>(innerSurfaceH);
+  const int firstVBanks = 1;
+  const int lastVBanks = singleRow ? 1 : bankCount;
+  double bestAspectDiff = -1.0;
   bool fits = false;
-  Common::Size size;
-  hBanks = myParams.myBankCount;
-  vBanks = 1;
-  minZoomLevel = 1;
-
-  int w = myInnerSurfaceW;
-  int h = myInnerSurfaceH;
+  Common::Size bestSize;
+  MemViewParams::LayoutParams layoutParams;
 
   // Determine best format to display the data based on the available area size
-  if (singleRow)
+  int firstHeight = 64;
+  int lastHeight = 512;
+  if (!isZoomable || (bankHeight != 0))
+    firstHeight = lastHeight = bankHeight;
+
+  for (int testVBanks = firstVBanks; testVBanks <= lastVBanks; testVBanks++)
   {
-    // The easy case - only one bank row
-    size = MemViewWidget::calcSizeAndZoom(
-      w,  // availableWidth
-      h,  // availableHeight
-      bankWidth, // bankWidth
-      bankHeight, // bankHeight
-      hBanks,  // hBanks
-      vBanks,  // vBanks
-      separators, // separators
-      minZoomLevel // minZoomLevel
-    );
+    if (bankCount % testVBanks)
+      continue;
 
-    fits = (size.w <= static_cast<uInt32>(w)) && (size.h <= static_cast<uInt32>(h));
-  }
-  else
-  {
-    const double destAspect = static_cast<double>(w) / static_cast<double>(h);
-    int testZoomLevel = 1;
-
-    size = MemViewWidget::calcSizeAndZoom(
-      w,  // availableWidth
-      h,  // availableHeight
-      bankWidth, // bankWidth
-      bankHeight, // bankHeight
-      hBanks,  // hBanks
-      vBanks,  // vBanks
-      separators, // separators
-      minZoomLevel // minZoomLevel
-    );
-
-    fits = (size.w <= static_cast<uInt32>(w)) && (size.h <= static_cast<uInt32>(h));
-
-    double aspectDiff = fabs(
-      (static_cast<double>(size.w) / static_cast<double>(size.h))
-      -
-      destAspect
-    );
-
-    int testVBanks = vBanks;
-    int testHBanks = hBanks;
-
-    do
+    for (int testHeight = firstHeight; testHeight <= lastHeight; testHeight *= 2)
     {
-      testVBanks *= 2;
-      testHBanks /= 2;
+      const int testWidth = bankSize / testHeight;
+      // Prefer the vertical rectangular bank aspect ratio (256 for a 4K bank)
+      const int bankRatio = testHeight / testWidth;
+      const bool preferred = (bankRatio >= 16) && (bankRatio <= 32);
 
-      if (!testHBanks)
-        break;
-
+      int testHBanks = bankCount / testVBanks;
+      int testZoomLevel = 0;
       Common::Size testSize = MemViewWidget::calcSizeAndZoom(
-        w,  // availableWidth
-        h,  // availableHeight
-        bankWidth, // bankWidth
-        bankHeight, // bankHeight
+        innerSurfaceW,  // availableWidth
+        innerSurfaceH,  // availableHeight
+        testWidth, // bankWidth
+        testHeight, // bankHeight
         testHBanks,  // hBanks
         testVBanks,  // vBanks
         separators, // separators
         testZoomLevel // minZoomLevel
       );
 
-      bool testFits = (testSize.w <= static_cast<uInt32>(w)) && (testSize.h <= static_cast<uInt32>(h));
+      bool testFits = (testSize.w <= static_cast<uInt32>(innerSurfaceW)) && (testSize.h <= static_cast<uInt32>(innerSurfaceH));
       double testDiff = fabs(
         (static_cast<double>(testSize.w) / static_cast<double>(testSize.h))
         -
         destAspect
       );
 
+      // Make the difference for our preferred bank aspect slightly better to prefer these
+      // when there is very little difference between the arrangements
+      if (preferred)
+        testDiff *= 0.85;
+
       if (
-        (!fits || testFits)
-        &&
+        (bestAspectDiff < 0.0)
+        ||
         (
-          (!fits && testFits)
-          ||
-          (testZoomLevel > minZoomLevel)
-          ||
-          (testDiff < aspectDiff))
+          (!fits || testFits)
+          &&
+          (
+            (!fits && testFits)
+            ||
+            (testZoomLevel > layoutParams.minZoomLevel)
+            ||
+            (testDiff < bestAspectDiff))
+          )
         )
       {
         // Take new best option
-        size = testSize; 
-        vBanks = testVBanks;
-        hBanks = testHBanks;
-        minZoomLevel = testZoomLevel;
-        aspectDiff = testDiff;
+        bestSize = testSize; 
+        layoutParams.bankHeight = testHeight;
+        layoutParams.bankWidth = testWidth;
+        layoutParams.vBanks = testVBanks;
+        layoutParams.hBanks = testHBanks;
+        layoutParams.minZoomLevel = testZoomLevel;
+        bestAspectDiff = testDiff;
         fits = testFits;
       }
-
-    } while (testHBanks != 1);
-
+    }
   }
 
   // At least one condition must be met
-  assert(fits || myIsZoomable);
+  assert(fits || isZoomable);
 
-  return size;
+  if (layoutParams.vBanks == 1)
+    singleRow = true;
+
+  return {bestSize, layoutParams};
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+std::tuple<Common::Size, MemViewParams::LayoutParams> MemViewWidget::calcNeededSize(
+  const GUI::Font& font, const int w, const int h, const bool isZoomable,
+  uInt16 bankSize, uInt16 bankCount, const uInt16 initialBankHeight,
+  bool& success,
+  int* innerSurfaceW, int* innerSurfaceH, MemViewParams* params
+)
+{
+  // Depending on if the pointers are set or not we are working on
+  // external or internal variables
+  int iSW, iSH;
+  uInt16 bH;
+  uInt32 dS;
+
+  uInt16* bankHeight = nullptr;
+  uInt32* dataSize = nullptr;
+
+  if (innerSurfaceW == nullptr)
+    innerSurfaceW = &iSW;
+  if (innerSurfaceH == nullptr)
+    innerSurfaceH = &iSH;
+
+  if (params == nullptr)
+  {
+    bankHeight = &bH;
+    dataSize = &dS;
+    *dataSize = static_cast<uInt32>(bankSize * bankCount);
+  }
+  else
+  {
+    bankHeight = &params->myBankHeight;
+    // Data size has already been calculated by MemViewParams
+    dataSize = &params->myDataSize;
+  }
+
+  // Set maximal available inner surface dimensions
+  *innerSurfaceW = w - 2 * FRAME_THICKNESS
+    - (isZoomable ? (ScrollBarVWidget::scrollBarWidth(font) - FRAME_THICKNESS) : 0);
+  *innerSurfaceH = h - 2 * FRAME_THICKNESS
+    - (isZoomable ? (ScrollBarHWidget::scrollBarHeight(font) - FRAME_THICKNESS) : 0);
+
+  // Evaluate bank height
+  *bankHeight = static_cast<uInt16>(std::min(*dataSize, static_cast<uInt32>(initialBankHeight)));
+  const bool fixedBankHeight = !isZoomable;
+
+  // Check if bank is displayable
+  success =
+    (*dataSize > 0)
+    &&
+    (
+      (
+        (bankCount == 1)
+        &&
+        (
+          fixedBankHeight
+          ||
+          ((bankSize % MemViewDialog::MAX_BANK_HEIGHT) == 0)
+        )
+      )
+      ||
+      (
+        fixedBankHeight
+        &&
+        ((bankSize % *bankHeight) == 0)
+      )
+      ||
+      (
+        !fixedBankHeight
+        &&
+        ((bankSize % MemViewDialog::MAX_BANK_HEIGHT) == 0)
+      )
+    );
+
+  if (!success)
+  {
+    Logger::error(std::format("MemViewWidget: Unsupported bank size: {}", bankSize));
+    // Setup some emergency values to prevent crashing
+    bankSize = DEFAULT_BANK_SIZE;
+    bankCount = 1;
+    *dataSize = DEFAULT_BANK_SIZE;
+    if (params != nullptr)
+    {
+      params->myBankSize = DEFAULT_BANK_SIZE;
+      params->myBankCount = 1;
+    }
+  }
+
+  // Find the initial best layout to use (how are the banks arranged)
+  // and return size and layout parameters
+  auto [size, layoutParams] = findBestLayout(bankSize, bankCount, *innerSurfaceW, *innerSurfaceH,
+    isZoomable, *bankHeight, false, true
+  );
+
+  if (success)
+  {
+    Logger::debug(std::format("Data size   = {}", *dataSize));
+    Logger::debug(std::format("Banks       = {}", bankCount));
+    Logger::debug(std::format("Bank size   = {}", bankSize));
+    Logger::debug(std::format("Bank width  = {}", layoutParams.bankWidth));
+    Logger::debug(std::format("Bank height = {}", layoutParams.bankHeight));
+  }
+
+  // Add the outer frame thickness and scrollbar sizes
+  if (isZoomable)
+  {
+    size.w += FRAME_THICKNESS + ScrollBarVWidget::scrollBarWidth(font);
+    size.h += FRAME_THICKNESS + ScrollBarHWidget::scrollBarHeight(font);
+  }
+  else
+  {
+    *innerSurfaceW = size.w;
+    *innerSurfaceH = size.h;
+    size.w += 2 * FRAME_THICKNESS;
+    size.h += 2 * FRAME_THICKNESS;
+  }
+
+  return {size, layoutParams};
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

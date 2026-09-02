@@ -441,3 +441,21 @@ bool CartridgeEnhanced::load(Serializer& in)
 
   return true;
 }
+
+#ifdef MEMVIEW_SUPPORT
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Common::RwAddress CartridgeEnhanced::ramBankOrigin(uInt16 bank, uInt16 PC) const
+{
+  if (myRamSize == 0)
+  {
+    return Common::RwAddress();
+  }
+  else
+  {
+    // Per default we assume that the RAM is located within the ROM banks
+    uInt16 origin = bankOrigin(bank, PC);
+    return Common::RwAddress(true, static_cast<uInt32>(origin + myReadOffset),
+      static_cast<uInt32>(origin + myWriteOffset));
+  }
+}
+#endif

@@ -36,7 +36,6 @@ MemView::MemView(OSystem& osystem, FrameBuffer& framebuffer)
 
   myBaseDialog = new MemViewDialog(myOSystem, *this, framebuffer.font(), 0, 0, mySize.w, mySize.h);
   myBaseDialog->open();
-
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

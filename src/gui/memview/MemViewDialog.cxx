@@ -36,12 +36,12 @@
 /*
   Cartridge support status:
 
+  03E0      Breakpoints not working (Montezuma's Revenge) (Cartridge::bankOrigin), Stepping through code shows false reads at ROM end.
   0FA0      OK
   2K        OK
-  3E        Breakpoints not working, PC position not shown, no access data for cartridge RAM
-  3E+       Breakpoints not working, PC position not shown, no access data for cartridge RAM
+  3E        Breakpoints not working, no access data for cartridge RAM (Cartridge::bankOrigin!)
+  3E+       Breakpoints not working, no access data for cartridge RAM (Cartridge::bankOrigin!)
   3EX       ?
-  03E0      Breakpoints not working (Montezuma's Revenge)
   3F        Breakpoints not working for big ROMs (Bad Apple)
   4A50      No access data for internal RAM, program ROM only 4K, cart RAM not exposed
   4K        OK
@@ -62,7 +62,7 @@
   DPC       OK
   DPC+      Cart RAM without content, PC in cart RAM (false addresses)
   E0        Breakpoints not always working
-  E7        Cart RAM not exposed
+  E7        Cart RAM not exposed, Stepping through code shows false reads at ROM end.
   EF/EFF    Breakpoints not always working (invalid bank)
   EFSC      OK
   ELF       Only 4K of ROM(?) exposed
@@ -77,7 +77,7 @@
   FA2       OK
   FC        OK
   FE        OK
-  GL        Cart RAM addresses (and PC marking in RAM) incorrect
+  GL        OK
   JANE      ?
   MDM       OK
   MVC       Unsupported
@@ -120,7 +120,7 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
 
   // Calculate our color tables
   calcColorDataTab(READ_COLOR_HIGH, READ_COLOR_MID, ROM_ALPHA_MAX, myRomReadColorTab);
-//  calcColorDataTab(WRITE_COLOR_HIGH, WRITE_COLOR_MID, ROM_ALPHA_MAX, myRomWriteColorTab);
+  calcColorDataTab(WRITE_COLOR_HIGH, WRITE_COLOR_MID, ROM_ALPHA_MAX, myRomWriteColorTab);
   calcColorDataTab(PC_COLOR_HIGH, PC_COLOR_MID, ROM_ALPHA_MAX, myRomPcColorTab);
   calcColorDataTab(READ_COLOR_HIGH, READ_COLOR_MID, RAM_ALPHA_MAX, myRamReadColorTab);
   calcColorDataTab(WRITE_COLOR_HIGH, WRITE_COLOR_MID, RAM_ALPHA_MAX, myRamWriteColorTab);
@@ -145,18 +145,6 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
   // Place settings
   int ypos = settingsYPos;
   const int checkboxHeight = CheckboxWidget::neededHeight(font, boxSize);
-
-  VariantList bankHeights;
-  VarList::push_back(bankHeights, "64");
-  VarList::push_back(bankHeights, "128");
-  VarList::push_back(bankHeights, "256");
-  VarList::push_back(bankHeights, "512");
-  myBankHeight = new PopUpWidget(this, font, settingsXPos, ypos, 
-    font.getStringWidth(bankHeights[1].first),checkboxHeight, bankHeights, TEXT_BANK_HEIGHT,
-    font.getStringWidth(TEXT_BANK_HEIGHT) + H_TEXT_TO_WIDGET_DIST, kBankHeightChanged
-  );
-  myBankHeight->setSelectedIndex(1);
-  ypos += checkboxHeight + VGAP * 4;
 
   mySingleRow = new CheckboxWidget(this, font, settingsXPos, ypos, TEXT_SINGLE_ROW, kSingleRowChanged);
   wid.push_back(mySingleRow);
@@ -281,7 +269,7 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
   // Place RAM view and get dimensions
   int xpos = ramXPos;
   myRamView = new MemViewWidget(this, font, xpos, ramYPos, ramMaxWidth, ramMaxHeight,
-    RAM_SIZE, 1, RAM_SIZE, false, true, false,
+    RAM_SIZE, 1, RAM_SIZE, false,
     myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
     MemViewDataLayer::RAM_DATA_COLOR_DEFAULT, MemViewDataLayer::RAM_DATA_COLOR_FADED,
     "RAM", RAM_BASE
@@ -291,7 +279,6 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
   xpos += ramWidth + H_TEXT_TO_WIDGET_DIST;
 
   // Configure RAM view
-  myRamView->setLayoutParameters(true, false, RAM_SIZE);
   M6532& riot = instance().console().riot();
   myRamView->setAccessDataParams(riot.getRamCounterSize(), riot.getRamCounterOffset());
 
@@ -319,13 +306,12 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
     {
       // Smaller cartridge RAM will be shown next to the RIOT's RAM
       xpos += H_TEXT_TO_WIDGET_DIST;
-      uInt32 bankHeight = std::min((uInt32)RAM_SIZE, cartRamSize);
       myCartRamView = new MemViewWidget(this, font, xpos, ramYPos,
         (cartRamSize <= 128) ? ramWidth : (ramWidth * 2),
-        ramMaxHeight, cartRamSize, 1, bankHeight, false, true, false,
+        ramMaxHeight, cartRamSize, 1, RAM_SIZE, false,
         myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
         MemViewDataLayer::RAM_DATA_COLOR_DEFAULT, MemViewDataLayer::RAM_DATA_COLOR_FADED,
-        "Cart RAM", ROM_BASE, abs(cart.getRamMirrorAddrDiff())
+        "Cart RAM", MemViewWidget::QUERY_RAM_BANK_ORIGIN
       );
       myViews.insert({Cartridge::ImageScope::NONE, myCartRamView});
 
@@ -334,7 +320,6 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
       mainAreaLeftSize -= xpos;
       mainAreaNetLeftSize -= xpos;
 
-      myCartRamView->setLayoutParameters(true, false, bankHeight);
       myCartRamView->setAccessDataParams(cart.getRamCounterSize(), cart.getRamCounterOffset());
     }
     else
@@ -357,10 +342,10 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
 
       uInt16 bankCount = std::max((uInt16)1, cartRamBankCount);
       myCartRamView = new MemViewWidget(this, font, xpos, ramYPos, cartRamWidth,
-        mainHeight, cartRamSize / bankCount, bankCount, 256, true, false, true,
+        mainHeight, cartRamSize / bankCount, bankCount, 0, true,
         myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
         MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED,
-        "Cart RAM", ROM_BASE, abs(cart.getRamMirrorAddrDiff())
+        "Cart RAM", MemViewWidget::QUERY_RAM_BANK_ORIGIN
       );
       myViews.insert({Cartridge::ImageScope::NONE, myCartRamView});
       setupOk = setupOk && myCartRamView->isSetup();
@@ -426,12 +411,24 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
     {
       case Cartridge::ImageScope::PROGRAM:
       {
+        const Settings& settings = instance().settings();
+        int bankHeight = settings.getInt("mv.bankheight");
+        if (bankHeight <= 0)
+          bankHeight = 0;
+        else if (bankHeight <= 64)
+          bankHeight = 64;
+        else if (bankHeight <= 128)
+          bankHeight = 128;
+        else if (bankHeight <= 256)
+          bankHeight = 256;
+        else
+          bankHeight = 512;
         // Place program ROM view
         newView = new MemViewWidget(this, font, xpos, romYPos, width, mainHeight,
-          romBankSize, romBankCount, 256, true, false, true,
+          romBankSize, romBankCount, bankHeight, true,
           myRomReadColorTab, myRomWriteColorTab, myRomPcColorTab,
           MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED, "ROM",
-          ROM_BASE + cart.getRomScopeOffset(scope)
+          cart.getRomScopeOffset(scope) | MemViewWidget::QUERY_ROM_BANK_ORIGIN
         );
         // Set current content
         newView->updateData(romContent);
@@ -444,10 +441,10 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
         ByteSpan image = cart.getImage(scope);
         // TODO: check and adjust the image's size if necessary
         newView = new MemViewWidget(this, font, xpos, romYPos, width, mainHeight,
-          static_cast<uInt16>(image.size()), 1, 256, true, false, true,
+          static_cast<uInt16>(image.size()), 1, 0, true,
           myRomReadColorTab, myRomWriteColorTab, myRomPcColorTab,
           MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED, "Display data",
-          ROM_BASE + cart.getRomScopeOffset(scope)
+          cart.getRomScopeOffset(scope) | MemViewWidget::QUERY_ROM_BANK_ORIGIN
         );
         // Set current content
         newView->updateData(image);
@@ -532,7 +529,6 @@ void MemViewDialog::loadConfig()
 {
   const Settings& settings = instance().settings();
 
-  myBankHeight->setSelectedIndex(settings.getInt("mv.bankheight"));
   if (mySingleRow->isEnabled())
     mySingleRow->setState(settings.getBool("mv.singlerow"));
   myInverted->setState(settings.getBool("mv.inverted"));
@@ -621,7 +617,6 @@ void MemViewDialog::handleCommand(CommandSender* sender, int cmd, int data, int 
       updateVisualParameters();
       break;
 
-    case kBankHeightChanged:
     case kSingleRowChanged:
     case kSeparatorsChanged:
       updateLayoutParameters();
@@ -645,8 +640,9 @@ void MemViewDialog::handleCommand(CommandSender* sender, int cmd, int data, int 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 int MemViewDialog::getSettingsWidth(const GUI::Font& font)
 {
-  return font.getStringWidth("512") + font.getStringWidth(TEXT_BANK_HEIGHT) +
-    H_TEXT_TO_WIDGET_DIST + PopUpWidget::dropDownWidth(font);
+  const int boxSize = CheckboxWidget::boxSize(font);
+  return CheckboxWidget::neededWidth(font, TEXT_LONGEST, boxSize) +
+    H_TEXT_TO_WIDGET_DIST * 2 + COLOR_WIDGET_WIDTH;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -655,9 +651,8 @@ int MemViewDialog::getSettingsHeight(const GUI::Font& font)
   const int vGap = font.getFontHeight() / 4;
   const int boxSize = CheckboxWidget::boxSize(font);
   return CheckboxWidget::neededHeight(font, boxSize) * SETTINGS_COUNT
-    + vGap * (SETTINGS_COUNT + 10 - 1);  // + 10 for the extra gaps
+    + vGap * (SETTINGS_COUNT + 7 - 1);  // + 7 for the extra gaps
 }
-
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // Calculate color table as such:
@@ -729,8 +724,6 @@ void MemViewDialog::updateVisualParameters()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MemViewDialog::updateLayoutParameters()
 {
-  const int bankHeight = std::stoi(myBankHeight->getSelectedName());
-
   for (const auto &[scope, view] : myViews)
   {
     if (
@@ -742,8 +735,7 @@ void MemViewDialog::updateLayoutParameters()
 
     view->setLayoutParameters(
       mySingleRow->getState(),
-      mySeparators->getState(),
-      bankHeight
+      mySeparators->getState()
     );
   }
 }
