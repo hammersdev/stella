@@ -175,7 +175,7 @@ void MemViewWidget::updateRest()
     if ((bank >= 0) && (bank < myParams.myBankCount))
     {
       // Check if the PC really is in the address range of that bank
-      const uInt16 pc = instance().debugger().cpuDebug().pc();
+      const uInt16 pc = static_cast<uInt16>(instance().debugger().cpuDebug().pc());
 
       Common::RwAddress address = myParams.getBankOrigin(bank, pc);
       if (
@@ -448,7 +448,7 @@ string MemViewWidget::getToolTip(const Common::Point& pos) const
   if (address.valid)
   {
     CartDebug& cartDebug = instance().debugger().cartDebug();
-    string label = cartDebug.getLabel(address.read, true);
+    string label = cartDebug.getLabel(static_cast<uInt16>(address.read), true);
     if (!label.empty())
       text += "\n" + label;
   }
@@ -511,7 +511,7 @@ void MemViewWidget::updateAccessData(
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void MemViewWidget::setLayoutParameters(int bankHeight, bool singleRow, bool separators)
+void MemViewWidget::setLayoutParameters(uInt16 bankHeight, bool singleRow, bool separators)
 {
   if (!isSetup())
     return;
@@ -582,8 +582,13 @@ void MemViewWidget::clearHeatmaps()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool MemViewWidget::lockedSingleRow()
 {
-  // Odd bank counts can only be displayed in single row mode
   return (myParams.myVBanks == 1);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool MemViewWidget::lockedSingleBank()
+{
+  return (myParams.myBankCount == 1);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -891,30 +896,30 @@ std::tuple<Common::Size, MemViewParams::LayoutParams> MemViewWidget::findBestLay
   const double destAspect = static_cast<double>(innerSurfaceW) / static_cast<double>(innerSurfaceH);
   const int firstVBanks = 1;
   const int lastVBanks = singleRow ? 1 : bankCount;
-  double bestAspectDiff = -1.0;
+  double bestAspectDiff = 0.0;
   bool fits = false;
   Common::Size bestSize;
   MemViewParams::LayoutParams layoutParams;
 
   // Determine best format to display the data based on the available area size
-  int firstHeight = 64;
-  int lastHeight = 512;
+  uInt16 firstHeight = 64;
+  uInt16 lastHeight = 512;
   if (!isZoomable || (bankHeight != 0))
     firstHeight = lastHeight = bankHeight;
 
-  for (int testVBanks = firstVBanks; testVBanks <= lastVBanks; testVBanks++)
+  for (uInt16 testHeight = firstHeight; testHeight <= lastHeight; testHeight *= 2)
   {
-    if (bankCount % testVBanks)
-      continue;
+    const uInt16 testWidth = bankSize / testHeight;
+    const uInt16 bankRatio = testHeight / testWidth;
+    const bool preferred = (bankRatio >= 16) && (bankRatio <= 32);
 
-    for (int testHeight = firstHeight; testHeight <= lastHeight; testHeight *= 2)
+    for (int testVBanks = firstVBanks; testVBanks <= lastVBanks; testVBanks++)
     {
-      const int testWidth = bankSize / testHeight;
-      // Prefer the vertical rectangular bank aspect ratio (256 for a 4K bank)
-      const int bankRatio = testHeight / testWidth;
-      const bool preferred = (bankRatio >= 16) && (bankRatio <= 32);
+      if (bankCount % testVBanks)
+        continue;
 
-      int testHBanks = bankCount / testVBanks;
+      const int testHBanks = bankCount / testVBanks;
+
       int testZoomLevel = 0;
       Common::Size testSize = MemViewWidget::calcSizeAndZoom(
         innerSurfaceW,  // availableWidth
@@ -927,32 +932,40 @@ std::tuple<Common::Size, MemViewParams::LayoutParams> MemViewWidget::findBestLay
         testZoomLevel // minZoomLevel
       );
 
-      bool testFits = (testSize.w <= static_cast<uInt32>(innerSurfaceW)) && (testSize.h <= static_cast<uInt32>(innerSurfaceH));
-      double testDiff = fabs(
-        (static_cast<double>(testSize.w) / static_cast<double>(testSize.h))
-        -
-        destAspect
-      );
+      bool testFits =
+        (testSize.w <= static_cast<uInt32>(innerSurfaceW))
+        &&
+        (testSize.h <= static_cast<uInt32>(innerSurfaceH))
+      ;
+      // Calculate aspect ratio without separators to give the preferred ratio a fair chance
+      const double netWidth = static_cast<double>(testWidth * testHBanks * 8);
+      const double netHeight = static_cast<double>(testHeight * testVBanks);
+      double testDiff = fabs((netWidth / netHeight) - destAspect);
 
       // Make the difference for our preferred bank aspect slightly better to prefer these
       // when there is very little difference between the arrangements
       if (preferred)
-        testDiff *= 0.85;
+        testDiff *= 0.75;
 
       if (
-        (bestAspectDiff < 0.0)
+        (layoutParams.minZoomLevel == 0)
+        ||
+        (!fits && testFits)
         ||
         (
           (!fits || testFits)
           &&
           (
-            (!fits && testFits)
-            ||
             (testZoomLevel > layoutParams.minZoomLevel)
             ||
-            (testDiff < bestAspectDiff))
+            (
+              (testZoomLevel == layoutParams.minZoomLevel)
+              &&
+              (testDiff < bestAspectDiff)
+            )
           )
         )
+      )
       {
         // Take new best option
         bestSize = testSize; 

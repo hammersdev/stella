@@ -205,6 +205,7 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
   // Get the cartridge infos
   bool setupOk = true;
   bool singleRow = true;
+  bool singleBank = true;
   Cartridge &cart = instance().console().cartridge();
 
   // Determine ROM parameters
@@ -224,13 +225,13 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
     {
       // Special case (e.g. for small CV ROMs)
       romBankCount = 1;
-      romBankSize = programRomSize;
+      romBankSize = static_cast<uInt16>(programRomSize);
       romSize = programRomSize;
     }
     else
     {
       // For now: cut down size to full banks
-      romBankCount = programRomSize / romBankSize;
+      romBankCount = static_cast<uInt16>(programRomSize / romBankSize);
       romSize = romBankSize * romBankCount;
     }
     Logger::debug(std::format("Corrected size  = {} ({} x {})", romSize, romBankCount, romBankSize));
@@ -238,33 +239,24 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
   // Limit content to the size we support
   ByteSpan romContent = ByteSpan(programRomContent.begin(), romSize);
 
-  // Go through additional image scopes to add up byte
-  // sizes and build a map of scopes needed at the main area
+  // Prepare gathering informations about views for the main area
   struct MainAreaScope {
-    MainAreaScope() : myBytes{0}, myWidth{0} { };
-    MainAreaScope(uInt32 bytes, int width = 0) : myBytes{bytes}, myWidth{width} { }
+    MainAreaScope() = default;
+    MainAreaScope(uInt16 bankSize, uInt16 bankCount, uInt16 bankHeight, int width = 0)
+      : myBytes{static_cast<uInt32>(bankSize * bankCount)},
+      myBankSize{bankSize}, myBankCount{bankCount}, myBankHeight{bankHeight},
+      myWidth{width} { }
     uInt32 myBytes;
+    uInt16 myBankSize;
+    uInt16 myBankCount;
+    uInt16 myBankHeight;
     int myWidth;
+    Common::Size mySize{};
   };
+
   std::map<Cartridge::ImageScope, MainAreaScope> mainAreaScopes;
-  mainAreaScopes[Cartridge::ImageScope::PROGRAM] = MainAreaScope(romSize);
-  uInt32 mainAreaLeftBytes = romSize;
+  uInt32 mainAreaLeftBytes = 0;
   Cartridge::ImageScope largestScope = Cartridge::ImageScope::PROGRAM;
-  for (
-    Cartridge::ImageScope scope = extraScopeFirst;
-    scope <= extraScopeLast;
-    scope = Cartridge::ImageScope(std::to_underlying(scope) + 1)
-  )
-  {
-    uInt32 extraBytes = static_cast<uInt32>(cart.getImage(scope).size());
-    if (extraBytes > 0)
-    {
-      mainAreaLeftBytes += extraBytes;
-      mainAreaScopes[scope] = MainAreaScope(extraBytes);
-      if (extraBytes > mainAreaScopes[largestScope].myBytes)
-        largestScope = scope;
-    }
-  }
 
   // Place RAM view and get dimensions
   int xpos = ramXPos;
@@ -296,8 +288,7 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
   Logger::debug(std::format("Int RAM size   = {}", cartRamSize));
 
   int mainAreaLeftSize = _w - H_OUTER_BORDER;
-  int mainAreaNetLeftSize = mainAreaLeftSize - ramTextWidth - H_TEXT_TO_WIDGET_DIST -
-    static_cast<int>(mainAreaScopes.size() - 1) * H_INNER_DIST;
+  int mainAreaNetLeftSize = mainAreaLeftSize - ramTextWidth - H_TEXT_TO_WIDGET_DIST;
 
   // Does the cartridge have internal RAM to be displayed?
   if (cartRamSize > 0)
@@ -308,7 +299,7 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
       xpos += H_TEXT_TO_WIDGET_DIST;
       myCartRamView = new MemViewWidget(this, font, xpos, ramYPos,
         (cartRamSize <= 128) ? ramWidth : (ramWidth * 2),
-        ramMaxHeight, cartRamSize, 1, RAM_SIZE, false,
+        ramMaxHeight, static_cast<uInt16>(cartRamSize), 1, RAM_SIZE, false,
         myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
         MemViewDataLayer::RAM_DATA_COLOR_DEFAULT, MemViewDataLayer::RAM_DATA_COLOR_FADED,
         "Cart RAM", MemViewWidget::QUERY_RAM_BANK_ORIGIN
@@ -334,28 +325,16 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
         fontHeight, TEXT_RAM, TextAlign::Left
       );
       xpos += ramTextWidth + H_TEXT_TO_WIDGET_DIST;
-      mainAreaNetLeftSize -= xpos + H_INNER_DIST;
 
-      double cartRamRatio = static_cast<double>(cartRamSize) / static_cast<double>(mainAreaLeftBytes + cartRamSize);
-      int cartRamWidth = round(static_cast<double>(mainAreaNetLeftSize) * cartRamRatio);
-      cartRamWidth = std::max(MIN_ROM_WIDTH, cartRamWidth);
-
-      uInt16 bankCount = std::max((uInt16)1, cartRamBankCount);
-      myCartRamView = new MemViewWidget(this, font, xpos, ramYPos, cartRamWidth,
-        mainHeight, cartRamSize / bankCount, bankCount, 0, true,
-        myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
-        MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED,
-        "Cart RAM", MemViewWidget::QUERY_RAM_BANK_ORIGIN
-      );
-      myViews.insert({Cartridge::ImageScope::NONE, myCartRamView});
-      setupOk = setupOk && myCartRamView->isSetup();
-      singleRow = singleRow && myCartRamView->lockedSingleRow();
-
-      xpos += cartRamWidth + H_INNER_DIST;
-      mainAreaLeftSize -= xpos;
-      mainAreaNetLeftSize -= cartRamWidth;
-
-      myCartRamView->setAccessDataParams(cart.getRamCounterSize(), cart.getRamCounterOffset());
+      // Add RAM size and put entry into main area map
+      mainAreaLeftBytes += cartRamSize;
+      const uInt16 bankCount = std::max((uInt16)1, cartRamBankCount);
+      const uInt16 bankSize = static_cast<uInt16>(cartRamSize / bankCount);
+      mainAreaScopes[Cartridge::ImageScope::NONE] =
+        MainAreaScope(bankSize, bankCount, readBankHeightConfig(bankSize));
+      mainAreaNetLeftSize -= xpos;
+      if (cartRamSize > romSize)
+        largestScope = Cartridge::ImageScope::NONE;
     }
   }
   else
@@ -366,25 +345,87 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
     mainAreaNetLeftSize -= xpos;
   }
 
+  // Put main ROM view into map
+  mainAreaScopes[Cartridge::ImageScope::PROGRAM] =
+    MainAreaScope(romBankSize, romBankCount, readBankHeightConfig(romBankSize));
+  mainAreaLeftBytes += romSize;
+
+  // Go through additional image scopes to add up byte
+  // sizes and build a map of scopes needed at the main area
+  for (
+    Cartridge::ImageScope scope = extraScopeFirst;
+    scope <= extraScopeLast;
+    scope = Cartridge::ImageScope(std::to_underlying(scope) + 1)
+  )
+  {
+    uInt16 extraBytes = static_cast<uInt16>(cart.getImage(scope).size());
+    if (extraBytes > 0)
+    {
+      mainAreaLeftBytes += extraBytes;
+      mainAreaScopes[scope] = MainAreaScope(extraBytes, 1, 0);
+      if (extraBytes > mainAreaScopes[largestScope].myBytes)
+        largestScope = scope;
+    }
+  }
+
+  // Subtract the space needed between the main area views
+  mainAreaNetLeftSize -= static_cast<int>(mainAreaScopes.size() - 1) * H_INNER_DIST;
+
+  // Now mainAreaNetLeftSize is the horizontal net space left for only the views to
+  // be assigned next
+
   // Pre-calculate all ROM view GUI sizes
   if (mainAreaLeftBytes > 0)
   {
+    // First run for assigning raw calculated sizes
     for (auto &[scope, entry] : mainAreaScopes)
     {
       double ratio = static_cast<double>(entry.myBytes) / static_cast<double>(mainAreaLeftBytes);
-      int width = round(static_cast<double>(mainAreaNetLeftSize) * ratio);
+
+      int width = static_cast<int>(round(static_cast<double>(mainAreaNetLeftSize) * ratio));
       int clampedWidth = std::max(MIN_ROM_WIDTH, width);
-      int diffWidth = clampedWidth - width;
+      int deltaWidth = clampedWidth - width;
       // Subtract extra needs from the largest area
-      if (diffWidth && (scope != largestScope))
+      if (deltaWidth && (scope != largestScope))
       {
         // Take the extra needed space from the largest one
-        mainAreaScopes[largestScope].myWidth -= diffWidth;
+        mainAreaScopes[largestScope].myWidth -= deltaWidth;
         entry.myWidth += clampedWidth;
       }
       else
       {
         entry.myWidth += width;
+      }
+    }
+    if (mainAreaScopes.size() > 1)
+    {
+      int deltaWidthCount = 0;
+      int deltaWidthSum = 0;
+      // Go through list again and ask the widgets how much space they would claim
+      for (auto &[scope, entry] : mainAreaScopes)
+      {
+        bool success = false;
+        auto [size, layoutParams] = MemViewWidget::calcNeededSize(font, entry.myWidth, mainHeight,
+          true, entry.myBankSize, entry.myBankCount, entry.myBankHeight, success);
+        // Sum up width deltas of assigned space vs. used space
+        entry.mySize = size;
+        if (entry.myWidth > MIN_ROM_WIDTH)
+        {
+          deltaWidthSum += entry.myWidth - size.w;
+          deltaWidthCount++;
+        }
+      }
+      if ((deltaWidthCount > 0) && (deltaWidthSum > deltaWidthCount))
+      {
+        const int eachDelta = deltaWidthSum / deltaWidthCount;
+        for (auto &[scope, entry] : mainAreaScopes)
+        {
+          if (entry.myWidth <= MIN_ROM_WIDTH)
+            continue;
+          deltaWidthSum -= eachDelta;
+          // The last one gets the fractional rest
+          entry.myWidth = entry.mySize.w + ((eachDelta <= deltaWidthSum) ? eachDelta : (deltaWidthSum + eachDelta));
+        }
       }
     }
   }
@@ -393,39 +434,43 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
     mainAreaScopes[Cartridge::ImageScope::PROGRAM].myWidth = mainAreaNetLeftSize;
   }
 
-  // Setup cartridge's ROM part
-
-  // Place ROM text
-  new StaticTextWidget(this, font, xpos, romYPos,
-    font.getStringWidth(TEXT_RAM), fontHeight, TEXT_ROM, TextAlign::Right
-  );
-  xpos += romTextWidth + H_TEXT_TO_WIDGET_DIST;
-
-  // Instantiate and place all ROM views
+  // Instantiate and place all main area views
+  bool pendingRomText = true;
   for (const auto &[scope, entry] : mainAreaScopes)
   {
     const int& width = entry.myWidth;
     MemViewWidget* newView = nullptr;
 
+    if (pendingRomText && (scope != Cartridge::ImageScope::NONE))
+    {
+      // Place ROM text
+      new StaticTextWidget(this, font, xpos, romYPos,
+        font.getStringWidth(TEXT_RAM), fontHeight, TEXT_ROM, TextAlign::Right
+      );
+      xpos += romTextWidth + H_TEXT_TO_WIDGET_DIST;
+      pendingRomText = false;
+    }
+
     switch (scope)
     {
+      case Cartridge::ImageScope::NONE:
+      {
+        // This is the cartridge RAM
+        myCartRamView = newView = new MemViewWidget(this, font, xpos, ramYPos, width,
+          mainHeight, entry.myBankSize, entry.myBankCount, entry.myBankHeight, true,
+          myRamReadColorTab, myRamWriteColorTab, myRamPcColorTab,
+          MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED,
+          "Cart RAM", MemViewWidget::QUERY_RAM_BANK_ORIGIN
+        );
+        myCartRamView->setAccessDataParams(cart.getRamCounterSize(), cart.getRamCounterOffset());
+        break;
+      }
+
       case Cartridge::ImageScope::PROGRAM:
       {
-        const Settings& settings = instance().settings();
-        int bankHeight = settings.getInt("mv.bankheight");
-        if (bankHeight <= 0)
-          bankHeight = 0;
-        else if (bankHeight <= 64)
-          bankHeight = 64;
-        else if (bankHeight <= 128)
-          bankHeight = 128;
-        else if (bankHeight <= 256)
-          bankHeight = 256;
-        else
-          bankHeight = 512;
         // Place program ROM view
         newView = new MemViewWidget(this, font, xpos, romYPos, width, mainHeight,
-          romBankSize, romBankCount, bankHeight, true,
+          entry.myBankSize, entry.myBankCount, entry.myBankHeight, true,
           myRomReadColorTab, myRomWriteColorTab, myRomPcColorTab,
           MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED, "ROM",
           cart.getRomScopeOffset(scope) | MemViewWidget::QUERY_ROM_BANK_ORIGIN
@@ -438,15 +483,14 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
       case Cartridge::ImageScope::DISPLAY_DATA:
       {
         // Place display data ROM view
-        ByteSpan image = cart.getImage(scope);
-        // TODO: check and adjust the image's size if necessary
         newView = new MemViewWidget(this, font, xpos, romYPos, width, mainHeight,
-          static_cast<uInt16>(image.size()), 1, 0, true,
+          entry.myBankSize, entry.myBankCount, entry.myBankHeight, true,
           myRomReadColorTab, myRomWriteColorTab, myRomPcColorTab,
           MemViewDataLayer::DATA_COLOR_DEFAULT, MemViewDataLayer::DATA_COLOR_FADED, "Display data",
           cart.getRomScopeOffset(scope) | MemViewWidget::QUERY_ROM_BANK_ORIGIN
         );
         // Set current content
+        ByteSpan image = cart.getImage(scope);
         newView->updateData(image);
         break;
       }
@@ -460,10 +504,15 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
     {
       setupOk = setupOk && newView->isSetup();
       singleRow = singleRow && newView->lockedSingleRow();
-      newView->setAccessDataParams(
-        cart.getRomCounterSize(scope),
-        cart.getRomCounterOffset(scope)
-      );
+      singleBank = singleBank && newView->lockedSingleBank();
+
+      if (newView != myCartRamView)
+      {
+        newView->setAccessDataParams(
+          cart.getRomCounterSize(scope),
+          cart.getRomCounterOffset(scope)
+        );
+      }
       myViews.insert({scope, newView});
       xpos += width + H_INNER_DIST;
     }
@@ -476,13 +525,14 @@ MemViewDialog::MemViewDialog(OSystem& osystem, DialogContainer& parent,
 
     if (singleRow)
     {
+      // No single row selection if everything is already single row
       mySingleRow->setState(false);
       mySingleRow->setEnabled(false);
     }
 
-    if ((romBankCount <= 1) && (cartRamBankCount <= 1))
+    if (singleBank)
     {
-      // No separators if one bank only
+      // No separators if one bank on all views only
       mySeparators->setState(false);
       mySeparators->setEnabled(false);
     }
@@ -543,7 +593,37 @@ void MemViewDialog::loadConfig()
 
   updateLayoutParameters();
   updateVisualParameters();
- }
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+uInt16 MemViewDialog::readBankHeightConfig(uInt16 bankSize) const
+{
+  const Settings& settings = instance().settings();
+  uInt16 bankHeight = 0;
+
+  switch (bankSize)
+  {
+    case 2048:
+      bankHeight = static_cast<uInt16>(settings.getInt("mv.bh2k"));
+      break;
+    case 4096:
+      bankHeight = static_cast<uInt16>(settings.getInt("mv.bh4k"));
+      break;
+    default:
+      break;
+  }
+
+  if (bankHeight <= 0)
+    return 0;
+  else if (bankHeight <= 64)
+    return 64;
+  else if (bankHeight <= 128)
+    return 128;
+  else if (bankHeight <= 256)
+    return 256;
+  else
+    return 512;
+}
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MemViewDialog::tick()

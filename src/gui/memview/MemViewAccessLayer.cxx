@@ -181,7 +181,9 @@ void MemViewAccessLayer::compareAccessData(Device::AccessCounter* newData,
       sum += diff;
 
       // Apply gain and calc heatmap value
-      HeatmapValue value = BASE_ACCESS_VALUE + static_cast<HeatmapValue>(diff - 1) * gain;
+      HeatmapValue value = static_cast<HeatmapValue>(
+        BASE_ACCESS_VALUE + static_cast<HeatmapValue>(diff - 1) * gain
+      );
       if (value > 255.0)
         value = 255.0;
 

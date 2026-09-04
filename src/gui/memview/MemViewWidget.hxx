@@ -48,8 +48,8 @@ class MemViewWidget : public Widget
     static constexpr std::string_view TEXT_UNSUPPORTED = "Unsupported ROM type";
     static constexpr int DEFAULT_BANK_SIZE = 4096;
     using ColorTab = std::array<uInt32, 256>;
-    static constexpr uInt32 QUERY_ROM_BANK_ORIGIN = 1 << 30U;
-    static constexpr uInt32 QUERY_RAM_BANK_ORIGIN = 1 << 31U;
+    static constexpr uInt32 QUERY_ROM_BANK_ORIGIN = 1U << 30;
+    static constexpr uInt32 QUERY_RAM_BANK_ORIGIN = 1U << 31;
 
   public:
 
@@ -178,9 +178,14 @@ class MemViewWidget : public Widget
     void clearHeatmaps();
 
     /**
-      Read if only single row is possible with this bank size
+      Read if only single row is possible with this bank configuration
     */
     bool lockedSingleRow();
+
+    /**
+      Read if it's only a single bank
+    */
+    bool lockedSingleBank();
 
     /**
       Returns if the widget is fully setup and functional after construction
@@ -376,7 +381,7 @@ class MemViewWidget : public Widget
       @param singleRow    Only one row of banks
       @param separators   Show separators between the banks or not
     */
-    void setLayoutParameters(int bankHeight, bool singleRow, bool separators);
+    void setLayoutParameters(uInt16 bankHeight, bool singleRow, bool separators);
 
   private:
     // Following constructors and assignment operators not supported

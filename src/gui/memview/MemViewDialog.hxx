@@ -132,6 +132,9 @@ class MemViewDialog : public Dialog
 
   private:
 
+    // Read the pre-configured bank height for a specific bank size
+    uInt16 readBankHeightConfig(uInt16 bankSize) const;
+
     void handleCommand(CommandSender* sender, int cmd, int data, int id) override;
 
     // Returns the needed pixel width for the MemView's settings
